@@ -1,33 +1,43 @@
 import AppKit
 import SwiftUI
 
-/// macOS Settings window: Providers and App (General) panes.
+/// Native macOS settings, grouped by the thing the person is trying to manage.
 struct SettingsView: View {
-    @EnvironmentObject private var model: AppModel
-    @EnvironmentObject private var providers: AIProviderService
-    @EnvironmentObject private var preferences: AppPreferences
-
     var body: some View {
         TabView {
-            ProviderSettingsPane()
-                .tabItem {
-                    Label("Providers", systemImage: "terminal")
-                }
-                .tag(SettingsTab.providers)
-
-            AppSettingsPane()
+            GeneralSettingsPane()
                 .tabItem {
                     Label("General", systemImage: "gearshape")
                 }
                 .tag(SettingsTab.general)
+
+            ProviderSettingsPane()
+                .tabItem {
+                    Label("Providers", systemImage: "sparkles")
+                }
+                .tag(SettingsTab.providers)
+
+            LibrarySettingsPane()
+                .tabItem {
+                    Label("Library", systemImage: "books.vertical")
+                }
+                .tag(SettingsTab.library)
+
+            SupportSettingsPane()
+                .tabItem {
+                    Label("Support", systemImage: "questionmark.circle")
+                }
+                .tag(SettingsTab.support)
         }
-        .frame(minWidth: 480, idealWidth: 560, minHeight: 500, idealHeight: 640)
+        .frame(width: 560, height: 520)
     }
 }
 
 private enum SettingsTab: Hashable {
-    case providers
     case general
+    case providers
+    case library
+    case support
 }
 
 // MARK: - Providers
@@ -62,6 +72,12 @@ private struct ProviderSettingsPane: View {
             }
 
             Section {
+                Button("Provider Setup…") {
+                    model.showingProviderSetup = true
+                    NSApp.activate(ignoringOtherApps: true)
+                    NSApp.windows.first(where: \.canBecomeKey)?.makeKeyAndOrderFront(nil)
+                }
+
                 Button {
                     Task {
                         isRechecking = true
@@ -83,8 +99,7 @@ private struct ProviderSettingsPane: View {
                 Text("Checks install path, version, and login for each CLI.")
             }
         }
-        .formStyle(.grouped)
-        .padding(.vertical, PremiumStyle.space8)
+        .settingsPaneLayout()
     }
 
     private func binding(for provider: AIProvider) -> Binding<Bool> {
@@ -109,13 +124,11 @@ private struct ProviderSettingsPane: View {
     }
 }
 
-// MARK: - App / General
+// MARK: - General
 
-private struct AppSettingsPane: View {
+private struct GeneralSettingsPane: View {
     @EnvironmentObject private var model: AppModel
-    @EnvironmentObject private var store: AppletStore
     @EnvironmentObject private var preferences: AppPreferences
-    @State private var confirmClearLibrary = false
 
     var body: some View {
         Form {
@@ -126,40 +139,6 @@ private struct AppSettingsPane: View {
                 Text("Interface")
             } footer: {
                 Text("Composer controls update immediately.")
-            }
-
-            Section {
-                LabeledContent("Tools in library", value: "\(store.applets.count)")
-                LabeledContent("Enabled", value: "\(store.enabledApplets.count)")
-
-                Button("Add built-in samples") {
-                    model.addSampleLibrary()
-                }
-
-                Button("Reveal library in Finder") {
-                    revealLibrary()
-                }
-
-                Button("Export Library…") {
-                    model.exportLibrary()
-                }
-                .disabled(store.applets.isEmpty)
-
-                Button("Import Library…") {
-                    model.importLibrary()
-                }
-
-                Button("Clear library…", role: .destructive) {
-                    confirmClearLibrary = true
-                }
-                .disabled(store.applets.isEmpty)
-            } header: {
-                Text("Library")
-            } footer: {
-                Text(preferences.libraryFileURL.path)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .textSelection(.enabled)
             }
 
             Section {
@@ -177,11 +156,10 @@ private struct AppSettingsPane: View {
 
             Section {
                 LaunchAtLoginSetting(controller: model.launchAtLogin)
-                Text("Closing the window keeps Bar Tender and its tools running. Quitting Bar Tender stops every tool until the app starts again.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             } header: {
-                Text("Lifecycle")
+                Text("Startup")
+            } footer: {
+                Text("Closing the window keeps Bar Tender and its tools running. Quitting Bar Tender stops every tool until the app starts again.")
             }
 
             Section {
@@ -191,39 +169,60 @@ private struct AppSettingsPane: View {
             } footer: {
                 Text("Updates are checked only when you ask. Downloads come from the signed GitHub Releases page.")
             }
+        }
+        .settingsPaneLayout()
+    }
 
-            Section {
-                Button("Provider Setup…") {
-                    model.showingProviderSetup = true
-                    NSApp.activate(ignoringOtherApps: true)
-                    NSApp.windows.first(where: \.canBecomeKey)?.makeKeyAndOrderFront(nil)
-                }
-                Button("Export Sanitized Diagnostics…") {
-                    model.exportDiagnostics()
-                }
-                Button("Support and Troubleshooting…") {
-                    openURL("https://github.com/Aforno/Bartender/issues")
-                }
-                Button("Privacy Information…") {
-                    openURL("https://github.com/Aforno/Bartender/blob/main/PRIVACY.md")
-                }
-            } header: {
-                Text("Support")
-            } footer: {
-                Text("Diagnostics exclude prompts, generated source, paths, credentials, provider output, and tool output.")
+    private func openNotificationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
+            NSWorkspace.shared.open(url)
+        } else if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+}
+
+// MARK: - Library
+
+private struct LibrarySettingsPane: View {
+    @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var store: AppletStore
+    @EnvironmentObject private var preferences: AppPreferences
+    @State private var confirmClearLibrary = false
+
+    var body: some View {
+        Form {
+            Section("Overview") {
+                LabeledContent("Tools", value: "\(store.applets.count)")
+                LabeledContent("Enabled", value: "\(store.enabledApplets.count)")
             }
 
             Section {
-                LabeledContent("App", value: "Bar Tender")
-                LabeledContent("Version", value: appVersion)
-                LabeledContent("Integration", value: "Local CLIs · Process")
-                GeneratedCodeTrustDisclosure(compact: true)
+                Button("Add Built-in Samples") { model.addSampleLibrary() }
+                Button("Reveal Library in Finder") { revealLibrary() }
             } header: {
-                Text("About")
+                Text("Local Library")
+            } footer: {
+                Text(preferences.libraryFileURL.path)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .textSelection(.enabled)
+            }
+
+            Section("Transfer") {
+                Button("Export Library…") { model.exportLibrary() }
+                    .disabled(store.applets.isEmpty)
+                Button("Import Library…") { model.importLibrary() }
+            }
+
+            Section {
+                Button("Clear Library…", role: .destructive) { confirmClearLibrary = true }
+                    .disabled(store.applets.isEmpty)
+            } footer: {
+                Text("Clearing the library also removes approvals and generated artifacts.")
             }
         }
-        .formStyle(.grouped)
-        .padding(.vertical, PremiumStyle.space8)
+        .settingsPaneLayout()
         .alert("Clear library?", isPresented: $confirmClearLibrary) {
             Button("Cancel", role: .cancel) {}
             Button("Clear All", role: .destructive) {
@@ -232,13 +231,6 @@ private struct AppSettingsPane: View {
         } message: {
             Text("This permanently removes all \(store.applets.count) tool(s), approvals, and generated artifacts from Bar Tender. This cannot be undone.")
         }
-    }
-
-    private var appVersion: String {
-        let info = Bundle.main.infoDictionary
-        let short = info?["CFBundleShortVersionString"] as? String ?? "Development"
-        let build = info?["CFBundleVersion"] as? String ?? "local"
-        return "\(short) (\(build))"
     }
 
     private func revealLibrary() {
@@ -251,18 +243,61 @@ private struct AppSettingsPane: View {
             NSWorkspace.shared.open(dir)
         }
     }
+}
 
-    private func openNotificationSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
-            NSWorkspace.shared.open(url)
-        } else if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
-            NSWorkspace.shared.open(url)
+// MARK: - Support
+
+private struct SupportSettingsPane: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        Form {
+            Section {
+                Button("Support and Troubleshooting…") {
+                    openURL("https://github.com/Aforno/Bartender/issues")
+                }
+                Button("Export Sanitized Diagnostics…") {
+                    model.exportDiagnostics()
+                }
+            } header: {
+                Text("Help")
+            } footer: {
+                Text("Diagnostics exclude prompts, generated source, paths, credentials, provider output, and tool output.")
+            }
+
+            Section("Information") {
+                Button("Privacy Information…") {
+                    openURL("https://github.com/Aforno/Bartender/blob/main/PRIVACY.md")
+                }
+            }
+
+            Section("About") {
+                LabeledContent("App", value: "Bar Tender")
+                LabeledContent("Version", value: appVersion)
+                LabeledContent("Integration", value: "Local CLIs · Process")
+                GeneratedCodeTrustDisclosure(compact: true)
+            }
         }
+        .settingsPaneLayout()
+    }
+
+    private var appVersion: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "Development"
+        let build = info?["CFBundleVersion"] as? String ?? "local"
+        return "\(short) (\(build))"
     }
 
     private func openURL(_ value: String) {
         guard let url = URL(string: value) else { return }
         NSWorkspace.shared.open(url)
+    }
+}
+
+private extension View {
+    func settingsPaneLayout() -> some View {
+        formStyle(.grouped)
+            .padding(.vertical, PremiumStyle.space8)
     }
 }
 

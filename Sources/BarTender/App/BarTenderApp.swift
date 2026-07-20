@@ -46,6 +46,7 @@ struct BarTenderApp: App {
                 }
         }
         .defaultSize(width: 1180, height: 760)
+        .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Tool") {

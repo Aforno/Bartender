@@ -78,6 +78,15 @@ enum PremiumStyle {
         )
     }
 
+    /// One opaque surface shared by the sidebar and unified title bar. Keeping
+    /// this solid avoids a second material composition at the safe-area seam.
+    static var sidebarBackground: Color {
+        adaptive(
+            light: NSColor(red: 0.955, green: 0.955, blue: 0.950, alpha: 1),
+            dark: NSColor(red: 0.125, green: 0.130, blue: 0.128, alpha: 1)
+        )
+    }
+
     // MARK: - Warm neutrals
 
     /// Base hue for warm-tinted hairlines and fills.
