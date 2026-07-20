@@ -7,6 +7,7 @@ struct ChatComposerBar<Accessory: View>: View {
     var placeholder: String = "Message Bar Tender"
     var canSend: Bool
     var isBusy: Bool = false
+    var compact: Bool = false
     var lineLimit: ClosedRange<Int> = 1...6
     var submitHelp: String = "Generate tool (⌘↩)"
     var onSend: () -> Void
@@ -18,22 +19,32 @@ struct ChatComposerBar<Accessory: View>: View {
     @FocusState private var focused: Bool
 
     /// Target single-line height (controls + vertical padding).
-    private let controlSize: CGFloat = 32
-    private let barRadius: CGFloat = 12
+    private var controlSize: CGFloat { compact ? 28 : 32 }
+    private var barRadius: CGFloat { compact ? 10 : 12 }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: .center, spacing: compact ? 8 : 10) {
             plusButton
 
-            TextField(placeholder, text: $text, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.system(size: 15))
-                .foregroundStyle(.primary)
-                .lineLimit(lineLimit)
-                .focused($focused)
-                .disabled(isBusy)
-                .frame(minHeight: controlSize, alignment: .center)
-                .onSubmit(onSend)
+            ZStack(alignment: .center) {
+                if text.isEmpty {
+                    Text(placeholder)
+                        .font(.system(size: compact ? 14 : 15))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+
+                TextField("", text: $text, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: compact ? 14 : 15))
+                    .foregroundStyle(.primary)
+                    .lineLimit(lineLimit)
+                    .focused($focused)
+                    .disabled(isBusy)
+                    .frame(minHeight: controlSize, alignment: .center)
+                    .onSubmit(onSend)
+                    .accessibilityLabel(placeholder)
+            }
 
             accessory()
                 .fixedSize()
@@ -44,10 +55,10 @@ struct ChatComposerBar<Accessory: View>: View {
                 sendButton
             }
         }
-        .padding(.leading, 14)
-        .padding(.trailing, 10)
-        .padding(.vertical, 10)
-        .frame(minHeight: 52)
+        .padding(.leading, compact ? 8 : 14)
+        .padding(.trailing, compact ? 8 : 10)
+        .padding(.vertical, compact ? 6 : 10)
+        .frame(minHeight: compact ? 40 : 52)
         .background(barBackground, in: RoundedRectangle(cornerRadius: barRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: barRadius, style: .continuous)
@@ -146,6 +157,7 @@ extension ChatComposerBar where Accessory == EmptyView {
         placeholder: String = "Message Bar Tender",
         canSend: Bool,
         isBusy: Bool = false,
+        compact: Bool = false,
         lineLimit: ClosedRange<Int> = 1...6,
         onSend: @escaping () -> Void,
         onPlus: (() -> Void)? = nil,
@@ -156,6 +168,7 @@ extension ChatComposerBar where Accessory == EmptyView {
             placeholder: placeholder,
             canSend: canSend,
             isBusy: isBusy,
+            compact: compact,
             lineLimit: lineLimit,
             onSend: onSend,
             onPlus: onPlus,

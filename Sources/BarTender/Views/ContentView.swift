@@ -43,14 +43,6 @@ struct ContentView: View {
         .navigationSplitViewStyle(.balanced)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(providers.availability.isReady ? Color.green : Color.orange)
-                        .frame(width: 6, height: 6)
-                    ModelSelector(isBusy: model.generation?.phase.isActive == true)
-                }
-                .help("Choose the model that builds your tools")
-
                 Button {
                     model.beginNewTool()
                 } label: {

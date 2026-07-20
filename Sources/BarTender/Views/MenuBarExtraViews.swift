@@ -22,6 +22,7 @@ struct MenuBarManagerMenu: View {
             placeholder: "Generate a menu bar tool…",
             canSend: canCreate,
             isBusy: model.generation?.phase.isActive == true,
+            compact: true,
             lineLimit: 1...4,
             onSend: {
                 Task { await createFromMenuBar() }
@@ -41,7 +42,8 @@ struct MenuBarManagerMenu: View {
                 )
             }
         }
-        .padding(14)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .frame(width: 360)
         .onAppear {
             AppLog.menuBar.info("Opened Bar Tender menu bar panel")
