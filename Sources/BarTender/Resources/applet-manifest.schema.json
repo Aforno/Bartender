@@ -1,0 +1,133 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bartender.app/schemas/applet-manifest.json",
+  "title": "BarTenderAppletManifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "iconSystemName",
+    "kind",
+    "titleTemplate",
+    "refreshIntervalSeconds",
+    "notifyOnComplete",
+    "notifyOnFailure",
+    "config"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 60,
+      "description": "Short human-readable applet name."
+    },
+    "iconSystemName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "description": "SF Symbol name for the menu bar icon."
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "generatedTool"
+      ]
+    },
+    "titleTemplate": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "description": "Menu bar title template. Placeholders: {{status}}, {{value}}, {{remaining}}, {{cpu}}, {{memory}}, {{branch}}, {{changes}}, {{port}}, {{host}}."
+    },
+    "refreshIntervalSeconds": {
+      "type": ["number", "null"],
+      "minimum": 1,
+      "maximum": 3600,
+      "description": "Polling interval for monitors and metrics. Null for event-driven applets like timers."
+    },
+    "notifyOnComplete": {
+      "type": "boolean",
+      "default": false
+    },
+    "notifyOnFailure": {
+      "type": "boolean",
+      "default": true
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "durationSeconds",
+        "autoRestart",
+        "url",
+        "expectedStatusCode",
+        "timeoutSeconds",
+        "host",
+        "port",
+        "metrics",
+        "repositoryPath",
+        "command",
+        "workingDirectory",
+        "generatedSource"
+      ],
+      "properties": {
+        "durationSeconds": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 86400
+        },
+        "autoRestart": {
+          "type": ["boolean", "null"]
+        },
+        "url": {
+          "type": ["string", "null"],
+          "maxLength": 2048
+        },
+        "expectedStatusCode": {
+          "type": ["integer", "null"],
+          "minimum": 100,
+          "maximum": 599
+        },
+        "timeoutSeconds": {
+          "type": ["number", "null"],
+          "minimum": 0.5,
+          "maximum": 120
+        },
+        "host": {
+          "type": ["string", "null"],
+          "maxLength": 255
+        },
+        "port": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "metrics": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "string",
+            "enum": ["cpu", "memory"]
+          },
+          "maxItems": 2
+        },
+        "repositoryPath": {
+          "type": ["string", "null"],
+          "maxLength": 1024
+        },
+        "command": {
+          "type": ["string", "null"],
+          "maxLength": 2000
+        },
+        "workingDirectory": {
+          "type": ["string", "null"],
+          "maxLength": 1024
+        },
+        "generatedSource": {
+          "type": ["string", "null"],
+          "maxLength": 16000,
+          "description": "Complete one-shot zsh program for a bespoke generated tool. Must print one GeneratedToolOutput JSON object."
+        }
+      }
+    }
+  }
+}

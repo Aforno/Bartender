@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bar Tender — Design Concepts</title>
+<style>
+  /* ============ Tokens (Notion-quiet, macOS-native) ============ */
+  :root{
+    --ink:        rgb(55,53,47);          /* Notion text            */
+    --ink-2:      rgba(55,53,47,.65);
+    --ink-3:      rgba(55,53,47,.45);
+    --ink-4:      rgba(55,53,47,.30);
+    --hair:       rgba(55,53,47,.14);
+    --hair-soft:  rgba(55,53,47,.08);
+    --hover:      rgba(55,53,47,.045);
+    --sel:        rgba(55,53,47,.075);
+    --side:       #f7f7f5;                /* Notion sidebar         */
+    --code:       #f7f6f3;                /* Notion code block      */
+    --accent:     #007aff;                /* macOS system accent    */
+    --green:      #448361;                /* Notion green text      */
+    --orange:     #d9730d;                /* Notion orange text     */
+    --stage:      #f1f0ec;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{background:#fff}
+  body{font:14px/1.55 var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  ::selection{background:rgba(35,131,226,.18)}
+  a{color:inherit;text-decoration:none}
+  .mono{font-family:var(--mono)}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;flex:none}
+  .dot.g{background:var(--green)} .dot.o{background:var(--orange)} .dot.gr{background:rgba(55,53,47,.28)}
+
+  /* ============ Document chrome ============ */
+  .doc{max-width:1080px;margin:0 auto;padding:76px 44px 110px}
+  .kicker{font-size:13px;color:var(--ink-3);margin-bottom:10px}
+  h1{font-size:36px;font-weight:700;letter-spacing:-.022em;line-height:1.15}
+  .lede{font-size:15.5px;color:var(--ink-2);max-width:660px;margin-top:14px}
+  .meta{display:flex;gap:18px;margin-top:18px;font-size:12.5px;color:var(--ink-3)}
+  .hr{border:none;border-top:1px solid var(--hair-soft);margin:44px 0}
+
+  .rules{margin-top:34px}
+  .rules h3, .concept h3{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin-bottom:12px}
+  .rules ul{list-style:none;max-width:720px}
+  .rules li{position:relative;padding:5px 0 5px 22px;font-size:14px;color:var(--ink-2)}
+  .rules li::before{content:"";position:absolute;left:4px;top:13px;width:8px;height:1.5px;background:var(--ink-3)}
+  .rules li b{color:var(--ink);font-weight:600}
+
+  .concept{margin-top:64px}
+  .cnum{font-size:13px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  h2{font-size:24px;font-weight:700;letter-spacing:-.015em;margin:4px 0 8px}
+  .pitch{font-size:14.5px;color:var(--ink-2);max-width:680px}
+  .notes{list-style:none;margin:16px 0 26px;max-width:720px}
+  .notes li{position:relative;padding:3.5px 0 3.5px 20px;font-size:13.5px;color:var(--ink-2)}
+  .notes li::before{content:"•";position:absolute;left:2px;color:var(--ink-3)}
+  .notes li b{color:var(--ink);font-weight:600}
+
+  .stage{background:var(--stage);border:1px solid var(--hair-soft);border-radius:16px;padding:52px 44px;display:flex;justify-content:center}
+
+  /* ============ Shared window parts ============ */
+  .win{width:100%;max-width:980px;background:#fff;border-radius:12px;position:relative;overflow:hidden;
+       box-shadow:0 0 0 1px rgba(0,0,0,.16), 0 30px 70px -22px rgba(0,0,0,.38), 0 4px 16px rgba(0,0,0,.10);
+       font-size:13px;display:flex;flex-direction:column}
+  .tbar{display:flex;align-items:center;gap:10px;height:47px;padding:0 14px;border-bottom:1px solid var(--hair-soft);flex:none}
+  .lights{display:flex;gap:8px;margin-right:6px;flex:none}
+  .l{width:12px;height:12px;border-radius:50%;box-shadow:inset 0 0 1px rgba(0,0,0,.15)}
+  .lr{background:#ff5f57}.ly{background:#febc2e}.lg{background:#28c840}
+  .tbtn{width:27px;height:27px;display:grid;place-items:center;border-radius:6px;color:var(--ink-3);transition:background .1s}
+  .tbtn:hover{background:var(--hover);color:var(--ink-2)}
+  .tsp{flex:1}
+  .ic{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .ic.s{width:13px;height:13px}
+
+  .wbody{display:flex;align-items:stretch;flex:1;min-height:0}
+
+  /* Sidebar */
+  .side{width:224px;flex:none;background:var(--side);border-right:1px solid var(--hair-soft);
+        padding:6px 8px 10px;display:flex;flex-direction:column}
+  .ws{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:6px;font-weight:600;font-size:13.5px}
+  .ws:hover{background:var(--hover)}
+  .ws .ic{margin-left:auto;color:var(--ink-3)}
+  .srow{display:flex;align-items:center;gap:8px;padding:4.5px 8px;border-radius:6px;color:var(--ink-2);font-size:13px;transition:background .08s}
+  .srow:hover{background:var(--hover)}
+  .srow.sel{background:var(--sel);color:var(--ink)}
+  .srow .em{width:18px;text-align:center;font-size:13px;flex:none}
+  .srow .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .srow .val{margin-left:auto;font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums;flex:none}
+  .srow:hover .val{color:var(--ink-2)}
+  .slabel{font-size:11.5px;font-weight:500;color:var(--ink-3);padding:12px 8px 3px}
+  .sfoot{margin-top:auto;padding-top:10px;border-top:1px solid var(--hair-soft)}
+
+  /* Page */
+  .page{flex:1;min-width:0;display:flex;flex-direction:column}
+  .scroll{flex:1;padding:34px 52px 30px;position:relative;overflow:hidden}
+  .wrap{max-width:648px;margin:0 auto}
+  .picon{font-size:32px;line-height:1.1}
+  h1.pt{font-size:30px;font-weight:700;letter-spacing:-.012em;margin:4px 0 12px}
+  .props{margin-bottom:4px}
+  .prop{display:flex;align-items:center;gap:8px;min-height:29px;padding:2px 8px;margin:0 -8px;border-radius:6px}
+  .prop:hover{background:var(--hover)}
+  .plabel{width:148px;flex:none;display:flex;align-items:center;gap:8px;color:var(--ink-3);font-size:12.5px}
+  .plabel .ic{width:13.5px;height:13.5px}
+  .pval{font-size:13px;display:flex;align-items:center;gap:7px;min-width:0}
+  .pval .quiet{color:var(--ink-3)}
+  .prule{border:none;border-top:1px solid var(--hair-soft);margin:16px 0 0}
+  .pbody{padding-top:6px}
+  .ph2{font-size:16px;font-weight:600;letter-spacing:-.005em;margin:22px 0 10px}
+  .fade{position:absolute;left:0;right:0;bottom:0;height:56px;background:linear-gradient(to bottom,rgba(255,255,255,0),#fff 82%);pointer-events:none}
+
+  /* Switch */
+  .sw{display:inline-block;width:29px;height:17px;border-radius:9px;background:#34c759;position:relative;flex:none;vertical-align:middle}
+  .sw::after{content:"";position:absolute;top:1.5px;right:1.5px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2.5px rgba(0,0,0,.25)}
+  .sw.off{background:rgba(120,120,128,.30)}
+  .sw.off::after{right:auto;left:1.5px}
+
+  /* Menu bar preview */
+  .preview{border:1px solid var(--hair);border-radius:8px;overflow:hidden}
+  .mbar{height:26px;background:linear-gradient(rgba(252,252,252,.95),rgba(244,244,244,.95));
+        border-bottom:1px solid rgba(0,0,0,.09);display:flex;align-items:center;justify-content:flex-end;
+        gap:13px;padding:0 11px;color:rgba(0,0,0,.72)}
+  .mbar .ic{width:14px;height:14px}
+  .mbar .time{font-size:12px;font-weight:500}
+  .mbx{display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:#111;
+       background:rgba(0,0,0,.11);border-radius:5px;padding:2px 8px;margin-right:-2px;font-variant-numeric:tabular-nums}
+  .mbx .em{font-size:11.5px}
+  .menuwrap{display:flex;justify-content:flex-end;padding:10px 14px 16px;background:#fff}
+  .menu{width:256px;background:rgba(253,253,253,.985);border-radius:7px;padding:5px;
+        box-shadow:0 12px 38px rgba(0,0,0,.24),0 0 0 1px rgba(0,0,0,.07);color:#1d1d1f}
+  .mi{display:flex;align-items:center;gap:8px;padding:3.5px 10px;border-radius:5px;font-size:13px;white-space:nowrap}
+  .mi.head{font-weight:600}
+  .mi.muted{color:rgba(0,0,0,.45)}
+  .mi.hot{background:var(--accent);color:#fff}
+  .mi .ic{width:13px;height:13px}
+  .mi .k{margin-left:auto;font-size:12px;color:rgba(0,0,0,.35)}
+  .mi.hot .k{color:rgba(255,255,255,.8)}
+  .msep{height:1px;background:rgba(0,0,0,.09);margin:5px 12px}
+  .mprog{height:4px;border-radius:2px;background:rgba(0,0,0,.12);margin:7px 12px 9px;overflow:hidden}
+  .mprog i{display:block;height:100%;background:var(--accent);border-radius:2px}
+  .mfoot{display:flex;justify-content:flex-end;padding:1px 12px 3px;font-size:10.5px;color:rgba(0,0,0,.38)}
+
+  /* Callout (Notion callout, gray) */
+  .callout{background:var(--code);border-radius:8px;padding:15px 16px}
+  .callout .chead{display:flex;gap:10px;align-items:flex-start}
+  .callout .chead .ic{width:15px;height:15px;margin-top:1px;color:var(--orange)}
+  .callout b.ct{font-size:13px;font-weight:600;display:block}
+  .callout p{font-size:12.5px;color:var(--ink-2);margin-top:2px;max-width:480px}
+  .cactions{display:flex;align-items:center;gap:10px;margin-top:13px}
+  .cactions .hint{font-size:11.5px;color:var(--ink-3);display:flex;gap:6px;align-items:center}
+
+  /* Buttons */
+  .btn{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;white-space:nowrap;
+       padding:5px 11px;border-radius:6px;border:1px solid var(--hair);color:var(--ink);background:#fff}
+  .btn:hover{background:var(--hover)}
+  .btn.pri{background:var(--accent);border-color:transparent;color:#fff;font-weight:600}
+  .btn.pri:hover{background:#0069e0}
+  .btn.sm{padding:3.5px 9px;font-size:12px}
+  .btn.plain{border-color:transparent;color:var(--ink-2);background:transparent}
+
+  /* Code block */
+  .code{background:var(--code);border-radius:8px;padding:13px 15px;font:11.5px/1.65 var(--mono);
+        color:#45413a;position:relative;margin-top:12px;white-space:pre;overflow:hidden}
+  .code .lang{position:absolute;top:9px;right:12px;font-size:10.5px;font-family:var(--sans);color:var(--ink-4)}
+  .code .cm{color:rgba(55,53,47,.42)}
+  .code .st{color:#932f21}
+
+  /* Build receipt / log */
+  .receipt{font-size:13px}
+  .rline{display:flex;align-items:center;gap:8px;padding:3px 0;color:var(--ink-2)}
+  .rline.ok{color:var(--green);font-weight:500}
+  .rline .quiet{color:var(--ink-3);font-weight:400;font-size:12px}
+  .rtoggle{display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12.5px;color:var(--ink-2);font-weight:500}
+  .rtoggle .ic{width:11px;height:11px;color:var(--ink-3)}
+  .rtoggle .n{color:var(--ink-3);font-weight:400}
+  .log{margin-top:9px;background:var(--code);border-radius:8px;padding:11px 13px;font:10.8px/1.75 var(--mono);color:rgba(55,53,47,.78)}
+  .log .tag{display:inline-block;width:52px;color:var(--ink-4);font-size:9px;font-weight:700;letter-spacing:.04em}
+  .log .err .tag{color:#b3261e}
+
+  /* Composer */
+  .comp{border-top:1px solid var(--hair-soft);padding:11px 52px 15px;flex:none}
+  .comp .wrap{max-width:648px}
+  .ctx{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ink-3);margin-bottom:8px}
+  .ctx b{color:var(--ink-2);font-weight:600}
+  .ctx a{color:var(--ink-3);border-bottom:1px solid var(--hair)}
+  .ctx a:hover{color:var(--accent);border-color:var(--accent)}
+  .box{display:flex;align-items:center;gap:9px;border:1px solid var(--hair);border-radius:10px;
+       padding:8px 10px 8px 12px;background:#fff;transition:border-color .12s}
+  .box:hover{border-color:rgba(55,53,47,.24)}
+  .box .plus{color:var(--ink-4)}
+  .box .plus:hover{color:var(--ink-2)}
+  .box .ph{flex:1;color:var(--ink-4);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .model{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--ink-3);padding:4px 6px;border-radius:5px;flex:none}
+  .model:hover{background:var(--hover);color:var(--ink-2)}
+  .send{width:27px;height:27px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;flex:none}
+  .send .ic{width:12.5px;height:12.5px;stroke-width:1.8}
+  .send.idle{background:rgba(55,53,47,.16)}
+  .sugs{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:9px;font-size:12px;color:var(--ink-3)}
+  .sugs a:hover{color:var(--ink);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--hair)}
+
+  /* Status text */
+  .st-g{color:var(--green)} .st-o{color:var(--orange)} .st-q{color:var(--ink-3)}
+
+  /* ============ Concept 2: palette ============ */
+  .crumb{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-3)}
+  .crumb b{color:var(--ink);font-weight:600}
+  .searchfield{display:flex;align-items:center;gap:7px;border:1px solid var(--hair);border-radius:7px;
+       padding:4px 9px;color:var(--ink-3);font-size:12.5px;min-width:210px}
+  .searchfield .k{margin-left:auto;font-family:var(--mono);font-size:11px}
+  .veil{position:absolute;inset:47px 0 0;background:rgba(24,24,22,.34)}
+  .pal{position:absolute;left:50%;top:118px;transform:translateX(-50%);width:484px;background:#fff;border-radius:12px;
+       box-shadow:0 26px 90px rgba(0,0,0,.42),0 0 0 1px rgba(0,0,0,.06);overflow:hidden;z-index:5}
+  .pin{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--hair-soft);
+       font-size:14px;color:var(--ink-4)}
+  .prow{display:flex;align-items:center;gap:10px;padding:6.5px 16px;font-size:13px}
+  .prow .em{width:18px;text-align:center}
+  .prow .val{margin-left:auto;color:var(--ink-3);font-size:12px;font-variant-numeric:tabular-nums}
+  .prow .kbdesc{color:var(--ink-4);font-size:11.5px;margin-left:10px}
+  .prow.sel{background:var(--hover)}
+  .prow.sel .val{color:var(--ink-2)}
+  .pfoot{display:flex;gap:16px;padding:8px 16px;border-top:1px solid var(--hair-soft);
+         font-size:11.5px;color:var(--ink-3);background:#fafaf9}
+  .behind{filter:saturate(.85)}
+
+  /* ============ Concept 3: columns ============ */
+  .mid{width:258px;flex:none;border-right:1px solid var(--hair-soft);display:flex;flex-direction:column;background:#fff}
+  .msearch{margin:10px 10px 6px}
+  .lrow{display:block;padding:8px 14px 8px;border-bottom:1px solid var(--hair-soft)}
+  .lrow:hover{background:var(--hover)}
+  .lrow.sel{background:var(--sel)}
+  .lrow .t{display:flex;align-items:baseline;gap:7px}
+  .lrow .t .nm{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lrow .t .tm{margin-left:auto;font-size:11px;color:var(--ink-3);flex:none}
+  .lrow .s{font-size:12px;color:var(--ink-3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+  .lrow .s .st-g,.lrow .s .st-o{font-weight:500}
+  .dhead{display:flex;align-items:center;gap:9px;padding:20px 28px 0}
+  .dhead .em{font-size:19px}
+  .dhead .tt{font-size:17px;font-weight:700;letter-spacing:-.01em}
+  .dhead .right{margin-left:auto;display:flex;align-items:center;gap:12px;color:var(--ink-3);font-size:12px}
+  .tabs{display:flex;gap:20px;border-bottom:1px solid var(--hair-soft);padding:0 28px;margin-top:12px}
+  .tab{font-size:12.5px;font-weight:500;color:var(--ink-3);padding:6px 1px 8px;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tab:hover{color:var(--ink-2)}
+  .tab.on{color:var(--ink);border-color:var(--ink)}
+  .tbody{padding:18px 28px 26px;position:relative;overflow:hidden}
+  .ctlrow{display:flex;align-items:center;gap:9px;margin-top:14px}
+  .setrows{margin-top:20px;border-top:1px solid var(--hair-soft)}
+  .setrow{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--hair-soft);font-size:13px}
+  .setrow .lab{color:var(--ink-3);font-size:12.5px;width:148px;flex:none;display:flex;gap:8px;align-items:center}
+  .setrow .lab .ic{width:13.5px;height:13.5px}
+  .setrow .rv{margin-left:auto}
+
+  /* ============ Concept 4: menu-bar-first ============ */
+  .stage4{flex-direction:column;align-items:stretch;padding:0 0 56px;overflow:hidden}
+  .mbar4{height:27px;background:linear-gradient(rgba(252,252,252,.96),rgba(243,243,243,.96));
+         border-bottom:1px solid rgba(0,0,0,.12);display:flex;align-items:center;gap:13px;padding:0 14px;color:rgba(0,0,0,.7)}
+  .mbar4 .apple{font-size:14px;font-weight:600;transform:translateY(-.5px)}
+  .mbar4 .appname{font-size:12.5px;font-weight:700;color:rgba(0,0,0,.8)}
+  .mbar4 .right{margin-left:auto;display:flex;align-items:center;gap:13px}
+  .mbar4 .ic{width:14px;height:14px}
+  .mbx4{display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:#111;
+        background:rgba(0,0,0,.12);border-radius:5px;padding:2px 8px;font-variant-numeric:tabular-nums}
+  .panelwrap{display:flex;justify-content:flex-end;padding:10px 52px 0 24px}
+  .panel{width:372px;background:rgba(255,255,255,.985);border-radius:12px;overflow:hidden;
+         box-shadow:0 20px 64px rgba(0,0,0,.32),0 0 0 1px rgba(0,0,0,.09)}
+  .pcomp{padding:12px 14px 11px;border-bottom:1px solid var(--hair-soft)}
+  .plist{padding:4px 0}
+  .prow4{display:flex;align-items:center;gap:9px;padding:6px 14px;font-size:13px}
+  .prow4:hover{background:var(--hover)}
+  .prow4 .em{width:18px;text-align:center;flex:none}
+  .prow4 .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .prow4 .val{margin-left:auto;font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums;flex:none}
+  .prow4.dis{opacity:.5}
+  .prow4 .ic.chev{width:11px;height:11px;color:var(--ink-4);margin-left:2px}
+  .pdetail{border-top:1px solid var(--hair-soft);border-bottom:1px solid var(--hair-soft);background:#fbfbf9;padding:10px 14px 12px 43px}
+  .pdline{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2);padding:2.5px 0}
+  .pdline .st-o{font-weight:500}
+  .pdactions{display:flex;gap:8px;margin-top:9px}
+  .pfoot4{display:flex;align-items:center;gap:10px;padding:9px 14px;border-top:1px solid var(--hair-soft);
+          font-size:12px;color:var(--ink-3)}
+  .pfoot4 .ok{display:flex;align-items:center;gap:6px}
+  .pfoot4 .right{margin-left:auto;display:flex;gap:4px}
+  .pfoot4 .tbtn{width:25px;height:25px}
+
+  /* ============ Comparison table ============ */
+  .tbl{width:100%;border-collapse:collapse;font-size:13px;margin-top:20px}
+  .tbl th{font-weight:500;color:var(--ink-3);text-align:left;padding:6px 12px 8px 0;border-bottom:1px solid var(--hair);font-size:12.5px}
+  .tbl td{padding:8px 12px 8px 0;border-bottom:1px solid var(--hair-soft);vertical-align:top;color:var(--ink-2);line-height:1.45}
+  .tbl td:first-child{color:var(--ink);font-weight:600;white-space:nowrap}
+  .foot{margin-top:56px;font-size:12.5px;color:var(--ink-3);max-width:640px;line-height:1.6}
+</style>
+</head>
+<body>
+
+<!-- ============ SVG icon sprite ============ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-side" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="2.5"/><path d="M6.5 2.5v11"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9"/></symbol>
+    <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2l3.3 3.3"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.1"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6L11 5M5 11l-1.4 1.4"/></symbol>
+    <symbol id="i-chevd" viewBox="0 0 16 16"><path d="M4 6.2l4 4 4-4"/></symbol>
+    <symbol id="i-chevr" viewBox="0 0 16 16"><path d="M6.2 4l4 4-4 4"/></symbol>
+    <symbol id="i-up" viewBox="0 0 16 16"><path d="M8 12.5v-9M4 7.5l4-4 4 4"/></symbol>
+    <symbol id="i-ellip" viewBox="0 0 16 16"><circle cx="3.4" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="12.6" cy="8" r="1.1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.8"/><path d="M8 5.2v3l2.2 1.4"/></symbol>
+    <symbol id="i-check" viewBox="0 0 16 16"><path d="M3 8.4l3.2 3.2L13 4.8"/></symbol>
+    <symbol id="i-play" viewBox="0 0 16 16"><path d="M5.2 3.6l6.8 4.4-6.8 4.4z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 16 16"><rect x="4.4" y="3.4" width="2.5" height="9.2" rx=".7" fill="currentColor" stroke="none"/><rect x="9.1" y="3.4" width="2.5" height="9.2" rx=".7" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-reset" viewBox="0 0 16 16"><path d="M13.2 8A5.2 5.2 0 1 1 8 2.8c2 0 3.7 1.1 4.6 2.7"/><path d="M13 2.2v3.2H9.8"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 16 16"><rect x="3.5" y="2" width="9" height="12" rx="1.6"/><path d="M6 5.8h4M6 8.3h4M6 10.8h2.5"/></symbol>
+    <symbol id="i-term" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M5 6.4l2.2 1.6L5 9.6M8.8 10h2.4"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 16 16"><path d="M2.3 6.1a8.4 8.4 0 0 1 11.4 0M4.7 8.7a5.3 5.3 0 0 1 6.6 0M6.9 11.1a2.2 2.2 0 0 1 2.2 0"/><circle cx="8" cy="13.2" r=".95" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-batt" viewBox="0 0 16 16"><rect x="1.6" y="5.4" width="10.6" height="5.6" rx="1.7"/><path d="M13.9 7.2v2" stroke-width="1.7"/><rect x="2.8" y="6.6" width="6.1" height="3.2" rx=".8" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-cc" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="4.1" rx="2.05"/><circle cx="10.6" cy="5.05" r="1.15" fill="currentColor" stroke="none"/><rect x="2" y="8.9" width="12" height="4.1" rx="2.05"/><circle cx="5.4" cy="10.95" r="1.15" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-x" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1.6"/><path d="M5.5 7V5.4a2.5 2.5 0 0 1 5 0V7"/></symbol>
+    <symbol id="i-window" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="10" rx="2"/><path d="M2.5 6h11"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 16 16"><path d="M8 2.4l1.25 3.75L13 7.4l-3.75 1.25L8 12.4 6.75 8.65 3 7.4l3.75-1.25z"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 16 16"><path d="M8 2.7a3.7 3.7 0 0 1 3.7 3.7c0 3 .9 3.9 1.5 4.4H2.8c.6-.5 1.5-1.4 1.5-4.4A3.7 3.7 0 0 1 8 2.7zM6.5 12.5a1.6 1.6 0 0 0 3 0"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 16 16"><rect x="2.5" y="3.4" width="11" height="10.2" rx="2"/><path d="M2.5 6.7h11M5.5 2v2.6M10.5 2v2.6"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.8"/><ellipse cx="8" cy="8" rx="2.6" ry="5.8"/><path d="M2.2 8h11.6"/></symbol>
+    <symbol id="i-out" viewBox="0 0 16 16"><path d="M6.5 3.5H4.5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9.5M9.5 3H13v3.5M12.7 3.3L7.6 8.4"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 16 16"><path d="M2.5 2.5h4.6l6.4 6.4-4.6 4.6-6.4-6.4z"/><circle cx="5.6" cy="5.6" r="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-apple" viewBox="0 0 384 512"><path fill="currentColor" stroke="none" d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></symbol>
+  </defs>
+</svg>
+
+<div class="doc">
+
+  <!-- ============ Header ============ -->
+  <div class="kicker">Bar Tender · design exploration</div>
+  <h1>Four directions for the workspace</h1>
+  <p class="lede">The current window works, but it leans on cards, chips and badges. These four redesigns keep the exact same feature set — library, preview, build receipt, review flow, composer — and rebuild it on Notion’s grammar: pages, hairlines, quiet type, and controls that appear only when needed. All of it inside honest macOS chrome.</p>
+  <div class="meta">
+    <span>4 concepts</span>
+    <span>Static HTML/CSS · system fonts only</span>
+    <span>Light mode shown; every token maps to dark</span>
+  </div>
+
+  <div class="rules">
+    <h3>Ground rules, applied to all four</h3>
+    <ul>
+      <li><b>Native chrome, not web chrome.</b> Real traffic lights, 13&nbsp;px controls, SF-style strokes, a vibrancy sidebar. Nothing that a Mac app wouldn’t ship.</li>
+      <li><b>Hairlines instead of cards.</b> Separation comes from 1&nbsp;px rules and whitespace. The only shadows belong to real macOS surfaces — menus and floating panels.</li>
+      <li><b>Text first, no badges.</b> State is a colored dot plus words (“<span class="st-o">●&nbsp;Waiting for review</span>”), never a filled pill. Kind, refresh, dates are property rows.</li>
+      <li><b>Hover-revealed controls.</b> Row actions stay hidden until the pointer arrives. One accent color per screen, reserved for the single primary action.</li>
+      <li><b>Tools are pages.</b> Identity is an emoji and a name, exactly like a Notion page. The generated source is a plain code block, not a “code card”.</li>
+    </ul>
+  </div>
+
+  <hr class="hr">
+
+  <!-- ============================================================
+       CONCEPT 1 — PAGE
+       ============================================================ -->
+  <section class="concept">
+    <div class="cnum">01</div>
+    <h2>Page</h2>
+    <p class="pitch">The most literal translation: the sidebar becomes a Notion sidebar, and each tool becomes a document. Title, emoji, property rows, then the preview, the review request and the build receipt as ordinary page content. The composer is a quiet bar under the page, not a floating pill.</p>
+    <ul class="notes">
+      <li><b>Sidebar rows carry the live value</b> right-aligned in tabular numerals — you can read the whole menu bar state without selecting anything.</li>
+      <li><b>Badges become properties.</b> Kind, state, refresh interval and approval move into Notion-style label/value rows that invite a click to edit.</li>
+      <li><b>The review flow is a callout</b> with the zsh source as a gray code block — the only place the window asks for a decision, with the single blue button.</li>
+      <li><b>Technical details collapse into a toggle</b>, Notion-style, so the receipt reads as one line by default.</li>
+      <li><b>Inspector stays, but you rarely need it</b> — every common edit happens inline on the page.</li>
+    </ul>
+
+    <div class="stage">
+      <div class="win">
+        <!-- Toolbar -->
+        <div class="tbar">
+          <div class="lights"><span class="l lr"></span><span class="l ly"></span><span class="l lg"></span></div>
+          <span class="tbtn"><svg class="ic"><use href="#i-side"/></svg></span>
+          <div class="tsp"></div>
+          <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-3)"><span class="dot g"></span>claude-sonnet</span>
+          <span class="tbtn" title="New Tool"><svg class="ic"><use href="#i-plus"/></svg></span>
+          <span class="tbtn" title="Settings"><svg class="ic"><use href="#i-gear"/></svg></span>
+        </div>
+
+        <div class="wbody">
+          <!-- Sidebar -->
+          <div class="side">
+            <div class="ws">Bar Tender <svg class="ic s"><use href="#i-chevd"/></svg></div>
+            <a class="srow" style="margin-top:2px"><svg class="ic s"><use href="#i-search"/></svg><span class="nm">Search</span><span class="val mono">⌘K</span></a>
+            <div class="slabel">Tools</div>
+            <a class="srow"><span class="em">🎵</span><span class="nm">Now Playing</span><span class="val">♪ M83</span></a>
+            <a class="srow sel"><span class="em">🔌</span><span class="nm">Port 3000 Watch</span><span class="val">waiting</span></a>
+            <a class="srow"><span class="em">⏱️</span><span class="nm">Focus Timer</span><span class="val">24:59</span></a>
+            <a class="srow"><span class="em">🔀</span><span class="nm">Git Status</span><span class="val">main ±3</span></a>
+            <a class="srow"><span class="em">📊</span><span class="nm">CPU &amp; Memory</span><span class="val">12%</span></a>
+            <a class="srow" style="opacity:.48"><span class="em">🐳</span><span class="nm">Docker</span><span class="val">off</span></a>
+            <div class="sfoot">
+              <a class="srow"><svg class="ic s"><use href="#i-plus"/></svg><span class="nm">New Tool</span><span class="val mono">⌘N</span></a>
+              <a class="srow"><svg class="ic s"><use href="#i-gear"/></svg><span class="nm">Settings</span></a>
+            </div>
+          </div>
+
+          <!-- Page -->
+          <div class="page">
+            <div class="scroll">
+              <div class="wrap">
+                <div class="picon">🔌</div>
+                <h1 class="pt">Port 3000 Watch</h1>
+
+                <div class="props">
+                  <div class="prop"><span class="plabel"><svg class="ic"><use href="#i-tag"/></svg>Kind</span><span class="pval">Generated tool <span class="quiet">· zsh</span></span></div>
+                  <div class="prop"><span class="plabel"><svg class="ic"><use href="#i-clock"/></svg>State</span><span class="pval"><span class="dot o"></span><span class="st-o">Waiting for review</span></span></div>
+                  <div class="prop"><span class="plabel"><svg class="ic"><use href="#i-reset"/></svg>Refresh</span><span class="pval">Every 10 seconds</span></div>
+                  <div class="prop"><span class="plabel"><svg class="ic"><use href="#i-cal"/></svg>Created</span><span class="pval">Jul 18, 4:12 PM</span></div>
+                  <div class="prop"><span class="plabel"><svg class="ic"><use href="#i-check"/></svg>Enabled</span><span class="pval"><span class="sw"></span></span></div>
+                </div>
+
+                <hr class="prule">
+
+                <div class="pbody">
+                  <div class="ph2">Menu bar</div>
+                  <div class="preview">
+                    <div class="mbar">
+                      <span class="mbx"><span class="em">🔌</span>3000 —</span>
+                      <svg class="ic"><use href="#i-cc"/></svg>
+                      <svg class="ic"><use href="#i-wifi"/></svg>
+                      <svg class="ic"><use href="#i-batt"/></svg>
+                      <span class="time">Sat 4:12 PM</span>
+                      <svg class="ic"><use href="#i-search"/></svg>
+                    </div>
+                    <div class="menuwrap">
+                      <div class="menu">
+                        <div class="mi head"><span class="em">🔌</span>Port 3000 Watch</div>
+                        <div class="msep"></div>
+                        <div class="mi muted">Host localhost · port 3000</div>
+                        <div class="mi muted">Probe every 10 seconds</div>
+                        <div class="msep"></div>
+                        <div class="mi"><svg class="ic" style="color:var(--orange)"><use href="#i-lock"/></svg>Waiting for review…</div>
+                        <div class="msep"></div>
+                        <div class="mfoot"><span>Updated 4:12:07 PM</span></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="ph2">Review</div>
+                  <div class="callout">
+                    <div class="chead">
+                      <svg class="ic"><use href="#i-lock"/></svg>
+                      <div>
+                        <b class="ct">Read the source, then allow it once</b>
+                        <p>Bar Tender generated a dedicated executable for this request. Approval binds to this exact code — any edit revokes it automatically.</p>
+                      </div>
+                    </div>
+                    <div class="code"><span class="lang">zsh</span><span class="cm">#!/bin/zsh — port 3000 probe, emits Bar Tender JSON</span>
+HOST=<span class="st">"localhost"</span>; PORT=3000
+<span class="cm">if</span> nc -z -G 2 <span class="st">"$HOST"</span> <span class="st">"$PORT"</span> 2&gt;/dev/null; <span class="cm">then</span>
+  echo <span class="st">'{"title":"● 3000","status":"up","healthy":true,
+        "details":["localhost:3000 accepting connections"]}'</span>
+<span class="cm">else</span>
+  echo <span class="st">'{"title":"○ 3000","status":"offline","healthy":false,
+        "details":["localhost:3000 refused connection"]}'</span>
+<span class="cm">fi</span></div>
+                    <div class="cactions">
+                      <span class="hint"><svg class="ic s"><use href="#i-check"/></svg>42 lines · any edit revokes approval</span>
+                      <span style="flex:1"></span>
+                      <span class="btn">Open in Inspector</span>
+                      <span class="btn pri"><svg class="ic s"><use href="#i-play"/></svg>Allow &amp; Run</span>
+                    </div>
+                  </div>
+
+                  <div class="ph2">Build</div>
+                  <div class="receipt">
+                    <div class="rline ok"><svg class="ic s"><use href="#i-check"/></svg>Built with Claude <span class="quiet">· 42 lines · every 10s · took 6.2s</span></div>
+                    <div class="rtoggle"><svg class="ic"><use href="#i-chevd"/></svg>Technical details <span class="n">· 6 events</span></div>
+                    <div class="log">
+                      <div><span class="tag">STDIN</span>prompt sent · “Watch localhost port 3000…” (214 chars)</div>
+                      <div><span class="tag">STDOUT</span>{"kind":"generatedTool","name":"Port 3000 Watch",…}</div>
+                      <div><span class="tag">STDOUT</span>manifest validated against applet-manifest.schema.json</div>
+                      <div class="err"><span class="tag">STDERR</span>(empty)</div>
+                      <div><span class="tag">APP</span>installed → ~/Library/Application Support/Bar Tender/Tools/9F2A…</div>
+                      <div><span class="tag">APP</span>status item created · approval pending</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="fade"></div>
+            </div>
+
+            <!-- Composer -->
+            <div class="comp">
+              <div class="wrap">
+                <div class="ctx"><b>Editing Port 3000 Watch</b><span>· your message updates this tool in place</span><span style="flex:1"></span><a>New Tool</a></div>
+                <div class="box">
+                  <span class="plus"><svg class="ic"><use href="#i-plus"/></svg></span>
+                  <span class="ph">Describe a change to Port 3000 Watch…</span>
+                  <span class="model">claude-sonnet<svg class="ic s"><use href="#i-chevd"/></svg></span>
+                  <span class="send idle"><svg class="ic"><use href="#i-up"/></svg></span>
+                </div>
+                <div class="sugs">
+                  <a>Make the title shorter</a>
+                  <a>Refresh every 30 seconds</a>
+                  <a>Notify me when it goes offline</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="hr">
+
+  <!-- ============================================================
+       CONCEPT 2 — COMMAND
+       ============================================================ -->
+  <section class="concept">
+    <div class="cnum">02</div>
+    <h2>Command</h2>
+    <p class="pitch">No persistent sidebar at all. The window is one centered document; everything else lives behind <span class="mono" style="font-size:12.5px">⌘K</span>. The quick switcher is the library — each row already shows the live menu-bar value, so switching context and checking state are the same gesture.</p>
+    <ul class="notes">
+      <li><b>The sidebar becomes a modal habit</b>, like Notion’s quick find: open, type, enter. The window keeps a breadcrumb instead of a source list.</li>
+      <li><b>Live values in the palette</b> mean you can peek at “24:59” or “main ±3” without ever leaving the current tool.</li>
+      <li><b>Maximum focus for the review flow</b> — when a generated tool needs approval, nothing competes with the code block.</li>
+      <li><b>Search field sits in the toolbar</b>, the one place Mac users already expect it (Notes, System Settings).</li>
+      <li><b>Trades away</b>: ambient visibility. You no longer see all tools at once — the menu bar itself has to carry that job.</li>
+    </ul>
+
+    <div class="stage">
+      <div class="win" style="min-height:640px">
+        <!-- Toolbar -->
+        <div class="tbar">
+          <div class="lights"><span class="l lr"></span><span class="l ly"></span><span class="l lg"></span></div>
+          <span class="tbtn"><svg class="ic"><use href="#i-side"/></svg></span>
+          <span class="crumb">Tools <svg class="ic s"><use href="#i-chevr"/></svg> <b>Now Playing</b></span>
+          <div class="tsp"></div>
+          <span class="searchfield"><svg class="ic s"><use href="#i-search"/></svg>Search or switch…<span class="k">⌘K</span></span>
+          <span class="tbtn"><svg class="ic"><use href="#i-plus"/></svg></span>
+          <span class="tbtn"><svg class="ic"><use href="#i-gear"/></svg></span>
+        </div>
+
+        <!-- Page behind the palette -->
+        <div class="wbody behind">
+          <div class="page">
+            <div class="scroll">
+              <div class="wrap">
+                <div class="picon">🎵</div>
+                <h1 class="pt">Now Playing</h1>
+                <div class="props">
+                  <div class="prop"><span class="plabel"><svg class="ic"><use href="#i-tag"/></svg>Kind</span><span class="pval">Generated tool <span class="quiet">· zsh</span></span></div>
+                  <div class="prop"><span class="plabel"><svg class="ic"><use href="#i-clock"/></svg>State</span><span class="pval"><span class="dot g"></span><span class="st-g">Running</span></span></div>
+                  <div class="prop"><span class="plabel"><svg class="ic"><use href="#i-reset"/></svg>Refresh</span><span class="pval">Every 5 seconds</span></div>
+                  <div class="prop"><span class="plabel"><svg class="ic"><use href="#i-check"/></svg>Enabled</span><span class="pval"><span class="sw"></span></span></div>
+                </div>
+                <hr class="prule">
+                <div class="pbody">
+                  <div class="ph2">Menu bar</div>
+                  <div class="preview">
+                    <div class="mbar">
+                      <span class="mbx"><span class="em">🎵</span>Midnight City</span>
+                      <svg class="ic"><use href="#i-cc"/></svg>
+                      <svg class="ic"><use href="#i-wifi"/></svg>
+                      <svg class="ic"><use href="#i-batt"/></svg>
+                      <span class="time">Sat 4:12 PM</span>
+                      <svg class="ic"><use href="#i-search"/></svg>
+                    </div>
+                    <div class="menuwrap">
+                      <div class="menu">
+                        <div class="mi head"><span class="em">🎵</span>Now Playing</div>
+                        <div class="msep"></div>
+                        <div class="mi muted">Midnight City — M83</div>
+                        <div class="mi muted">Hurry Up, We’re Dreaming</div>
+                        <div class="msep"></div>
+                        <div class="mi"><svg class="ic" style="color:#1a7f37"><use href="#i-check"/></svg>Status: OK</div>
+                        <div class="msep"></div>
+                        <div class="mfoot"><span>Updated 4:12:07 PM</span></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="ph2">Activity</div>
+                  <div class="receipt">
+                    <div class="rline"><svg class="ic s" style="color:var(--ink-3)"><use href="#i-clock"/></svg>4:12:07 PM <span class="quiet">· title → “♪ Midnight City”</span></div>
+                    <div class="rline"><svg class="ic s" style="color:var(--ink-3)"><use href="#i-clock"/></svg>4:12:02 PM <span class="quiet">· title → “♪ Midnight City”</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick switcher overlay -->
+        <div class="veil"></div>
+        <div class="pal">
+          <div class="pin"><svg class="ic"><use href="#i-search"/></svg>Search tools, or describe a new one…</div>
+          <div style="padding:5px 0">
+            <div class="prow sel"><span class="em">🎵</span>Now Playing<span class="val">♪ Midnight City</span></div>
+            <div class="prow"><span class="em">🔌</span>Port 3000 Watch<span class="val st-o">waiting for review</span></div>
+            <div class="prow"><span class="em">⏱️</span>Focus Timer<span class="val">24:59</span></div>
+            <div class="prow"><span class="em">🔀</span>Git Status<span class="val">main ±3</span></div>
+            <div class="prow"><span class="em">📊</span>CPU &amp; Memory<span class="val">12% · 8.1 GB</span></div>
+            <div class="prow"><span class="em"><svg class="ic" style="color:var(--ink-3)"><use href="#i-plus"/></svg></span>New Tool…<span class="kbdesc">“Show the size of my Downloads folder”</span></div>
+          </div>
+          <div class="pfoot"><span>↑↓ select</span><span>↵ open</span><span>⌘N new tool</span><span style="margin-left:auto">claude-sonnet ✓</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="hr">
+
+  <!-- ============================================================
+       CONCEPT 3 — COLUMNS
+       ============================================================ -->
+  <section class="concept">
+    <div class="cnum">03</div>
+    <h2>Columns</h2>
+    <p class="pitch">The most traditional Mac layout — source list, tool list, detail — but executed with Notion discipline. The inspector is gone: settings are just rows at the bottom of the detail pane, and Preview / Source / Activity are underline tabs, like a Notion inline database view.</p>
+    <ul class="notes">
+      <li><b>Three densities of the same data.</b> Sidebar = names, list = name + one live line, detail = everything. No row repeats chrome it doesn’t need.</li>
+      <li><b>Selection is gray, not blue.</b> Only the primary button earns the accent color; lists highlight with Notion’s neutral wash.</li>
+      <li><b>Tabs replace the inspector.</b> Generated source, approval and runtime state are one click away instead of a second window of form controls.</li>
+      <li><b>Timer controls are plain bordered buttons</b> in a labeled row — native, reachable by keyboard, invisible when the tool isn’t a timer.</li>
+      <li><b>Best for a large library.</b> This is the direction that still feels calm with forty tools installed.</li>
+    </ul>
+
+    <div class="stage">
+      <div class="win">
+        <!-- Toolbar -->
+        <div class="tbar">
+          <div class="lights"><span class="l lr"></span><span class="l ly"></span><span class="l lg"></span></div>
+          <span class="tbtn"><svg class="ic"><use href="#i-side"/></svg></span>
+          <div class="tsp"></div>
+          <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-3)"><span class="dot g"></span>3 providers ready</span>
+          <span class="tbtn"><svg class="ic"><use href="#i-plus"/></svg></span>
+          <span class="tbtn"><svg class="ic"><use href="#i-gear"/></svg></span>
+        </div>
+
+        <div class="wbody">
+          <!-- Slim sidebar -->
+          <div class="side" style="width:196px">
+            <div class="ws">Bar Tender <svg class="ic s"><use href="#i-chevd"/></svg></div>
+            <div class="slabel">Library</div>
+            <a class="srow"><span class="em">🎵</span><span class="nm">Now Playing</span></a>
+            <a class="srow"><span class="em">🔌</span><span class="nm">Port 3000 Watch</span></a>
+            <a class="srow sel"><span class="em">⏱️</span><span class="nm">Focus Timer</span></a>
+            <a class="srow"><span class="em">🔀</span><span class="nm">Git Status</span></a>
+            <a class="srow"><span class="em">📊</span><span class="nm">CPU &amp; Memory</span></a>
+            <div class="slabel">Samples</div>
+            <a class="srow"><span class="em">🌐</span><span class="nm">API health check</span></a>
+            <a class="srow"><span class="em">📥</span><span class="nm">Downloads size</span></a>
+            <div class="sfoot">
+              <a class="srow"><svg class="ic s"><use href="#i-plus"/></svg><span class="nm">New Tool</span></a>
+              <a class="srow"><svg class="ic s"><use href="#i-gear"/></svg><span class="nm">Settings</span></a>
+            </div>
+          </div>
+
+          <!-- Tool list -->
+          <div class="mid">
+            <div class="msearch"><span class="searchfield" style="min-width:0"><svg class="ic s"><use href="#i-search"/></svg>Filter</span></div>
+            <a class="lrow"><span class="t"><span class="nm">🎵 Now Playing</span><span class="tm">4:12 PM</span></span><span class="s"><span class="st-g">●</span>&nbsp; ♪ Midnight City — M83</span></a>
+            <a class="lrow"><span class="t"><span class="nm">🔌 Port 3000 Watch</span><span class="tm">4:12 PM</span></span><span class="s"><span class="st-o">●</span>&nbsp; Waiting for review</span></a>
+            <a class="lrow sel"><span class="t"><span class="nm">⏱️ Focus Timer</span><span class="tm">now</span></span><span class="s"><span class="st-g">●</span>&nbsp; 24:59 remaining</span></a>
+            <a class="lrow"><span class="t"><span class="nm">🔀 Git Status</span><span class="tm">4:11 PM</span></span><span class="s"><span class="st-g">●</span>&nbsp; main · 3 changed files</span></a>
+            <a class="lrow" style="border-bottom:none"><span class="t"><span class="nm">📊 CPU &amp; Memory</span><span class="tm">4:12 PM</span></span><span class="s"><span class="st-g">●</span>&nbsp; 12% · 8.1 GB used</span></a>
+          </div>
+
+          <!-- Detail -->
+          <div class="page">
+            <div class="dhead">
+              <span class="em">⏱️</span>
+              <span class="tt">Focus Timer</span>
+              <span class="right"><span>Enabled</span><span class="sw"></span><span class="tbtn" style="width:24px;height:24px"><svg class="ic"><use href="#i-ellip"/></svg></span></span>
+            </div>
+            <div class="tabs">
+              <span class="tab on">Preview</span>
+              <span class="tab">Source</span>
+              <span class="tab">Activity</span>
+            </div>
+            <div class="tbody">
+              <div class="preview">
+                <div class="mbar">
+                  <span class="mbx"><span class="em">⏱️</span>24:59</span>
+                  <svg class="ic"><use href="#i-cc"/></svg>
+                  <svg class="ic"><use href="#i-wifi"/></svg>
+                  <svg class="ic"><use href="#i-batt"/></svg>
+                  <span class="time">Sat 4:12 PM</span>
+                  <svg class="ic"><use href="#i-search"/></svg>
+                </div>
+                <div class="menuwrap">
+                  <div class="menu">
+                    <div class="mi head"><span class="em">⏱️</span>Focus Timer</div>
+                    <div class="msep"></div>
+                    <div class="mi muted">Remaining 24:59 of 25:00</div>
+                    <div class="mprog"><i style="width:99.7%"></i></div>
+                    <div class="mi hot"><svg class="ic"><use href="#i-pause"/></svg>Pause<span class="k">⌘P</span></div>
+                    <div class="mi"><svg class="ic"><use href="#i-reset"/></svg>Reset<span class="k">⌘R</span></div>
+                    <div class="msep"></div>
+                    <div class="mi"><svg class="ic" style="color:#1a7f37"><use href="#i-check"/></svg>Status: OK</div>
+                    <div class="msep"></div>
+                    <div class="mfoot"><span>Updated 4:12:07 PM</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="ctlrow">
+                <span class="btn"><svg class="ic s"><use href="#i-pause"/></svg>Pause</span>
+                <span class="btn"><svg class="ic s"><use href="#i-reset"/></svg>Reset</span>
+                <span style="font-size:12px;color:var(--ink-3);margin-left:4px">Notification fires on completion</span>
+              </div>
+
+              <div class="setrows">
+                <div class="setrow"><span class="lab"><svg class="ic"><use href="#i-clock"/></svg>Duration</span><span>25 minutes</span></div>
+                <div class="setrow"><span class="lab"><svg class="ic"><use href="#i-reset"/></svg>Auto restart</span><span>Off</span><span class="rv"><span class="sw off"></span></span></div>
+                <div class="setrow"><span class="lab"><svg class="ic"><use href="#i-bell"/></svg>Notify on complete</span><span>On</span><span class="rv"><span class="sw"></span></span></div>
+                <div class="setrow"><span class="lab"><svg class="ic"><use href="#i-tag"/></svg>Kind</span><span>Built-in · countdown</span></div>
+              </div>
+              <div class="fade"></div>
+            </div>
+
+            <!-- Composer -->
+            <div class="comp" style="padding-left:28px;padding-right:28px">
+              <div class="wrap" style="max-width:none">
+                <div class="box">
+                  <span class="plus"><svg class="ic"><use href="#i-plus"/></svg></span>
+                  <span class="ph">Describe a change to Focus Timer…</span>
+                  <span class="model">claude-sonnet<svg class="ic s"><use href="#i-chevd"/></svg></span>
+                  <span class="send idle"><svg class="ic"><use href="#i-up"/></svg></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="hr">
+
+  <!-- ============================================================
+       CONCEPT 4 — MENU BAR FIRST
+       ============================================================ -->
+  <section class="concept">
+    <div class="cnum">04</div>
+    <h2>Menu Bar First</h2>
+    <p class="pitch">The app is a menu-bar app — so this direction makes the panel the product. One floating surface under the menu bar holds the composer and the whole library; each row shows exactly what that item renders in the menu bar, and expands inline for details. The big window becomes optional.</p>
+    <ul class="notes">
+      <li><b>The panel is the app.</b> Compose, review, approve, pause a timer, read logs — all without opening a window. <span class="mono">⌃⌘B</span> toggles it from anywhere.</li>
+      <li><b>Rows expand like Notion toggles.</b> Port 3000 is shown open: state line, then the two actions that matter — no drill-in, no inspector.</li>
+      <li><b>Right-aligned values mirror the menu bar verbatim</b> (“♪ Midnight City”, “24:59”), so the panel reads as a legend for the real thing above it.</li>
+      <li><b>The strip on top is the actual menu bar</b> — the preview stops being a screenshot and becomes the truth.</li>
+      <li><b>Trades away</b>: long source review is cramped at 372&nbsp;pt, so “Review in window” remains one click for the big reads.</li>
+    </ul>
+
+    <div class="stage stage4">
+      <!-- The actual menu bar -->
+      <div class="mbar4">
+        <span class="apple"><svg class="ic" style="width:13px;height:13px;transform:translateY(-.5px)"><use href="#i-apple"/></svg></span>
+        <span class="appname">Bar Tender</span>
+        <span style="font-size:12.5px;color:rgba(0,0,0,.55)">File&nbsp;&nbsp;Edit&nbsp;&nbsp;View&nbsp;&nbsp;Window&nbsp;&nbsp;Help</span>
+        <div class="right">
+          <span style="font-size:12.5px;color:rgba(0,0,0,.6);font-variant-numeric:tabular-nums">🎵 Midnight City</span>
+          <span style="font-size:12.5px;color:rgba(0,0,0,.6);font-variant-numeric:tabular-nums">⏱️ 24:59</span>
+          <span class="mbx4"><span style="font-size:11.5px">🍸</span></span>
+          <svg class="ic"><use href="#i-cc"/></svg>
+          <svg class="ic"><use href="#i-wifi"/></svg>
+          <svg class="ic"><use href="#i-batt"/></svg>
+          <span style="font-size:12px;font-weight:500">Sat 4:12 PM</span>
+          <svg class="ic"><use href="#i-search"/></svg>
+        </div>
+      </div>
+
+      <!-- The panel -->
+      <div class="panelwrap">
+        <div class="panel">
+          <div class="pcomp">
+            <div class="box">
+              <span class="plus"><svg class="ic"><use href="#i-sparkle"/></svg></span>
+              <span class="ph">Describe a menu bar tool…</span>
+              <span class="send idle"><svg class="ic"><use href="#i-up"/></svg></span>
+            </div>
+            <div class="sugs" style="margin-top:8px">
+              <a>Current Music track</a>
+              <a>Next calendar event</a>
+              <a>Downloads size</a>
+            </div>
+          </div>
+
+          <div class="plist">
+            <div class="prow4"><span class="em">🎵</span><span class="nm">Now Playing</span><span class="val">♪ Midnight City</span></div>
+            <div class="prow4" style="background:var(--hover)"><span class="em">🔌</span><span class="nm">Port 3000 Watch</span><span class="val st-o">waiting</span><svg class="ic chev"><use href="#i-chevd"/></svg></div>
+            <div class="pdetail">
+              <div class="pdline"><span class="dot o"></span><span class="st-o">Waiting for review</span><span style="color:var(--ink-4)">· generated 4:12 PM</span></div>
+              <div class="pdline" style="color:var(--ink-3)">localhost:3000 · probes every 10s once approved</div>
+              <div class="pdactions">
+                <span class="btn sm"><svg class="ic s"><use href="#i-doc"/></svg>Review source</span>
+                <span class="btn sm pri"><svg class="ic s"><use href="#i-play"/></svg>Allow &amp; Run</span>
+                <span class="btn sm plain"><svg class="ic s"><use href="#i-out"/></svg>Window</span>
+              </div>
+            </div>
+            <div class="prow4"><span class="em">⏱️</span><span class="nm">Focus Timer</span><span class="val">24:59</span></div>
+            <div class="prow4"><span class="em">🔀</span><span class="nm">Git Status</span><span class="val">main ±3</span></div>
+            <div class="prow4"><span class="em">📊</span><span class="nm">CPU &amp; Memory</span><span class="val">12% · 8.1 GB</span></div>
+            <div class="prow4 dis"><span class="em">🐳</span><span class="nm">Docker</span><span class="val">disabled</span></div>
+          </div>
+
+          <div class="pfoot4">
+            <span class="ok"><span class="dot g"></span>claude-sonnet</span>
+            <span class="right">
+              <span class="tbtn" title="Open window"><svg class="ic"><use href="#i-window"/></svg></span>
+              <span class="tbtn" title="Settings"><svg class="ic"><use href="#i-gear"/></svg></span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="hr">
+
+  <!-- ============ Comparison ============ -->
+  <section class="concept">
+    <h3>Side by side</h3>
+    <table class="tbl">
+      <tr><th style="width:120px"></th><th>01 · Page</th><th>02 · Command</th><th>03 · Columns</th><th>04 · Menu Bar First</th></tr>
+      <tr><td>Library lives in</td><td>Notion-style sidebar</td><td>⌘K quick switcher</td><td>Sidebar + list column</td><td>The floating panel itself</td></tr>
+      <tr><td>Tool detail is</td><td>A document with property rows</td><td>A full-bleed document</td><td>Tabbed: Preview / Source / Activity</td><td>An inline expanding row</td></tr>
+      <tr><td>Settings &amp; approval</td><td>Inline properties + inspector</td><td>Inline properties</td><td>Rows under the Preview tab</td><td>Inside the expanded row</td></tr>
+      <tr><td>Composer</td><td>Quiet bar under the page</td><td>Same, plus palette input</td><td>Minimal bar, no context line</td><td>Top of the panel</td></tr>
+      <tr><td>Best when</td><td>You want the obvious, safe evolution</td><td>Your library is small and keyboard-driven</td><td>Your library is large</td><td>The window should almost never open</td></tr>
+    </table>
+
+    <p class="foot">All four share one token set: Notion’s ink <span class="mono">rgb(55,53,47)</span> and sidebar <span class="mono">#f7f7f5</span>, hairlines at 8–14% ink, status in Notion green <span class="mono">#448361</span> / orange <span class="mono">#d9730d</span>, and a single macOS accent <span class="mono">#007aff</span> reserved for primary actions. No component here needs more than a 1&nbsp;px rule to exist.</p>
+  </section>
+
+</div>
+</body>
+</html>

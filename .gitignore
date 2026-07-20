@@ -1,0 +1,24 @@
+.DS_Store
+
+# Swift Package Manager
+/.build/
+/Packages/
+/.swiftpm/
+
+# Xcode
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Local credentials and environment
+.netrc
+.env
+.env.*
+!.env.example
+
+# Locally packaged application
+/dist/
+
+# Editors
+.idea/
+*.swp
