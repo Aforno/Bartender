@@ -7,7 +7,7 @@ struct SidebarView: View {
     @EnvironmentObject private var runtime: AppletRuntimeEngine
 
     @State private var searchText = ""
-    @State private var toolsLabelHovering = false
+    @State private var searchVisible = false
     @FocusState private var searchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -18,37 +18,31 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            workspaceMenu
-            searchRow
-                .padding(.top, PremiumStyle.space2)
+            header
 
-            HStack {
-                Text("Tools")
-                    .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(.tertiary)
-                Spacer()
-                Button {
-                    model.beginNewTool()
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 18, height: 18)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .opacity(toolsLabelHovering ? 1 : 0)
-                .disabled(model.generation?.phase.isActive == true)
-                .help("New Tool (⌘N)")
-                .accessibilityLabel("New Tool")
-                .accessibilityIdentifier("new-tool")
+            if searchVisible {
+                searchRow
+                    .padding(.top, PremiumStyle.space2)
+                    .transition(.opacity)
             }
-            .padding(.horizontal, PremiumStyle.sidebarInset + PremiumStyle.rowInsetH)
-            .padding(.top, PremiumStyle.space12)
-            .padding(.bottom, PremiumStyle.space4)
-            .contentShape(Rectangle())
-            .onHover { toolsLabelHovering = $0 }
-            .animation(reduceMotion ? nil : .snappy(duration: 0.12), value: toolsLabelHovering)
+
+            SidebarActionRow(
+                title: "New Tool",
+                systemImage: "plus",
+                shortcutHint: "⌘N",
+                action: { model.beginNewTool() }
+            )
+            .disabled(model.generation?.phase.isActive == true)
+            .accessibilityIdentifier("new-tool")
+            .padding(.horizontal, PremiumStyle.sidebarInset)
+            .padding(.top, PremiumStyle.space4)
+
+            Text("Tools")
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, PremiumStyle.sidebarInset + PremiumStyle.rowInsetH)
+                .padding(.top, PremiumStyle.space12)
+                .padding(.bottom, PremiumStyle.space4)
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
@@ -81,21 +75,11 @@ struct SidebarView: View {
                 .padding(.horizontal, PremiumStyle.sidebarInset)
                 .padding(.top, PremiumStyle.space4)
 
-            VStack(alignment: .leading, spacing: 1) {
-                SidebarActionRow(
-                    title: "New Tool",
-                    systemImage: "plus",
-                    shortcutHint: "⌘N",
-                    action: { model.beginNewTool() }
-                )
-                .disabled(model.generation?.phase.isActive == true)
-
-                SidebarSettingsRow(
-                    title: "Settings",
-                    systemImage: "gearshape",
-                    shortcutHint: "⌘,"
-                )
-            }
+            SidebarSettingsRow(
+                title: "Settings",
+                systemImage: "gearshape",
+                shortcutHint: "⌘,"
+            )
             .padding(.horizontal, PremiumStyle.sidebarInset)
             .padding(.top, PremiumStyle.space4)
             .padding(.bottom, PremiumStyle.sidebarInset)
@@ -103,45 +87,51 @@ struct SidebarView: View {
         .padding(.top, PremiumStyle.sidebarInset)
         .frame(minWidth: 200)
         .background {
-            // Hidden shortcut: ⌘K focuses the filter field.
-            Button("") { searchFocused = true }
+            // Hidden shortcut: ⌘K toggles the filter field.
+            Button("") { toggleSearch() }
                 .keyboardShortcut("k", modifiers: [.command])
                 .hidden()
         }
         .navigationTitle("Bar Tender")
     }
 
-    // MARK: - Workspace menu
+    // MARK: - Header
 
-    private var workspaceMenu: some View {
-        Menu {
-            SettingsLink {
-                Text("Settings…")
+    private var header: some View {
+        HStack(spacing: 8) {
+            Text("Bar Tender")
+                .font(.system(size: 14, weight: .semibold, design: .serif))
+
+            Spacer(minLength: 0)
+
+            Button {
+                toggleSearch()
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
             }
-            Button("Provider Setup…") {
-                model.showingProviderSetup = true
-            }
-            Button("Recheck Providers") {
-                Task { await model.refreshProviders() }
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "wineglass.fill")
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(PremiumStyle.brandGradient)
-                    .frame(width: 18)
-                Text("Bar Tender")
-                    .font(.system(size: 14, weight: .semibold, design: .serif))
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, PremiumStyle.rowInsetH)
-            .padding(.vertical, PremiumStyle.rowInsetV)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .help("Search (⌘K)")
+            .accessibilityLabel("Search tools")
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, PremiumStyle.sidebarInset)
+        .padding(.horizontal, PremiumStyle.sidebarInset + PremiumStyle.rowInsetH)
+        .padding(.vertical, PremiumStyle.space4)
+    }
+
+    private func toggleSearch() {
+        withAnimation(reduceMotion ? nil : .snappy(duration: 0.15)) {
+            if searchVisible {
+                searchText = ""
+                searchVisible = false
+                searchFocused = false
+            } else {
+                searchVisible = true
+                searchFocused = true
+            }
+        }
     }
 
     // MARK: - Search
@@ -157,8 +147,7 @@ struct SidebarView: View {
                 .font(.system(size: 13))
                 .focused($searchFocused)
                 .onExitCommand {
-                    searchText = ""
-                    searchFocused = false
+                    toggleSearch()
                 }
                 .accessibilityIdentifier("tool-search")
             if searchText.isEmpty && !searchFocused {

@@ -7,6 +7,7 @@ All notable user-visible changes are recorded here. Bar Tender follows semantic 
 - Added generated menu bar tools through local Codex, Claude, and Grok CLIs, with provider and model selection.
 - Added bounded validation retries and first-run diagnostic feedback so providers can repair generated tools instead of leaving them at “Needs Attention.”
 - Fixed newly enabled tools showing stale placeholder data until their second scheduled refresh.
+- Fixed in-app notification banners remaining visible indefinitely; they now dismiss automatically after five seconds.
 - Added exact-source approval, automatic approval invalidation on edits, generated-tool environment minimization, and explicit local-code trust disclosures.
 - Removed the AI generation timeout. Generation continues until the provider finishes or the user cancels it.
 - Added provider brand icons throughout setup and model selection, plus a dedicated Bar Tender application icon.

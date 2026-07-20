@@ -75,6 +75,8 @@ private struct ProviderSetupSheet: View {
 }
 
 private struct BannerView: View {
+    private static let dismissalDelayNanoseconds: UInt64 = 5_000_000_000
+
     let text: String
     let onDismiss: () -> Void
 
@@ -111,5 +113,13 @@ private struct BannerView: View {
         .shadow(color: .black.opacity(0.10), radius: 12, y: 3)
         .padding(.horizontal, PremiumStyle.space20)
         .frame(maxWidth: 560)
+        .task(id: text) {
+            do {
+                try await Task.sleep(nanoseconds: Self.dismissalDelayNanoseconds)
+            } catch {
+                return
+            }
+            onDismiss()
+        }
     }
 }
