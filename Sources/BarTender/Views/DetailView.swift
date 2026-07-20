@@ -20,11 +20,11 @@ struct DetailView: View {
                 .frame(maxWidth: 680, alignment: .leading)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 48)
-            .padding(.top, 34)
-            .padding(.bottom, 30)
+            .padding(.horizontal, PremiumStyle.contentMargin)
+            .padding(.top, PremiumStyle.space32)
+            .padding(.bottom, PremiumStyle.space32)
         }
-        .background(Color.clear)
+        .background(PremiumStyle.canvas)
     }
 
     // MARK: - Page
@@ -35,7 +35,7 @@ struct DetailView: View {
         props(applet)
 
         Divider()
-            .padding(.vertical, 18)
+            .padding(.vertical, PremiumStyle.space16)
 
         if applet.kind == .timer || applet.kind == .countdown {
             timerControls(applet)
@@ -63,9 +63,9 @@ struct DetailView: View {
 
     private func pageSection(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 16, weight: .semibold))
-            .padding(.top, 22)
-            .padding(.bottom, 10)
+            .font(.system(size: 17, weight: .semibold, design: .serif))
+            .padding(.top, PremiumStyle.space24)
+            .padding(.bottom, PremiumStyle.space8)
     }
 
     // MARK: - Header
@@ -75,13 +75,13 @@ struct DetailView: View {
             Image(systemName: applet.iconSystemName)
                 .symbolRenderingMode(.hierarchical)
                 .font(.system(size: 32))
-                .foregroundStyle(.primary)
+                .foregroundStyle(PremiumStyle.brand)
                 .frame(height: 40)
 
             Text(applet.name)
-                .font(.system(size: 28, weight: .bold))
+                .font(.system(size: 30, weight: .bold, design: .serif))
         }
-        .padding(.bottom, 14)
+        .padding(.bottom, PremiumStyle.space16)
     }
 
     // MARK: - Property rows
@@ -132,6 +132,32 @@ struct DetailView: View {
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.small)
+                .accessibilityLabel("Enable \(applet.name)")
+                .accessibilityIdentifier("tool-enabled.\(applet.id.uuidString)")
+            }
+
+            PropertyRow(label: "Failure alerts", systemImage: "exclamationmark.bubble") {
+                Toggle("", isOn: Binding(
+                    get: { applet.notifyOnFailure },
+                    set: { model.setFailureNotifications($0, for: applet) }
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .accessibilityLabel("Notify when \(applet.name) fails")
+            }
+
+            if applet.kind == .timer || applet.kind == .countdown {
+                PropertyRow(label: "Completion alerts", systemImage: "bell") {
+                    Toggle("", isOn: Binding(
+                        get: { applet.notifyOnComplete },
+                        set: { model.setCompletionNotifications($0, for: applet) }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .accessibilityLabel("Notify when \(applet.name) completes")
+                }
             }
         }
     }
@@ -173,17 +199,17 @@ struct DetailView: View {
                 Text("Notification fires on completion")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
-                    .padding(.leading, 4)
+                    .padding(.leading, PremiumStyle.space4)
             }
         }
         .controlSize(.small)
-        .padding(.bottom, 2)
+        .padding(.bottom, PremiumStyle.space2)
     }
 
     // MARK: - Review callout
 
     private func reviewCallout(_ applet: AppletManifest) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: PremiumStyle.space12) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "lock.fill")
                     .font(.callout)
@@ -193,12 +219,14 @@ struct DetailView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Read the source, then allow it once")
                         .font(.callout.weight(.semibold))
-                    Text("Bar Tender generated a dedicated executable for this request. Approval binds to this exact code and working directory — any edit revokes it automatically.")
+                    Text("Approval binds to this exact code and working directory—any edit revokes it automatically.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+
+            GeneratedCodeTrustDisclosure(compact: true)
 
             ZStack(alignment: .topTrailing) {
                 ScrollView(.vertical) {
@@ -207,19 +235,23 @@ struct DetailView: View {
                         .lineSpacing(3)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
+                        .padding(PremiumStyle.space12)
                 }
                 .frame(maxHeight: 200)
                 .background(
-                    Color.primary.opacity(0.05),
-                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    PremiumStyle.fieldFill,
+                    in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
+                        .strokeBorder(PremiumStyle.cardStroke, lineWidth: 1)
                 )
 
                 Text("zsh")
                     .font(.system(size: 10.5))
                     .foregroundStyle(.tertiary)
-                    .padding(.top, 8)
-                    .padding(.trailing, 12)
+                    .padding(.top, PremiumStyle.space8)
+                    .padding(.trailing, PremiumStyle.space12)
             }
 
             HStack(spacing: 6) {
@@ -228,23 +260,16 @@ struct DetailView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button {
-                    model.showInspector = true
-                } label: {
-                    Text("Open in Inspector")
-                }
-                Button {
                     model.setExecutionApproval(true, for: applet)
                 } label: {
                     Label("Allow & Run", systemImage: "play.fill")
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("allow-and-run.\(applet.id.uuidString)")
             }
         }
-        .padding(14)
-        .background(
-            PremiumStyle.surfaceFill,
-            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-        )
+        .padding(PremiumStyle.space16)
+        .borderedContainer(cornerRadius: PremiumStyle.cardRadius)
     }
 
     private func sourceLineCount(_ applet: AppletManifest) -> Int {
@@ -276,6 +301,7 @@ struct DetailView: View {
                 } icon: {
                     Image(systemName: "wineglass")
                         .font(.system(size: 44, weight: .light))
+                        .foregroundStyle(PremiumStyle.brand)
                 }
             } description: {
                 Text("Describe what you want to see or control. Bar Tender uses your local AI CLI to write a dedicated tool, installs it as a menu bar item, and shows you the code before it can run.")
@@ -296,9 +322,12 @@ struct DetailView: View {
                 }
             }
             .controlSize(.large)
+
+            GeneratedCodeTrustDisclosure(compact: true)
+                .frame(maxWidth: 560, alignment: .leading)
         }
         .frame(maxWidth: .infinity, minHeight: 420)
-        .padding(.top, 32)
+        .padding(.top, PremiumStyle.space32)
     }
 }
 
@@ -312,6 +341,7 @@ private struct PropertyRow<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -325,14 +355,14 @@ private struct PropertyRow<Content: View>: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, PremiumStyle.rowInsetH)
+        .padding(.vertical, PremiumStyle.space4)
         .background(
             Color.primary.opacity(hovering ? 0.045 : 0),
-            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+            in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
         )
-        .padding(.horizontal, -8)
+        .padding(.horizontal, -PremiumStyle.rowInsetH)
         .onHover { hovering = $0 }
-        .animation(.snappy(duration: 0.12), value: hovering)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.12), value: hovering)
     }
 }

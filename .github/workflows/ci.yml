@@ -14,8 +14,25 @@ concurrency:
 
 jobs:
   build-and-test:
-    runs-on: macos-14
-    timeout-minutes: 15
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS 14 arm64
+            runner: macos-14
+          - name: macOS 14 Intel
+            runner: macos-14-large
+          - name: macOS 15 arm64
+            runner: macos-15
+          - name: macOS 15 Intel
+            runner: macos-15-intel
+          - name: macOS 26 arm64
+            runner: macos-26
+          - name: macOS 26 Intel
+            runner: macos-26-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository
@@ -29,3 +46,32 @@ jobs:
 
       - name: Build release configuration
         run: swift build -c release
+
+  package-smoke:
+    name: Universal app, DMG, and clean-launch smoke
+    needs: build-and-test
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Package through the release path
+        run: ./script/package_release.sh --adhoc --skip-notarization --arch universal
+
+      - name: Verify sealed release layout
+        run: ./script/verify_release.sh --app dist/release/BarTender.app --dmg "dist/release/BarTender-$(tr -d '[:space:]' < VERSION).dmg"
+
+      - name: Mount, copy, and launch from a clean location
+        run: ./script/install_smoke_test.sh "dist/release/BarTender-$(tr -d '[:space:]' < VERSION).dmg"
+
+      - name: Upload smoke artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: BarTender-universal-adhoc
+          path: |
+            dist/release/BarTender-*.zip
+            dist/release/BarTender-*.dmg
+            dist/release/SHA256SUMS.txt
+          if-no-files-found: error

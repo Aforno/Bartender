@@ -30,7 +30,6 @@ enum GenerationPhase: String, Equatable, Sendable {
     case succeeded
     case failed
     case cancelled
-    case timedOut
 
     func displayName(for provider: AIProvider? = nil) -> String {
         switch self {
@@ -45,7 +44,6 @@ enum GenerationPhase: String, Equatable, Sendable {
         case .succeeded: return "Installed"
         case .failed: return "Failed"
         case .cancelled: return "Cancelled"
-        case .timedOut: return "Timed out"
         }
     }
 
@@ -64,6 +62,8 @@ enum GenerationPhase: String, Equatable, Sendable {
 
 @MainActor
 final class GenerationSession: ObservableObject, Identifiable {
+    static let maximumLogLines = 2_000
+
     let id = UUID()
     let prompt: String
     let provider: AIProvider
@@ -96,6 +96,7 @@ final class GenerationSession: ObservableObject, Identifiable {
         guard !chunks.isEmpty else {
             if !text.isEmpty {
                 logs.append(ProviderLogLine(stream: stream, text: text))
+                trimLogsIfNeeded()
             }
             return
         }
@@ -104,6 +105,14 @@ final class GenerationSession: ObservableObject, Identifiable {
             guard !line.isEmpty else { continue }
             logs.append(ProviderLogLine(stream: stream, text: line))
         }
+        trimLogsIfNeeded()
+    }
+
+    private func trimLogsIfNeeded() {
+        let overflow = logs.count - Self.maximumLogLines
+        if overflow > 0 {
+            logs.removeFirst(overflow)
+        }
     }
 }
 
@@ -111,7 +120,7 @@ enum ProviderGenerationError: LocalizedError {
     case notReady(AIProvider)
     case emptyPrompt
     case cancelled
-    case timedOut(TimeInterval, AIProvider)
+    case authenticationExpired(AIProvider)
     case invalidResponse(String)
     case missingCommandDependency(String)
     case noProvidersReady
@@ -124,8 +133,8 @@ enum ProviderGenerationError: LocalizedError {
             return "Describe the menu bar utility you want to create."
         case .cancelled:
             return "Generation was cancelled."
-        case .timedOut(let timeout, let provider):
-            return "\(provider.displayName) generation timed out after \(Int(timeout)) seconds."
+        case .authenticationExpired(let provider):
+            return "\(provider.displayName) rejected the saved authentication. \(provider.loginHint) Then recheck providers and try again."
         case .invalidResponse(let detail):
             return detail
         case .missingCommandDependency(let tool):

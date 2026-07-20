@@ -5,80 +5,42 @@ struct ComposerView: View {
     @EnvironmentObject private var providers: AIProviderService
     @EnvironmentObject private var preferences: AppPreferences
 
-    private let newToolSuggestions = [
-        "Show the song currently playing in Music.",
-        "Show how many Docker containers are running.",
-        "Show today’s next calendar event.",
-        "Show the size of my Downloads folder."
-    ]
-
-    private let revisionSuggestions = [
-        "Make the menu bar title shorter.",
-        "Refresh every 10 seconds.",
-        "Add more useful details to the menu.",
-        "Handle unavailable data more gracefully."
-    ]
-
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 12) {
-                composerContext
+        VStack(alignment: .leading, spacing: PremiumStyle.space12) {
+            composerContext
 
-                if model.generation?.phase.isActive == true {
-                    generationStatus
+            if model.generation?.phase.isActive == true {
+                generationStatus
+            }
+
+            ChatComposerBar(
+                text: $model.composerText,
+                placeholder: composerPlaceholder,
+                canSend: canCreate,
+                isBusy: model.generation?.phase.isActive == true,
+                lineLimit: 1...6,
+                submitHelp: model.selectedApplet == nil
+                    ? "Build new tool (⌘↩)"
+                    : "Update selected tool (⌘↩)",
+                onSend: {
+                    Task { await model.createFromPrompt() }
+                },
+                onCancel: {
+                    model.cancelGeneration()
                 }
-
-                ChatComposerBar(
-                    text: $model.composerText,
-                    placeholder: composerPlaceholder,
-                    canSend: canCreate,
-                    isBusy: model.generation?.phase.isActive == true,
-                    lineLimit: 1...6,
-                    submitHelp: model.selectedApplet == nil
-                        ? "Build new tool (⌘↩)"
-                        : "Update selected tool (⌘↩)",
-                    onSend: {
-                        Task { await model.createFromPrompt() }
-                    },
-                    onPlus: {
-                        if model.composerText.isEmpty, let first = suggestions.first {
-                            model.composerText = first
-                        }
-                    },
-                    onCancel: {
-                        model.cancelGeneration()
-                    }
-                ) {
-                    if preferences.showProviderInComposer {
-                        ModelSelector(
-                            isBusy: model.generation?.phase.isActive == true
-                        )
-                    }
-                }
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 16) {
-                        ForEach(suggestions, id: \.self) { suggestion in
-                            SuggestionLink(title: suggestion) {
-                                model.composerText = suggestion
-                            }
-                        }
-                    }
-                    .padding(.vertical, 1)
+            ) {
+                if preferences.showProviderInComposer {
+                    ModelSelector(
+                        isBusy: model.generation?.phase.isActive == true
+                    )
                 }
             }
-            .padding(.horizontal, 28)
-            .padding(.top, 14)
-            .padding(.bottom, 18)
-            // Soft backdrop so the pill floats like ChatGPT’s composer
-            .background {
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                    .overlay(alignment: .top) {
-                        Divider().opacity(0.55)
-                    }
-            }
+            // The message box floats on the page — soft lift, no separator bar.
+            .shadow(color: .black.opacity(0.07), radius: 14, y: 3)
         }
+        .padding(.horizontal, PremiumStyle.contentMargin)
+        .padding(.top, PremiumStyle.space12)
+        .padding(.bottom, PremiumStyle.space16)
     }
 
     private var composerContext: some View {
@@ -103,11 +65,7 @@ struct ComposerView: View {
                 Spacer(minLength: 0)
             }
         }
-        .padding(.horizontal, 4)
-    }
-
-    private var suggestions: [String] {
-        model.selectedApplet == nil ? newToolSuggestions : revisionSuggestions
+        .padding(.horizontal, PremiumStyle.space4)
     }
 
     private var composerPlaceholder: String {
@@ -139,7 +97,7 @@ struct ComposerView: View {
             }
             .keyboardShortcut(.escape, modifiers: [])
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, PremiumStyle.space4)
     }
 
     private var canCreate: Bool {
@@ -154,6 +112,7 @@ private struct QuietLink: View {
     let title: String
     let action: () -> Void
     @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(_ title: String, action: @escaping () -> Void) {
         self.title = title
@@ -169,25 +128,6 @@ private struct QuietLink: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .animation(.snappy(duration: 0.12), value: hovering)
-    }
-}
-
-/// Plain text suggestion that tints on hover — link-like, not a chip.
-private struct SuggestionLink: View {
-    let title: String
-    let action: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.caption)
-                .lineLimit(1)
-                .foregroundStyle(hovering ? Color.accentColor : Color.secondary)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .animation(.snappy(duration: 0.12), value: hovering)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.12), value: hovering)
     }
 }

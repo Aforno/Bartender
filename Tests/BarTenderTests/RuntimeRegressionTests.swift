@@ -98,6 +98,32 @@ final class RuntimeRegressionTests: XCTestCase {
         XCTAssertTrue(result.message.contains("review and allow"))
     }
 
+    func testApprovedGeneratedToolTimeoutIsReported() async {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BarTenderGeneratedToolTimeout-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let manifest = AppletManifest(
+            name: "Slow Tool",
+            iconSystemName: "clock",
+            kind: .generatedTool,
+            titleTemplate: "{{value}}",
+            config: AppletConfig(
+                timeoutSeconds: 1,
+                generatedSource: "#!/bin/zsh\nsleep 3\nprintf '%s\\n' '{\"title\":\"Late\",\"status\":\"Late\",\"details\":[],\"healthy\":true,\"values\":{}}'"
+            )
+        )
+
+        let result = await GeneratedToolRunner.run(
+            manifest: manifest,
+            approved: true,
+            artifactStore: GeneratedToolArtifactStore(rootURL: root)
+        )
+
+        XCTAssertNil(result.output)
+        XCTAssertTrue(result.approved)
+        XCTAssertEqual(result.message, "Generated tool timed out after 1s.")
+    }
+
     func testToolRunStateDoesNotCallUnhealthyOutputLive() {
         let manifest = AppletManifest(
             name: "Sensor",

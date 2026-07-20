@@ -1,0 +1,14 @@
+# Changelog
+
+All notable user-visible changes are recorded here. Bar Tender follows semantic versioning.
+
+## 1.0.0 — 2026-07-20
+
+- Added generated menu bar tools through local Codex, Claude, and Grok CLIs, with provider and model selection.
+- Added exact-source approval, automatic approval invalidation on edits, generated-tool environment minimization, and explicit local-code trust disclosures.
+- Removed the AI generation timeout. Generation continues until the provider finishes or the user cancels it.
+- Added provider brand icons throughout setup and model selection, plus a dedicated Bar Tender application icon.
+- Added launch at login, contextual notification permission, library export/import, provider setup reopening, sanitized diagnostics export, support/privacy links, and user-initiated GitHub release checks.
+- Added overflow handling for large tool libraries and clarified that closing the window leaves enabled menu bar tools running.
+- Added universal Developer ID signing, hardened runtime, notarization, stapling, ZIP/DMG packaging, checksums, install smoke tests, and macOS 14/15/26 CI coverage on Apple silicon and Intel.
+- Added end-to-end provider process tests for missing, unauthenticated, expired, malformed, cancelled, and successful generation states.

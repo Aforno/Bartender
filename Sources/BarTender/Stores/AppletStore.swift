@@ -3,16 +3,38 @@ import Foundation
 
 enum AppletStoreError: LocalizedError {
     case invalidLibraryFormat
+    case unsupportedArchiveVersion(Int)
     case persistenceFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .invalidLibraryFormat:
-            return "The applet library is not a JSON array."
+            return "The selected file is not a Bar Tender library archive."
+        case .unsupportedArchiveVersion(let version):
+            return "This library uses unsupported archive format \(version)."
         case .persistenceFailed(let detail):
             return "Could not save the applet library: \(detail)"
         }
     }
+}
+
+struct AppletLibraryArchive: Codable, Equatable {
+    static let currentFormatVersion = 1
+
+    var formatVersion: Int
+    var exportedAt: Date
+    var applets: [AppletManifest]
+
+    init(applets: [AppletManifest], exportedAt: Date = .now) {
+        formatVersion = Self.currentFormatVersion
+        self.exportedAt = exportedAt
+        self.applets = applets
+    }
+}
+
+enum AppletImportMode: Equatable {
+    case merge
+    case replace
 }
 
 @MainActor
@@ -161,6 +183,37 @@ final class AppletStore: ObservableObject {
     /// Removes every applet and persists an empty library.
     func removeAll() throws {
         try commit([])
+    }
+
+    func exportArchiveData() throws -> Data {
+        try encoder.encode(AppletLibraryArchive(applets: applets))
+    }
+
+    /// Imports only manifests. Approval fingerprints and executable artifacts
+    /// are deliberately outside the archive and are handled by AppModel.
+    @discardableResult
+    func importArchiveData(_ data: Data, mode: AppletImportMode) throws -> [AppletManifest] {
+        let archive: AppletLibraryArchive
+        do {
+            archive = try decoder.decode(AppletLibraryArchive.self, from: data)
+        } catch {
+            throw AppletStoreError.invalidLibraryFormat
+        }
+        guard archive.formatVersion == AppletLibraryArchive.currentFormatVersion else {
+            throw AppletStoreError.unsupportedArchiveVersion(archive.formatVersion)
+        }
+
+        let imported = try archive.applets.map(ManifestValidator.normalizedAndValidated)
+        var next = mode == .replace ? [] : applets
+        for manifest in imported.reversed() {
+            if let index = next.firstIndex(where: { $0.id == manifest.id }) {
+                next[index] = manifest
+            } else {
+                next.insert(manifest, at: 0)
+            }
+        }
+        try commit(next)
+        return imported
     }
 
     /// On-disk location of the library file (for Settings “Reveal in Finder”).

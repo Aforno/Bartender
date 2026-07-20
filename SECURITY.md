@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Bar Tender is pre-release software. Security fixes are currently made on the latest revision of `main` only.
+Security fixes are made on the latest release and the latest revision of `main`.
 
 ## Reporting a vulnerability
 
@@ -15,3 +15,5 @@ Include the affected revision, reproduction steps, impact, and any suggested mit
 Bar Tender asks locally installed AI CLIs to generate zsh programs. A generated program is stored but does not execute until the user reviews and explicitly approves its exact source and working directory. Editing either revokes approval.
 
 Approved generated programs execute locally with the permissions of the Bar Tender process. Syntax validation and basic policy checks are safeguards, not a security sandbox. Review generated source before approval, particularly filesystem, network, process-launching, and credential-access behavior.
+
+Generated tools receive an explicit environment allowlist (`HOME`, user identity, shell/path, temporary-directory, locale, terminal, and `NO_COLOR` values). Bar Tender does not deliberately forward inherited API keys or GitHub tokens. This limits accidental inheritance; it does not prevent approved code from reading files, using the network, launching other local commands, or reaching credentials otherwise available to the user account.

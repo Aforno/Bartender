@@ -18,7 +18,7 @@ enum ShellCommandProbe {
                 ok: false,
                 output: "",
                 exitCode: -1,
-                message: "Shell command not approved. Enable approval in the inspector."
+                message: "Shell command not approved. Review and allow it on the tool's page."
             )
         }
 

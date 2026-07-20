@@ -118,6 +118,87 @@ final class AppletStoreTests: XCTestCase {
         XCTAssertTrue(saved.config.generatedSource?.contains("improved") == true)
     }
 
+    func testLibraryArchiveRoundTripsWithMergeAndReplace() throws {
+        let source = AppletStore(fileURL: temporaryDirectory().appendingPathComponent("source.json"))
+        let timer = AppletManifest(
+            name: "Imported Timer",
+            iconSystemName: "timer",
+            kind: .timer,
+            titleTemplate: "{{remaining}}",
+            config: AppletConfig(durationSeconds: 90)
+        )
+        try source.upsert(timer)
+        let archive = try source.exportArchiveData()
+
+        let target = AppletStore(fileURL: temporaryDirectory().appendingPathComponent("target.json"))
+        let existing = AppletManifest(
+            name: "Existing",
+            iconSystemName: "cpu",
+            kind: .systemMetrics,
+            titleTemplate: "{{cpu}}",
+            config: AppletConfig(metrics: [.cpu])
+        )
+        try target.upsert(existing)
+
+        let merged = try target.importArchiveData(archive, mode: .merge)
+        XCTAssertEqual(merged.map(\.id), [timer.id])
+        XCTAssertEqual(Set(target.applets.map(\.id)), Set([existing.id, timer.id]))
+
+        try target.importArchiveData(archive, mode: .replace)
+        XCTAssertEqual(target.applets.map(\.id), [timer.id])
+    }
+
+    func testInvalidOrFutureArchiveNeverMutatesLibrary() throws {
+        let store = AppletStore(fileURL: temporaryDirectory().appendingPathComponent("target.json"))
+        let existing = AppletManifest(
+            name: "Existing",
+            iconSystemName: "cpu",
+            kind: .systemMetrics,
+            titleTemplate: "{{cpu}}",
+            config: AppletConfig(metrics: [.cpu])
+        )
+        try store.upsert(existing)
+
+        XCTAssertThrowsError(try store.importArchiveData(Data("not-json".utf8), mode: .replace))
+        XCTAssertEqual(store.applets.map(\.id), [existing.id])
+
+        var future = AppletLibraryArchive(applets: [existing])
+        future.formatVersion = 999
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        XCTAssertThrowsError(try store.importArchiveData(encoder.encode(future), mode: .replace)) { error in
+            guard case AppletStoreError.unsupportedArchiveVersion(999) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+        XCTAssertEqual(store.applets.map(\.id), [existing.id])
+    }
+
+    func testRelaunchRestoresEveryEnabledToolAndDeterministicOverflowPlan() throws {
+        let fileURL = temporaryDirectory().appendingPathComponent("applets.json")
+        let firstLaunch = AppletStore(fileURL: fileURL)
+        let tools = (0..<12).map { index in
+            AppletManifest(
+                name: "Relaunch Tool \(index)",
+                iconSystemName: "gear",
+                kind: .systemMetrics,
+                titleTemplate: "{{cpu}}",
+                config: AppletConfig(metrics: [.cpu])
+            )
+        }
+        for tool in tools.reversed() {
+            try firstLaunch.upsert(tool)
+        }
+
+        let relaunched = AppletStore(fileURL: fileURL)
+        XCTAssertEqual(relaunched.enabledApplets.map(\.id), tools.map(\.id))
+        XCTAssertEqual(
+            StatusItemManager.individuallyVisible(from: relaunched.enabledApplets).map(\.id),
+            Array(tools.prefix(StatusItemManager.maximumIndividualItems)).map(\.id)
+        )
+        XCTAssertEqual(relaunched.enabledApplets.count, 12, "The manager menu must retain all tools")
+    }
+
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("BarTenderTests-\(UUID().uuidString)", isDirectory: true)

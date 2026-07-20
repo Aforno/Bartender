@@ -10,6 +10,7 @@ struct BarTenderApp: App {
     var body: some Scene {
         WindowGroup("Bar Tender", id: "main") {
             ContentView()
+                .tint(PremiumStyle.brand)
                 .environmentObject(model)
                 .environmentObject(model.store)
                 .environmentObject(model.providers)
@@ -66,11 +67,6 @@ struct BarTenderApp: App {
 
                 Divider()
 
-                Button(model.showInspector ? "Hide Inspector" : "Show Inspector") {
-                    model.showInspector.toggle()
-                }
-                .keyboardShortcut("i", modifiers: [.command, .option])
-
                 Button("Delete Selected Tool") {
                     model.deleteSelected()
                 }
@@ -82,6 +78,7 @@ struct BarTenderApp: App {
         // Manager status item: prompt + library without opening the main window.
         MenuBarExtra("Bar Tender", systemImage: "wineglass") {
             MenuBarManagerMenu()
+                .tint(PremiumStyle.brand)
                 .environmentObject(model)
                 .environmentObject(model.store)
                 .environmentObject(model.runtime)
@@ -92,6 +89,7 @@ struct BarTenderApp: App {
 
         Settings {
             SettingsView()
+                .tint(PremiumStyle.brand)
                 .environmentObject(model)
                 .environmentObject(model.store)
                 .environmentObject(model.providers)

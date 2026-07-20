@@ -5,27 +5,8 @@ import Foundation
 @MainActor
 final class AppPreferences: ObservableObject {
     private enum Keys {
-        static let showInspectorOnLaunch = "BarTender.showInspectorOnLaunch"
-        static let generationTimeoutSeconds = "BarTender.generationTimeoutSeconds"
         static let confirmBeforeDelete = "BarTender.confirmBeforeDelete"
         static let showProviderInComposer = "BarTender.showProviderInComposer"
-    }
-
-    /// Whether the inspector pane is shown when the app launches.
-    @Published var showInspectorOnLaunch: Bool {
-        didSet { defaults.set(showInspectorOnLaunch, forKey: Keys.showInspectorOnLaunch) }
-    }
-
-    /// CLI generation timeout in seconds (30…600).
-    @Published var generationTimeoutSeconds: Double {
-        didSet {
-            let clamped = Self.clampTimeout(generationTimeoutSeconds)
-            if clamped != generationTimeoutSeconds {
-                generationTimeoutSeconds = clamped
-                return
-            }
-            defaults.set(clamped, forKey: Keys.generationTimeoutSeconds)
-        }
     }
 
     /// Ask for confirmation before deleting applets from the library.
@@ -38,25 +19,10 @@ final class AppPreferences: ObservableObject {
         didSet { defaults.set(showProviderInComposer, forKey: Keys.showProviderInComposer) }
     }
 
-    var generationTimeout: TimeInterval {
-        generationTimeoutSeconds
-    }
-
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-
-        if defaults.object(forKey: Keys.showInspectorOnLaunch) == nil {
-            showInspectorOnLaunch = true
-        } else {
-            showInspectorOnLaunch = defaults.bool(forKey: Keys.showInspectorOnLaunch)
-        }
-
-        let storedTimeout = defaults.double(forKey: Keys.generationTimeoutSeconds)
-        generationTimeoutSeconds = storedTimeout > 0
-            ? Self.clampTimeout(storedTimeout)
-            : 180
 
         if defaults.object(forKey: Keys.confirmBeforeDelete) == nil {
             confirmBeforeDelete = true
@@ -69,10 +35,6 @@ final class AppPreferences: ObservableObject {
         } else {
             showProviderInComposer = defaults.bool(forKey: Keys.showProviderInComposer)
         }
-    }
-
-    static func clampTimeout(_ value: Double) -> Double {
-        min(600, max(30, value.rounded()))
     }
 
     /// Directory where applet manifests are stored.

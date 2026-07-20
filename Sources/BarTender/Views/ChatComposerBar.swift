@@ -16,6 +16,7 @@ struct ChatComposerBar<Accessory: View>: View {
     @ViewBuilder var accessory: () -> Accessory
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focused: Bool
 
     /// Target single-line height (controls + vertical padding).
@@ -24,9 +25,11 @@ struct ChatComposerBar<Accessory: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: compact ? 8 : 10) {
-            plusButton
+            if onPlus != nil {
+                plusButton
+            }
 
-            ZStack(alignment: .center) {
+            ZStack(alignment: .leading) {
                 if text.isEmpty {
                     Text(placeholder)
                         .font(.system(size: compact ? 14 : 15))
@@ -44,6 +47,7 @@ struct ChatComposerBar<Accessory: View>: View {
                     .frame(minHeight: controlSize, alignment: .center)
                     .onSubmit(onSend)
                     .accessibilityLabel(placeholder)
+                    .accessibilityIdentifier("tool-prompt")
             }
 
             accessory()
@@ -55,15 +59,15 @@ struct ChatComposerBar<Accessory: View>: View {
                 sendButton
             }
         }
-        .padding(.leading, compact ? 8 : 14)
-        .padding(.trailing, compact ? 8 : 10)
-        .padding(.vertical, compact ? 6 : 10)
+        .padding(.horizontal, compact ? PremiumStyle.space8 : PremiumStyle.space12)
+        .padding(.vertical, compact ? PremiumStyle.space4 : PremiumStyle.space8)
         .frame(minHeight: compact ? 40 : 52)
         .background(barBackground, in: RoundedRectangle(cornerRadius: barRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: barRadius, style: .continuous)
-                .strokeBorder(barStroke, lineWidth: 1)
+                .strokeBorder(focused ? PremiumStyle.brand.opacity(0.55) : barStroke, lineWidth: 1)
         )
+        .animation(reduceMotion ? nil : .snappy(duration: 0.15), value: focused)
     }
 
     // MARK: - Controls
@@ -82,6 +86,8 @@ struct ChatComposerBar<Accessory: View>: View {
         .buttonStyle(.plain)
         .disabled(isBusy)
         .help("Start with a suggestion")
+        .accessibilityLabel("Use a prompt suggestion")
+        .accessibilityIdentifier("prompt-suggestion")
     }
 
     private var sendButton: some View {
@@ -96,7 +102,9 @@ struct ChatComposerBar<Accessory: View>: View {
         .disabled(!canSend)
         .keyboardShortcut(.return, modifiers: [.command])
         .help(submitHelp)
-        .animation(.snappy(duration: 0.15), value: canSend)
+        .accessibilityLabel(submitHelp)
+        .accessibilityIdentifier("submit-tool-prompt")
+        .animation(reduceMotion ? nil : .snappy(duration: 0.15), value: canSend)
     }
 
     private func cancelButton(_ action: @escaping () -> Void) -> some View {
@@ -114,31 +122,29 @@ struct ChatComposerBar<Accessory: View>: View {
         }
         .buttonStyle(.plain)
         .help("Cancel")
+        .accessibilityLabel("Cancel generation")
+        .accessibilityIdentifier("cancel-generation")
     }
 
     // MARK: - Chrome
 
     private var barBackground: Color {
-        colorScheme == .dark
-            ? Color(red: 0.188, green: 0.188, blue: 0.188)
-            : Color(nsColor: .textBackgroundColor)
+        PremiumStyle.fieldFill
     }
 
     private var barStroke: Color {
-        colorScheme == .dark
-            ? Color.white.opacity(0.08)
-            : Color.black.opacity(0.09)
+        PremiumStyle.cardStroke
     }
 
     private var sendBackground: Color {
         if canSend {
-            // Ready: solid light circle (dark mode) / solid dark (light mode)
-            return colorScheme == .dark ? Color(red: 0.92, green: 0.92, blue: 0.92) : Color.primary
+            // Ready: a pour of house copper in both schemes
+            return PremiumStyle.brand
         }
-        // Idle: soft mid-gray pill like ChatGPT's disabled send
+        // Idle: soft warm-gray circle
         return colorScheme == .dark
-            ? Color(red: 0.40, green: 0.40, blue: 0.40)
-            : Color.primary.opacity(0.14)
+            ? Color(red: 0.42, green: 0.38, blue: 0.34)
+            : Color(red: 0.28, green: 0.20, blue: 0.11).opacity(0.14)
     }
 
     private var sendForeground: Color {
@@ -186,6 +192,7 @@ struct ModelSelector: View {
     var compact: Bool = true
 
     @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Menu {
@@ -194,19 +201,28 @@ struct ModelSelector: View {
                 Text("No models available")
             } else {
                 ForEach(groupedProviders(from: models), id: \.self) { provider in
-                    Section(provider.displayName) {
+                    Section {
                         ForEach(models.filter { $0.provider == provider }) { model in
                             Button {
                                 providers.selectModel(model)
                             } label: {
                                 modelRow(model)
                             }
+                            .accessibilityIdentifier("model-option.\(provider.rawValue).\(model.modelID)")
+                        }
+                    } header: {
+                        Label {
+                            Text(provider.displayName)
+                        } icon: {
+                            ProviderIcon(provider: provider, size: 14)
                         }
                     }
                 }
             }
         } label: {
             HStack(spacing: 4) {
+                ProviderIcon(provider: providers.selectedModel.provider, size: compact ? 14 : 16)
+
                 Text(providers.selectedModel.shortLabel)
                     .font(.system(size: compact ? 13 : 14, weight: .medium))
                     .foregroundStyle(Color.primary.opacity(hovering ? 0.72 : 0.48))
@@ -216,30 +232,32 @@ struct ModelSelector: View {
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(Color.primary.opacity(hovering ? 0.55 : 0.35))
             }
-            .padding(.horizontal, compact ? 8 : 10)
-            .padding(.vertical, compact ? 5 : 6)
+            .padding(.horizontal, compact ? PremiumStyle.space8 : PremiumStyle.space12)
+            .padding(.vertical, compact ? PremiumStyle.rowInsetV : PremiumStyle.space8)
             .background(
                 hovering
                     ? Color.primary.opacity(0.07)
                     : Color.clear,
-                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous))
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .disabled(isBusy)
         .onHover { hovering = $0 }
-        .animation(.snappy(duration: 0.12), value: hovering)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.12), value: hovering)
         .help("Choose model")
         .accessibilityLabel("Model")
         .accessibilityValue(providers.selectedModel.displayName)
+        .accessibilityIdentifier("model-picker")
     }
 
     @ViewBuilder
     private func modelRow(_ model: AIModelOption) -> some View {
         let selected = providers.selectedModel.id == model.id
         HStack(alignment: .firstTextBaseline, spacing: 8) {
+            ProviderIcon(provider: model.provider, size: 16)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(model.displayName)

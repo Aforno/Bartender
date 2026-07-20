@@ -4,6 +4,8 @@ import SwiftUI
 /// Creates one `NSStatusItem` per enabled applet (SwiftUI SceneBuilder cannot ForEach MenuBarExtra).
 @MainActor
 final class StatusItemManager: ObservableObject {
+    static let maximumIndividualItems = 8
+
     private final class ItemBox {
         let item: NSStatusItem
         var appletID: UUID
@@ -31,7 +33,7 @@ final class StatusItemManager: ObservableObject {
     /// returns the previous list and leaves the status items one toggle behind.
     func rebuild(enabled currentEnabled: [AppletManifest]? = nil) {
         guard let model else { return }
-        let enabled = currentEnabled ?? model.enabledApplets
+        let enabled = Self.individuallyVisible(from: currentEnabled ?? model.enabledApplets)
         let enabledIDs = Set(enabled.map(\.id))
 
         for id in boxes.keys where !enabledIDs.contains(id) {
@@ -50,6 +52,10 @@ final class StatusItemManager: ObservableObject {
             }
             refresh(appletID: applet.id)
         }
+    }
+
+    static func individuallyVisible(from enabled: [AppletManifest]) -> [AppletManifest] {
+        Array(enabled.prefix(maximumIndividualItems))
     }
 
     func refreshAll() {

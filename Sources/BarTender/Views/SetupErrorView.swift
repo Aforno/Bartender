@@ -12,18 +12,14 @@ struct SetupErrorView: View {
                 .foregroundStyle(.white)
                 .frame(width: 64, height: 64)
                 .background(
-                    LinearGradient(
-                        colors: [Color.accentColor, Color.accentColor.opacity(0.75)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
+                    PremiumStyle.brandGradient,
                     in: RoundedRectangle(cornerRadius: 16, style: .continuous)
                 )
-                .shadow(color: Color.accentColor.opacity(0.25), radius: 12, y: 3)
+                .shadow(color: PremiumStyle.brand.opacity(0.30), radius: 12, y: 3)
 
             VStack(spacing: 8) {
                 Text("Bar Tender needs a local AI CLI")
-                    .font(.title.weight(.semibold))
+                    .font(.system(.title, design: .serif).weight(.semibold))
 
                 Text("Install and sign in to at least one provider: Codex, Claude, or Grok. Bar Tender never asks for API keys — it uses CLIs already on your Mac.")
                     .font(.body)
@@ -50,6 +46,9 @@ struct SetupErrorView: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: 560, alignment: .leading)
 
+            GeneratedCodeTrustDisclosure(compact: true)
+                .frame(maxWidth: 560, alignment: .leading)
+
             HStack(spacing: 12) {
                 Button("Recheck providers") {
                     onRecheck()
@@ -68,18 +67,15 @@ struct SetupErrorView: View {
                 .controlSize(.large)
             }
         }
-        .padding(40)
+        .padding(PremiumStyle.space40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(PremiumStyle.canvas)
     }
 
     private func providerRow(_ provider: AIProvider) -> some View {
         let status = providers.status(for: provider)
         return HStack(alignment: .center, spacing: 12) {
-            Image(systemName: provider.systemImage)
-                .font(.title3)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.secondary)
-                .frame(width: 24)
+            ProviderIcon(provider: provider, size: 24)
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
@@ -113,8 +109,10 @@ struct SetupErrorView: View {
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("provider-status.\(provider.rawValue)")
+        .padding(.horizontal, PremiumStyle.space16)
+        .padding(.vertical, PremiumStyle.space12)
     }
 
     private func statusBadge(_ status: ProviderAvailability) -> some View {

@@ -24,11 +24,11 @@ enum AIProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         }
     }
 
-    var systemImage: String {
+    var iconResourceName: String {
         switch self {
-        case .codex: return "chevron.left.forwardslash.chevron.right"
-        case .claude: return "brain.head.profile"
-        case .grok: return "sparkles"
+        case .codex: return "chatgpt"
+        case .claude: return "claude"
+        case .grok: return "grok"
         }
     }
 

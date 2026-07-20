@@ -4,18 +4,16 @@ import Foundation
 /// Uses only documented flags inspected from each CLI's `--help`.
 @MainActor
 final class AIProviderService: ObservableObject {
-    nonisolated static let defaultGenerationTimeout: TimeInterval = ManifestGenerationSupport.defaultTimeout
-
     @Published var selectedProvider: AIProvider {
         didSet {
-            UserDefaults.standard.set(selectedProvider.rawValue, forKey: Self.selectedProviderKey)
+            defaults.set(selectedProvider.rawValue, forKey: Self.selectedProviderKey)
         }
     }
 
     /// Concrete model used for generation (shown in the composer model selector).
     @Published var selectedModel: AIModelOption {
         didSet {
-            UserDefaults.standard.set(selectedModel.id, forKey: Self.selectedModelKey)
+            defaults.set(selectedModel.id, forKey: Self.selectedModelKey)
         }
     }
 
@@ -29,7 +27,7 @@ final class AIProviderService: ObservableObject {
     @Published private(set) var enabledProviders: Set<AIProvider> = Set(AIProvider.allCases) {
         didSet {
             let raw = enabledProviders.map(\.rawValue).sorted()
-            UserDefaults.standard.set(raw, forKey: Self.enabledProvidersKey)
+            defaults.set(raw, forKey: Self.enabledProvidersKey)
         }
     }
 
@@ -37,17 +35,39 @@ final class AIProviderService: ObservableObject {
     @Published private(set) var availableModels: [AIModelOption] = []
 
     private let runner = ProcessRunner()
+    private let defaults: UserDefaults
+    private let environmentLoader: () async -> [String: String]
+    private let homeDirectoryURL: URL
+    private let modelProvider: (AIProvider) -> [AIModelOption]
+    private let executableResolver: (String, [String: String]) -> String?
     private var availabilityRefreshTask: Task<Void, Never>?
     private var generationTask: Task<AppletManifest, Error>?
     private var generationRunner: ProcessRunner?
+    private var generationCancellationRequested = false
 
     private static let selectedProviderKey = "BarTender.selectedProvider"
     private static let selectedModelKey = "BarTender.selectedModel"
     private static let enabledProvidersKey = "BarTender.enabledProviders"
 
-    init() {
+    init(
+        defaults: UserDefaults = .standard,
+        environmentLoader: @escaping () async -> [String: String] = {
+            await ShellEnvironment.loginEnvironment()
+        },
+        homeDirectoryURL: URL = URL(fileURLWithPath: NSHomeDirectory()),
+        modelProvider: @escaping (AIProvider) -> [AIModelOption] = ModelCatalog.models,
+        executableResolver: @escaping (String, [String: String]) -> String? = {
+            ShellEnvironment.which($0, environment: $1)
+        }
+    ) {
+        self.defaults = defaults
+        self.environmentLoader = environmentLoader
+        self.homeDirectoryURL = homeDirectoryURL
+        self.modelProvider = modelProvider
+        self.executableResolver = executableResolver
+
         let provider: AIProvider
-        if let raw = UserDefaults.standard.string(forKey: Self.selectedProviderKey),
+        if let raw = defaults.string(forKey: Self.selectedProviderKey),
            let parsed = AIProvider(rawValue: raw) {
             provider = parsed
         } else {
@@ -62,9 +82,9 @@ final class AIProviderService: ObservableObject {
             displayName: provider.displayName,
             isDefault: true
         )
-        availableModels = ModelCatalog.allModels()
+        availableModels = AIProvider.allCases.flatMap(modelProvider)
 
-        if let stored = UserDefaults.standard.array(forKey: Self.enabledProvidersKey) as? [String] {
+        if let stored = defaults.array(forKey: Self.enabledProvidersKey) as? [String] {
             let parsed = Set(stored.compactMap(AIProvider.init(rawValue:)))
             // Never allow an empty set — keep all on if storage is corrupt.
             enabledProviders = parsed.isEmpty ? Set(AIProvider.allCases) : parsed
@@ -72,7 +92,7 @@ final class AIProviderService: ObservableObject {
             enabledProviders = Set(AIProvider.allCases)
         }
 
-        if let saved = UserDefaults.standard.string(forKey: Self.selectedModelKey),
+        if let saved = defaults.string(forKey: Self.selectedModelKey),
            let match = availableModels.first(where: { $0.id == saved }),
            enabledProviders.contains(match.provider) {
             selectedModel = match
@@ -193,7 +213,7 @@ final class AIProviderService: ObservableObject {
             statuses[provider] = .checking
         }
 
-        let environment = await ShellEnvironment.loginEnvironment()
+        let environment = await environmentLoader()
         // Probe sequentially on the main actor so ProcessRunner hops stay simple.
         for provider in AIProvider.allCases {
             statuses[provider] = await probe(provider, environment: environment)
@@ -212,18 +232,19 @@ final class AIProviderService: ObservableObject {
     }
 
     func refreshModelCatalog() {
-        availableModels = ModelCatalog.allModels()
+        availableModels = AIProvider.allCases.flatMap(modelProvider)
         AppLog.codex.info("Model catalog loaded (\(self.availableModels.count, privacy: .public) models)")
     }
 
     private func preferredModel(for provider: AIProvider) -> AIModelOption {
-        let list = ModelCatalog.models(for: provider)
+        let list = modelProvider(provider)
         if let def = list.first(where: \.isDefault) { return def }
         if let first = list.first { return first }
         return AIModelOption(provider: provider, modelID: "default", displayName: provider.displayName, isDefault: true)
     }
 
     func cancelGeneration() {
+        generationCancellationRequested = true
         generationTask?.cancel()
         Task {
             await generationRunner?.cancel()
@@ -234,9 +255,9 @@ final class AIProviderService: ObservableObject {
         prompt: String,
         existingTool: AppletManifest? = nil,
         provider: AIProvider? = nil,
-        timeout: TimeInterval = AIProviderService.defaultGenerationTimeout,
         onLog: @escaping @MainActor (ProviderLogLine.Stream, String) -> Void
     ) async throws -> AppletManifest {
+        generationCancellationRequested = false
         let chosen = provider ?? selectedProvider
         guard case .ready(let installation) = statuses[chosen] else {
             throw ProviderGenerationError.notReady(chosen)
@@ -247,7 +268,7 @@ final class AIProviderService: ObservableObject {
             throw ProviderGenerationError.emptyPrompt
         }
 
-        let env = await ShellEnvironment.loginEnvironment()
+        let env = await environmentLoader()
         let tempRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("BarTender-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
@@ -274,12 +295,16 @@ final class AIProviderService: ObservableObject {
         onLog(.system, "Launching: \(installation.executablePath)")
         onLog(.system, "Version: \(installation.version)")
         onLog(.system, "Args: \(invocation.arguments.joined(separator: " "))")
-        onLog(.system, "Timeout: \(Int(timeout))s")
         onLog(.system, existingTool.map { "Mode: Revising \($0.name) in place" } ?? "Mode: Creating a new tool")
         onLog(.system, "Prompt: \(trimmed)")
 
         let localRunner = ProcessRunner()
         generationRunner = localRunner
+
+        guard !generationCancellationRequested else {
+            generationRunner = nil
+            throw ProviderGenerationError.cancelled
+        }
 
         let task = Task<AppletManifest, Error> {
             let result = try await localRunner.run(
@@ -287,7 +312,6 @@ final class AIProviderService: ObservableObject {
                 arguments: invocation.arguments,
                 environment: env,
                 currentDirectory: invocation.currentDirectory,
-                timeout: timeout,
                 onStdout: { chunk in
                     Task { @MainActor in onLog(.stdout, chunk) }
                 },
@@ -299,10 +323,6 @@ final class AIProviderService: ObservableObject {
             if result.cancelled || Task.isCancelled {
                 throw ProviderGenerationError.cancelled
             }
-            if result.timedOut {
-                throw ProviderGenerationError.timedOut(timeout, chosen)
-            }
-
             let message = try Self.resolveMessage(
                 provider: chosen,
                 result: result,
@@ -321,8 +341,22 @@ final class AIProviderService: ObservableObject {
         defer {
             generationTask = nil
             generationRunner = nil
+            generationCancellationRequested = false
         }
-        return try await task.value
+        do {
+            let manifest = try await task.value
+            guard !generationCancellationRequested else {
+                throw ProviderGenerationError.cancelled
+            }
+            return manifest
+        } catch let error as ProviderGenerationError {
+            if case .authenticationExpired(let provider) = error {
+                statuses[provider] = .unavailable(.notAuthenticated(
+                    "The saved session expired or was revoked. \(provider.loginHint)"
+                ))
+            }
+            throw error
+        }
     }
 
     // MARK: - Probe
@@ -331,7 +365,7 @@ final class AIProviderService: ObservableObject {
         _ provider: AIProvider,
         environment: [String: String]
     ) async -> ProviderAvailability {
-        guard let path = ShellEnvironment.which(provider.executableName, environment: environment) else {
+        guard let path = executableResolver(provider.executableName, environment) else {
             AppLog.codex.error("\(provider.rawValue, privacy: .public) CLI not found on PATH")
             return .unavailable(.notFound)
         }
@@ -409,7 +443,7 @@ final class AIProviderService: ObservableObject {
             }
             let output = (result.stdout + "\n" + result.stderr)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            if result.exitCode != 0 || looksUnauthenticated(output) {
+            if result.exitCode != 0 || Self.looksUnauthenticated(output) {
                 return AuthProbe(ok: false, summary: output.isEmpty ? "Exit code \(result.exitCode)" : output)
             }
             return AuthProbe(ok: true, summary: output.isEmpty ? "Authenticated" : output)
@@ -438,16 +472,16 @@ final class AIProviderService: ObservableObject {
                 }
                 return AuthProbe(ok: false, summary: output.isEmpty ? "loggedIn=false" : output)
             }
-            if result.exitCode != 0 || looksUnauthenticated(output) {
+            if result.exitCode != 0 || Self.looksUnauthenticated(output) {
                 return AuthProbe(ok: false, summary: output.isEmpty ? "Exit code \(result.exitCode)" : output)
             }
             // Non-JSON but exit 0: treat as ready.
             return AuthProbe(ok: true, summary: output.isEmpty ? "Authenticated" : output)
 
         case .grok:
-            // No documented `login status` command. Use local auth cache presence only
-            // (do not read secret tokens into logs).
-            let authURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".grok/auth.json")
+            // Grok has no `login status` command. `grok models` is documented,
+            // non-generative, and forces an expired OAuth token refresh.
+            let authURL = homeDirectoryURL.appendingPathComponent(".grok/auth.json")
             guard FileManager.default.fileExists(atPath: authURL.path) else {
                 return AuthProbe(ok: false, summary: "Missing ~/.grok/auth.json — run `grok login`.")
             }
@@ -460,7 +494,21 @@ final class AIProviderService: ObservableObject {
             else {
                 return AuthProbe(ok: false, summary: "Auth file present but empty — run `grok login`.")
             }
-            return AuthProbe(ok: true, summary: "Credentials on disk (~/.grok/auth.json)")
+            let result = try await runner.run(
+                executable: path,
+                arguments: ["models"],
+                environment: env,
+                timeout: 20
+            )
+            if result.timedOut {
+                throw ProbeError.auth("Model/auth check timed out.")
+            }
+            let output = (result.stdout + "\n" + result.stderr)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if result.exitCode != 0 || Self.looksUnauthenticated(output) {
+                return AuthProbe(ok: false, summary: "Authentication expired or unavailable — run `grok login`.")
+            }
+            return AuthProbe(ok: true, summary: "Authenticated")
         }
     }
 
@@ -576,6 +624,9 @@ final class AIProviderService: ObservableObject {
         guard result.exitCode == 0 else {
             let combined = (result.stderr + "\n" + result.stdout)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            if looksUnauthenticated(combined) {
+                throw ProviderGenerationError.authenticationExpired(provider)
+            }
             let detail = combined.isEmpty
                 ? "No diagnostic output was produced. Verify the CLI is authenticated and the selected model is available."
                 : String(combined.suffix(1200))
@@ -606,12 +657,15 @@ final class AIProviderService: ObservableObject {
 
         let combined = (result.stdout + "\n" + result.stderr)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        if looksUnauthenticated(combined) {
+            throw ProviderGenerationError.authenticationExpired(provider)
+        }
         throw ProviderGenerationError.invalidResponse(
             "\(provider.displayName) finished without a usable JSON manifest.\n\(combined.suffix(1200))"
         )
     }
 
-    private func looksUnauthenticated(_ output: String) -> Bool {
+    private static func looksUnauthenticated(_ output: String) -> Bool {
         let lower = output.lowercased()
         let negativeSignals = [
             "not logged in",
@@ -625,13 +679,23 @@ final class AIProviderService: ObservableObject {
             "no auth",
             "unauthenticated",
             "missing credentials",
+            "failed to authenticate",
+            "token expired",
+            "token has been revoked",
+            "re-authentication required",
+            "refresh token rejected",
+            "invalid_grant",
             "\"loggedin\": false",
+            "\"loggedin\":false",
             "loggedin=false"
         ]
         if negativeSignals.contains(where: { lower.contains($0) }) {
             return true
         }
-        let positiveSignals = ["logged in", "authenticated", "chatgpt", "api key", "\"loggedin\": true"]
+        let positiveSignals = [
+            "logged in", "authenticated", "chatgpt", "api key",
+            "\"loggedin\": true", "\"loggedin\":true"
+        ]
         if positiveSignals.contains(where: { lower.contains($0) }) {
             return false
         }

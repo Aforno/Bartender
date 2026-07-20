@@ -103,6 +103,12 @@ final class ProcessAndProviderTests: XCTestCase {
         XCTAssertNil(ManifestGenerationSupport.extractMessagePayload(from: line))
     }
 
+    func testArbitraryProviderTextReturnsNilWithoutRecursion() {
+        XCTAssertNil(ManifestGenerationSupport.extractJSONObject(from: "not-json"))
+        XCTAssertNil(ManifestGenerationSupport.extractMessagePayload(from: "not-json"))
+        XCTAssertNil(ManifestGenerationSupport.extractMessagePayload(from: "progress\nstill working\ndone"))
+    }
+
     func testRevisionPromptIncludesSelectedToolAndCurrentSource() {
         let existing = AppletManifest(
             name: "Current Song",

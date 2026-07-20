@@ -2,6 +2,7 @@
 
 # Swift Package Manager
 /.build/
+/.build-release/
 /Packages/
 /.swiftpm/
 

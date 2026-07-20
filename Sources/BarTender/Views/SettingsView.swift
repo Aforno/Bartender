@@ -21,7 +21,7 @@ struct SettingsView: View {
                 }
                 .tag(SettingsTab.general)
         }
-        .frame(width: 520, height: 420)
+        .frame(minWidth: 480, idealWidth: 560, minHeight: 500, idealHeight: 640)
     }
 }
 
@@ -43,9 +43,7 @@ private struct ProviderSettingsPane: View {
                 ForEach(AIProvider.allCases) { provider in
                     Toggle(isOn: binding(for: provider)) {
                         HStack(spacing: 10) {
-                            Image(systemName: provider.systemImage)
-                                .foregroundStyle(.secondary)
-                                .frame(width: 18)
+                            ProviderIcon(provider: provider, size: 18)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(provider.displayName)
                                 Text(statusLine(for: provider))
@@ -55,6 +53,7 @@ private struct ProviderSettingsPane: View {
                             }
                         }
                     }
+                    .accessibilityIdentifier("provider-toggle.\(provider.rawValue)")
                 }
             } header: {
                 Text("Model providers")
@@ -85,7 +84,7 @@ private struct ProviderSettingsPane: View {
             }
         }
         .formStyle(.grouped)
-        .padding(.vertical, 8)
+        .padding(.vertical, PremiumStyle.space8)
     }
 
     private func binding(for provider: AIProvider) -> Binding<Bool> {
@@ -121,34 +120,12 @@ private struct AppSettingsPane: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Show inspector on launch", isOn: $preferences.showInspectorOnLaunch)
                 Toggle("Show model selector in composer", isOn: $preferences.showProviderInComposer)
                 Toggle("Confirm before deleting tools", isOn: $preferences.confirmBeforeDelete)
             } header: {
                 Text("Interface")
             } footer: {
-                Text("Inspector preference applies the next time you open Bar Tender. Composer controls update immediately.")
-            }
-
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Generation timeout")
-                        Spacer()
-                        Text("\(Int(preferences.generationTimeoutSeconds))s")
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                    Slider(
-                        value: $preferences.generationTimeoutSeconds,
-                        in: 30...600,
-                        step: 15
-                    )
-                }
-            } header: {
-                Text("Generation")
-            } footer: {
-                Text("How long Bar Tender waits for the local CLI (Codex, Claude, or Grok) before cancelling.")
+                Text("Composer controls update immediately.")
             }
 
             Section {
@@ -161,6 +138,15 @@ private struct AppSettingsPane: View {
 
                 Button("Reveal library in Finder") {
                     revealLibrary()
+                }
+
+                Button("Export Library…") {
+                    model.exportLibrary()
+                }
+                .disabled(store.applets.isEmpty)
+
+                Button("Import Library…") {
+                    model.importLibrary()
                 }
 
                 Button("Clear library…", role: .destructive) {
@@ -177,6 +163,9 @@ private struct AppSettingsPane: View {
             }
 
             Section {
+                Button("Enable Notifications…") {
+                    model.requestNotificationPermission()
+                }
                 Button("Open Notification Settings…") {
                     openNotificationSettings()
                 }
@@ -187,18 +176,54 @@ private struct AppSettingsPane: View {
             }
 
             Section {
+                LaunchAtLoginSetting(controller: model.launchAtLogin)
+                Text("Closing the window keeps Bar Tender and its tools running. Quitting Bar Tender stops every tool until the app starts again.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("Lifecycle")
+            }
+
+            Section {
+                UpdateSetting(service: model.updates)
+            } header: {
+                Text("Updates")
+            } footer: {
+                Text("Updates are checked only when you ask. Downloads come from the signed GitHub Releases page.")
+            }
+
+            Section {
+                Button("Provider Setup…") {
+                    model.showingProviderSetup = true
+                    NSApp.activate(ignoringOtherApps: true)
+                    NSApp.windows.first(where: \.canBecomeKey)?.makeKeyAndOrderFront(nil)
+                }
+                Button("Export Sanitized Diagnostics…") {
+                    model.exportDiagnostics()
+                }
+                Button("Support and Troubleshooting…") {
+                    openURL("https://github.com/Aforno/Bartender/issues")
+                }
+                Button("Privacy Information…") {
+                    openURL("https://github.com/Aforno/Bartender/blob/main/PRIVACY.md")
+                }
+            } header: {
+                Text("Support")
+            } footer: {
+                Text("Diagnostics exclude prompts, generated source, paths, credentials, provider output, and tool output.")
+            }
+
+            Section {
                 LabeledContent("App", value: "Bar Tender")
                 LabeledContent("Version", value: appVersion)
                 LabeledContent("Integration", value: "Local CLIs · Process")
-                Text("Each prompt produces a dedicated local executable. Generated source is shown for review and requires source-bound approval before it runs.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                GeneratedCodeTrustDisclosure(compact: true)
             } header: {
                 Text("About")
             }
         }
         .formStyle(.grouped)
-        .padding(.vertical, 8)
+        .padding(.vertical, PremiumStyle.space8)
         .alert("Clear library?", isPresented: $confirmClearLibrary) {
             Button("Cancel", role: .cancel) {}
             Button("Clear All", role: .destructive) {
@@ -211,8 +236,8 @@ private struct AppSettingsPane: View {
 
     private var appVersion: String {
         let info = Bundle.main.infoDictionary
-        let short = info?["CFBundleShortVersionString"] as? String ?? "0.1.0"
-        let build = info?["CFBundleVersion"] as? String ?? "1"
+        let short = info?["CFBundleShortVersionString"] as? String ?? "Development"
+        let build = info?["CFBundleVersion"] as? String ?? "local"
         return "\(short) (\(build))"
     }
 
@@ -232,6 +257,53 @@ private struct AppSettingsPane: View {
             NSWorkspace.shared.open(url)
         } else if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
             NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func openURL(_ value: String) {
+        guard let url = URL(string: value) else { return }
+        NSWorkspace.shared.open(url)
+    }
+}
+
+private struct LaunchAtLoginSetting: View {
+    @ObservedObject var controller: LaunchAtLoginController
+
+    var body: some View {
+        Toggle("Launch Bar Tender at login", isOn: Binding(
+            get: { controller.isEnabled },
+            set: { controller.setEnabled($0) }
+        ))
+        .accessibilityIdentifier("launch-at-login")
+
+        if let message = controller.statusMessage {
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.orange)
+        }
+    }
+}
+
+private struct UpdateSetting: View {
+    @ObservedObject var service: UpdateService
+
+    var body: some View {
+        Button(service.state == .checking ? "Checking…" : "Check for Updates…") {
+            Task { await service.check() }
+        }
+        .disabled(service.state == .checking)
+        .accessibilityIdentifier("check-for-updates")
+
+        if let status = service.statusText {
+            Text(status)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
+        if let url = service.availableReleaseURL {
+            Button("Open Download Page…") {
+                NSWorkspace.shared.open(url)
+            }
         }
     }
 }

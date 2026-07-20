@@ -28,7 +28,7 @@ struct AppletManifest: Identifiable, Codable, Equatable, Sendable, Hashable {
         sourcePrompt: String = "",
         config: AppletConfig,
         notifyOnComplete: Bool = false,
-        notifyOnFailure: Bool = true
+        notifyOnFailure: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -225,7 +225,7 @@ enum ManifestValidator {
             sourcePrompt: trimmed(sourcePrompt),
             config: draft.config,
             notifyOnComplete: draft.notifyOnComplete ?? (draft.kind == .timer || draft.kind == .countdown),
-            notifyOnFailure: draft.notifyOnFailure ?? true
+            notifyOnFailure: draft.notifyOnFailure ?? false
         )
     }
 
@@ -437,8 +437,7 @@ extension AppletManifest {
                 kind: .timer,
                 titleTemplate: "⏱ {{remaining}}",
                 sourcePrompt: "Create a 25-minute focus timer.",
-                config: AppletConfig(durationSeconds: 25 * 60, autoRestart: false),
-                notifyOnComplete: true
+                config: AppletConfig(durationSeconds: 25 * 60, autoRestart: false)
             ),
             AppletManifest(
                 name: "Port 3000",
@@ -447,8 +446,7 @@ extension AppletManifest {
                 titleTemplate: ":{{port}} {{status}}",
                 refreshIntervalSeconds: 5,
                 sourcePrompt: "Watch localhost port 3000 and notify me when it goes offline.",
-                config: AppletConfig(timeoutSeconds: 2, host: "127.0.0.1", port: 3000),
-                notifyOnFailure: true
+                config: AppletConfig(timeoutSeconds: 2, host: "127.0.0.1", port: 3000)
             ),
             AppletManifest(
                 name: "System Load",

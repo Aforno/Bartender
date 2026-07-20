@@ -2,7 +2,7 @@
 
 A native macOS app that turns natural-language descriptions into live menu bar applets.
 
-> **Project status:** Bar Tender is pre-release open-source software. It is suitable for development and local evaluation, but downloadable signed and notarized releases are not available yet.
+> **Project status:** Bar Tender 1.0 is release-ready open-source software. Tagged releases are built as universal macOS apps, signed with Developer ID, notarized, stapled, and published as ZIP and DMG assets when the repository's release credentials are configured.
 
 Bar Tender uses an already installed and authenticated **Codex, Claude, or Grok CLI** on your Mac. It does **not** ask for API keys. Each prompt produces a dedicated, reviewable zsh tool artifact that becomes its own live menu bar item.
 
@@ -63,12 +63,28 @@ Optional:
 
 The script creates a development app bundle at `dist/BarTender.app`. It is not a signed release artifact.
 
+## Install a release
+
+Download the latest DMG from [GitHub Releases](https://github.com/Aforno/Bartender/releases), verify it against `SHA256SUMS.txt`, open the DMG, and drag **BarTender** to **Applications**. Release artifacts are universal binaries for Apple silicon and Intel Macs and require macOS 14 or newer.
+
+Bar Tender checks for updates only when you choose **Check for Updates** in Settings. When a newer GitHub release exists, it opens that release for a user-controlled download and install; it never replaces the app silently.
+
 ## Test
 
 ```bash
 swift test
 swift build -c release
 ```
+
+To exercise the complete local packaging path with an ad-hoc signature:
+
+```bash
+./script/package_release.sh --adhoc --skip-notarization --arch universal
+./script/verify_release.sh --app dist/release/BarTender.app --dmg dist/release/BarTender-1.0.0.dmg
+./script/install_smoke_test.sh dist/release/BarTender-1.0.0.dmg
+```
+
+Developer ID signing and notarization are intentionally mandatory for distribution builds. See [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Provider integration (CLI-only)
 
@@ -83,7 +99,7 @@ Documented print mode: `claude -p --output-format json --json-schema … --tools
 ### Grok
 Documented single-turn mode: `grok --single … --json-schema … --output-format json --permission-mode dontAsk --tools "" --max-turns 2`
 
-All runs go through `Process` with stdout/stderr capture, cancellation, and a timeout. Auth is never requested as an API key inside the app.
+All runs go through `Process` with stdout/stderr capture and cancellation. Generation has no time limit and continues until the provider finishes or the user cancels it. Auth is never requested as an API key inside the app.
 
 Saved applets are normalized and validated again before startup. Invalid entries are skipped and copied to a recovery sidecar instead of being executed or causing the valid library to disappear.
 
@@ -95,6 +111,8 @@ Saved applets are normalized and validated again before startup. Invalid entries
 - Inspector for settings (including shell approval)
 - Library of saved applets
 - One live AppKit status item per enabled tool, created as soon as generation succeeds, plus a SwiftUI manager `MenuBarExtra`
+- Launch at login, library export/import, provider setup, sanitized diagnostics export, and user-initiated update checks in Settings
+- Explicit close-versus-quit wording: closing the window leaves enabled menu bar tools running; **Quit and Stop Tools** ends them
 
 ## Project layout
 
@@ -108,6 +126,8 @@ Sources/BarTender/
   Support/       # Logging, title rendering
   Resources/     # Shared JSON Schema for provider structured output
 script/build_and_run.sh
+script/package_release.sh
+Packaging/      # Info.plist, entitlements, and app icon asset catalog
 .codex/environments/environment.toml
 ```
 
@@ -116,6 +136,8 @@ Early interface explorations are preserved in [docs/design-concepts.html](docs/d
 ## Security
 
 Generated tools are local zsh executables. They remain inert until you review and approve their exact source and working directory; any edit revokes that approval. Approved code runs with Bar Tender's local process permissions and is not contained by a security sandbox. See [SECURITY.md](SECURITY.md) for the trust model and private vulnerability reporting guidance.
+
+See [PRIVACY.md](PRIVACY.md) for local data and network behavior, [SUPPORT.md](SUPPORT.md) for support routes, [CHANGELOG.md](CHANGELOG.md) for version history, and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for provider icon attribution and trademark notices.
 
 ## Contributing
 

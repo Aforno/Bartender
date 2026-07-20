@@ -58,31 +58,28 @@ actor ProcessRunner {
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
         process.standardInput = FileHandle.nullDevice
-
-        let stdoutData = LockedData()
-        let stderrData = LockedData()
-
-        stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
-            let chunk = handle.availableData
-            guard !chunk.isEmpty else { return }
-            stdoutData.append(chunk)
-            if let onStdout, let text = String(data: chunk, encoding: .utf8) {
-                onStdout(text)
-            }
-        }
-        stderrPipe.fileHandleForReading.readabilityHandler = { handle in
-            let chunk = handle.availableData
-            guard !chunk.isEmpty else { return }
-            stderrData.append(chunk)
-            if let onStderr, let text = String(data: chunk, encoding: .utf8) {
-                onStderr(text)
-            }
+        let terminationWaiter = ProcessTerminationWaiter()
+        process.terminationHandler = { _ in
+            terminationWaiter.signal()
         }
 
         do {
             try process.run()
         } catch {
             throw ProcessRunnerError.launchFailed(error.localizedDescription)
+        }
+        // The child owns duplicated write descriptors after launch. Closing the
+        // parent's copies lets the readers observe EOF when the child exits.
+        try? stdoutPipe.fileHandleForWriting.close()
+        try? stderrPipe.fileHandleForWriting.close()
+
+        // Dedicated blocking readers avoid racing FileHandle readability callbacks
+        // against teardown and still drain stdout/stderr concurrently.
+        let stdoutTask = Task.detached(priority: .utility) {
+            collectProcessOutput(from: stdoutPipe.fileHandleForReading, onChunk: onStdout)
+        }
+        let stderrTask = Task.detached(priority: .utility) {
+            collectProcessOutput(from: stderrPipe.fileHandleForReading, onChunk: onStderr)
         }
 
         let invocationID = UUID()
@@ -113,39 +110,17 @@ actor ProcessRunner {
         }
 
         await withTaskCancellationHandler {
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                process.terminationHandler = { _ in
-                    continuation.resume()
-                }
-            }
+            await terminationWaiter.wait()
         } onCancel: {
             cancelledFlag.set()
             process.terminate()
         }
 
         timeoutTask?.cancel()
-        stdoutPipe.fileHandleForReading.readabilityHandler = nil
-        stderrPipe.fileHandleForReading.readabilityHandler = nil
         activeProcesses.removeValue(forKey: invocationID)
 
-        // Drain remaining bytes.
-        let remainingOut = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-        let remainingErr = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-        if !remainingOut.isEmpty {
-            stdoutData.append(remainingOut)
-            if let onStdout, let text = String(data: remainingOut, encoding: .utf8) {
-                onStdout(text)
-            }
-        }
-        if !remainingErr.isEmpty {
-            stderrData.append(remainingErr)
-            if let onStderr, let text = String(data: remainingErr, encoding: .utf8) {
-                onStderr(text)
-            }
-        }
-
-        let stdout = String(data: stdoutData.data, encoding: .utf8) ?? ""
-        let stderr = String(data: stderrData.data, encoding: .utf8) ?? ""
+        let stdout = String(data: await stdoutTask.value, encoding: .utf8) ?? ""
+        let stderr = String(data: await stderrTask.value, encoding: .utf8) ?? ""
 
         return ProcessResult(
             exitCode: process.terminationStatus,
@@ -164,21 +139,51 @@ actor ProcessRunner {
     }
 }
 
-private final class LockedData: @unchecked Sendable {
+private final class ProcessTerminationWaiter: @unchecked Sendable {
     private let lock = NSLock()
-    private var storage = Data()
+    private var finished = false
+    private var continuation: CheckedContinuation<Void, Never>?
 
-    var data: Data {
+    func signal() {
         lock.lock()
-        defer { lock.unlock() }
-        return storage
-    }
-
-    func append(_ chunk: Data) {
-        lock.lock()
-        storage.append(chunk)
+        finished = true
+        let waiting = continuation
+        continuation = nil
         lock.unlock()
+        waiting?.resume()
     }
+
+    func wait() async {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            if finished {
+                lock.unlock()
+                continuation.resume()
+            } else {
+                self.continuation = continuation
+                lock.unlock()
+            }
+        }
+    }
+}
+
+private func collectProcessOutput(
+    from handle: FileHandle,
+    onChunk: (@Sendable (String) -> Void)?
+) -> Data {
+    var collected = Data()
+    do {
+        while let chunk = try handle.read(upToCount: 64 * 1024), !chunk.isEmpty {
+            collected.append(chunk)
+            if let onChunk, let text = String(data: chunk, encoding: .utf8) {
+                onChunk(text)
+            }
+        }
+    } catch {
+        // A closed pipe after process termination is equivalent to EOF. The
+        // process result still carries its exit status and any captured bytes.
+    }
+    return collected
 }
 
 private final class LockedFlag: @unchecked Sendable {

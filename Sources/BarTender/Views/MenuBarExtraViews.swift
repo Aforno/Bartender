@@ -6,6 +6,7 @@ struct MenuBarManagerMenu: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var providers: AIProviderService
     @EnvironmentObject private var preferences: AppPreferences
+    @Environment(\.openWindow) private var openWindow
 
     @State private var promptText = ""
 
@@ -17,37 +18,100 @@ struct MenuBarManagerMenu: View {
     ]
 
     var body: some View {
-        ChatComposerBar(
-            text: $promptText,
-            placeholder: "Generate a menu bar tool…",
-            canSend: canCreate,
-            isBusy: model.generation?.phase.isActive == true,
-            compact: true,
-            lineLimit: 1...4,
-            onSend: {
-                Task { await createFromMenuBar() }
-            },
-            onPlus: {
-                if promptText.isEmpty, let first = suggestions.first {
-                    promptText = first
+        VStack(alignment: .leading, spacing: PremiumStyle.space8) {
+            ChatComposerBar(
+                text: $promptText,
+                placeholder: "Generate a menu bar tool…",
+                canSend: canCreate,
+                isBusy: model.generation?.phase.isActive == true,
+                compact: true,
+                lineLimit: 1...4,
+                onSend: {
+                    Task { await createFromMenuBar() }
+                },
+                onPlus: {
+                    if promptText.isEmpty, let first = suggestions.first {
+                        promptText = first
+                    }
+                },
+                onCancel: {
+                    model.cancelGeneration()
                 }
-            },
-            onCancel: {
-                model.cancelGeneration()
+            ) {
+                if preferences.showProviderInComposer {
+                    ModelSelector(
+                        isBusy: model.generation?.phase.isActive == true
+                    )
+                }
             }
-        ) {
-            if preferences.showProviderInComposer {
-                ModelSelector(
-                    isBusy: model.generation?.phase.isActive == true
-                )
+
+            if !model.enabledApplets.isEmpty {
+                Divider()
+                Text("Running tools")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(model.enabledApplets) { applet in
+                            Button {
+                                open(applet)
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: applet.iconSystemName)
+                                        .frame(width: 16)
+                                    Text(applet.name)
+                                        .lineLimit(1)
+                                    Spacer()
+                                    Text(model.runtime.snapshots[applet.id]?.title ?? "Waiting")
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("manager-tool.\(applet.id.uuidString)")
+                        }
+                    }
+                }
+                .frame(maxHeight: 210)
             }
+
+            Divider()
+            HStack {
+                Button("Open Bar Tender", action: openMainWindow)
+                Button("Provider Setup…") {
+                    model.showingProviderSetup = true
+                    openMainWindow()
+                }
+                Spacer()
+                Button("Quit and Stop Tools") {
+                    NSApp.terminate(nil)
+                }
+            }
+            .font(.caption)
+
+            Text("Closing the window keeps tools running; quitting stops them.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, PremiumStyle.space12)
+        .padding(.vertical, PremiumStyle.space8)
         .frame(width: 360)
         .onAppear {
             AppLog.menuBar.info("Opened Bar Tender menu bar panel")
         }
+    }
+
+    private func open(_ applet: AppletManifest) {
+        model.selection = applet.id
+        openMainWindow()
+    }
+
+    private func openMainWindow() {
+        openWindow(id: "main")
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first(where: \.canBecomeKey)?.makeKeyAndOrderFront(nil)
     }
 
     // MARK: - Actions

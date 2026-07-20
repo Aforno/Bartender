@@ -99,7 +99,7 @@ enum GeneratedToolRunner {
             )
         }
 
-        let environment = await ShellEnvironment.loginEnvironment()
+        let environment = await ShellEnvironment.generatedToolEnvironment()
         let workingDirectory = manifest.config.workingDirectory.map {
             ($0 as NSString).expandingTildeInPath
         }

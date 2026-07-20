@@ -30,9 +30,10 @@ struct ProviderPicker: View {
                             }
                         }
                     } icon: {
-                        Image(systemName: provider.systemImage)
+                        ProviderIcon(provider: provider, size: 16)
                     }
                     .tag(provider)
+                    .accessibilityIdentifier("provider-option.\(provider.rawValue)")
                     .disabled(!providers.status(for: provider).isReady && providers.anyProviderReady)
                 }
             }
@@ -43,7 +44,11 @@ struct ProviderPicker: View {
         case .segmented:
             Picker("Provider", selection: $providers.selectedProvider) {
                 ForEach(AIProvider.allCases) { provider in
-                    Text(provider.displayName)
+                    Label {
+                        Text(provider.displayName)
+                    } icon: {
+                        ProviderIcon(provider: provider, size: 14)
+                    }
                         .tag(provider)
                         .disabled(!providers.status(for: provider).isReady && providers.anyProviderReady)
                 }
@@ -78,10 +83,12 @@ private struct ProviderChip: View {
     let selected: Bool
     let action: () -> Void
     @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 5) {
+                ProviderIcon(provider: provider, size: 14)
                 Circle()
                     .fill(ready ? Color.green : Color.orange.opacity(0.8))
                     .frame(width: 6, height: 6)
@@ -93,20 +100,23 @@ private struct ProviderChip: View {
             .padding(.vertical, 4)
             .background(
                 selected
-                    ? Color.accentColor.opacity(0.12)
+                    ? PremiumStyle.brand.opacity(0.14)
                     : Color.primary.opacity(hovering ? 0.07 : 0.035),
                 in: RoundedRectangle(cornerRadius: 6, style: .continuous)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .strokeBorder(
-                        selected ? Color.accentColor.opacity(0.35) : (hovering ? PremiumStyle.chromeStroke : Color.clear),
+                        selected ? PremiumStyle.brand.opacity(0.40) : (hovering ? PremiumStyle.chromeStroke : Color.clear),
                         lineWidth: 1
                     )
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(provider.displayName)
+        .accessibilityValue(ready ? "Ready" : "Unavailable")
+        .accessibilityIdentifier("provider-option.\(provider.rawValue)")
         .onHover { hovering = $0 }
-        .animation(.snappy(duration: 0.12), value: hovering)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.12), value: hovering)
     }
 }

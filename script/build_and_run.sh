@@ -3,7 +3,7 @@ set -euo pipefail
 
 MODE="${1:-run}"
 APP_NAME="BarTender"
-BUNDLE_ID="com.bartender.app"
+BUNDLE_ID="io.github.aforno.bartender"
 MIN_SYSTEM_VERSION="14.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -13,59 +13,47 @@ APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
+APP_RESOURCES="$APP_CONTENTS/Resources"
+VERSION="$(tr -d '[:space:]' < "$ROOT_DIR/VERSION")"
+BUILD_NUMBER="$(tr -d '[:space:]' < "$ROOT_DIR/BUILD_NUMBER")"
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
 cd "$ROOT_DIR"
-swift build
-BUILD_BINARY="$(swift build --show-bin-path)/$APP_NAME"
+swift build -c debug
+BUILD_DIR="$(swift build -c debug --show-bin-path)"
+BUILD_BINARY="$BUILD_DIR/$APP_NAME"
 
 rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_MACOS"
+mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
 
-# Copy SwiftPM resource bundle if present (schema JSON, etc.).
-BUILD_DIR="$(swift build --show-bin-path)"
-if compgen -G "$BUILD_DIR/${APP_NAME}_*.bundle" > /dev/null; then
-  for bundle in "$BUILD_DIR"/${APP_NAME}_*.bundle; do
-    cp -R "$bundle" "$APP_CONTENTS/"
-  done
-fi
-if compgen -G "$BUILD_DIR/${APP_NAME}.bundle" > /dev/null; then
-  cp -R "$BUILD_DIR/${APP_NAME}.bundle" "$APP_CONTENTS/"
-fi
+RESOURCE_BUNDLE="$BUILD_DIR/${APP_NAME}_${APP_NAME}.bundle"
+[[ -d "$RESOURCE_BUNDLE" ]] || { printf 'Missing SwiftPM resource bundle: %s\n' "$RESOURCE_BUNDLE" >&2; exit 1; }
+cp -R "$RESOURCE_BUNDLE" "$APP_RESOURCES/"
 
-cat >"$INFO_PLIST" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleExecutable</key>
-  <string>$APP_NAME</string>
-  <key>CFBundleIdentifier</key>
-  <string>$BUNDLE_ID</string>
-  <key>CFBundleName</key>
-  <string>Bar Tender</string>
-  <key>CFBundleDisplayName</key>
-  <string>Bar Tender</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
-  <key>CFBundleVersion</key>
-  <string>1</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>$MIN_SYSTEM_VERSION</string>
-  <key>NSPrincipalClass</key>
-  <string>NSApplication</string>
-  <key>NSHighResolutionCapable</key>
-  <true/>
-  <key>LSUIElement</key>
-  <false/>
-</dict>
-</plist>
-PLIST
+cp "$ROOT_DIR/Packaging/Info.plist" "$INFO_PLIST"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$INFO_PLIST"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$INFO_PLIST"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$INFO_PLIST"
+
+PARTIAL_PLIST="$DIST_DIR/assetcatalog.plist"
+xcrun actool "$ROOT_DIR/Packaging/Assets.xcassets" \
+  --compile "$APP_RESOURCES" \
+  --platform macosx \
+  --minimum-deployment-target "$MIN_SYSTEM_VERSION" \
+  --target-device mac \
+  --app-icon AppIcon \
+  --development-region en \
+  --output-partial-info-plist "$PARTIAL_PLIST" \
+  --warnings --notices >/dev/null
+/usr/libexec/PlistBuddy -c "Merge $PARTIAL_PLIST" "$INFO_PLIST"
+
+# Seal the assembled development bundle so resource changes cannot leave it in
+# the invalid partially-signed state that Gatekeeper and Launch Services reject.
+/usr/bin/codesign --force --sign - --timestamp=none "$APP_BUNDLE"
+/usr/bin/codesign --verify --deep --strict "$APP_BUNDLE"
 
 open_app() {
   /usr/bin/open -n "$APP_BUNDLE"

@@ -1,0 +1,17 @@
+{
+  "chatgpt": {
+    "file": "Sources/BarTender/Resources/ProviderIcons/chatgpt.png",
+    "sha256": "30d82681b4a3395945c23f842a2550f32c999b293de7d2770caf6c39119fb5f5",
+    "source": "https://commons.wikimedia.org/wiki/Special:Redirect/file/OpenAI_logo_2025_(symbol).svg?width=500"
+  },
+  "claude": {
+    "file": "Sources/BarTender/Resources/ProviderIcons/claude.png",
+    "sha256": "dcc58271920750441afd420268045addb593ee01e68b4e05a13f7eface7e65d3",
+    "source": "https://claude.ai/apple-touch-icon.png"
+  },
+  "grok": {
+    "file": "Sources/BarTender/Resources/ProviderIcons/grok.png",
+    "sha256": "3a462c3c2524733c173bb05c431de737812f8219db8fa115b0025d12a347e086",
+    "source": "https://grok.com/images/android-chrome-512x512.png"
+  }
+}

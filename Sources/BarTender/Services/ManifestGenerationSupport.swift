@@ -2,8 +2,6 @@ import Foundation
 
 /// Shared prompt, schema, and JSON decoding helpers for all CLI providers.
 enum ManifestGenerationSupport {
-    nonisolated static let defaultTimeout: TimeInterval = 180
-
     static func buildPrompt(
         userRequest: String,
         existingTool: AppletManifest? = nil
@@ -107,7 +105,7 @@ enum ManifestGenerationSupport {
     }
 
     static func schemaJSONString() throws -> String {
-        guard let bundled = Bundle.module.url(forResource: "applet-manifest", withExtension: "schema.json") else {
+        guard let bundled = AppResources.bundle.url(forResource: "applet-manifest", withExtension: "schema.json") else {
             throw ProviderGenerationError.invalidResponse("The bundled applet manifest schema is missing.")
         }
         let data = try Data(contentsOf: bundled)
@@ -283,11 +281,6 @@ enum ManifestGenerationSupport {
             }
         }
 
-        for line in text.split(whereSeparator: \.isNewline).map(String.init).reversed() {
-            if let obj = extractJSONObject(from: line), obj.contains("\"kind\"") {
-                return obj
-            }
-        }
         return nil
     }
 }

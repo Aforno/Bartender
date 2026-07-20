@@ -51,7 +51,7 @@
     },
     "notifyOnFailure": {
       "type": "boolean",
-      "default": true
+      "default": false
     },
     "config": {
       "type": "object",

@@ -21,7 +21,7 @@ struct CodexLogView: View {
             if !session.logs.isEmpty {
                 DisclosureGroup(isExpanded: $showTechnicalDetails) {
                     technicalLog
-                        .padding(.top, 8)
+                        .padding(.top, PremiumStyle.space8)
                 } label: {
                     HStack(spacing: 5) {
                         Text("Technical details")
@@ -86,13 +86,10 @@ struct CodexLogView: View {
                     }
                 }
             }
-            .padding(12)
+            .padding(PremiumStyle.space12)
         }
         .frame(minHeight: 100, maxHeight: 220)
-        .background(
-            PremiumStyle.surfaceFill,
-            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-        )
+        .borderedContainer(cornerRadius: PremiumStyle.chipRadius)
     }
 
     private func sourceLineCount(_ manifest: AppletManifest) -> Int {
@@ -114,7 +111,7 @@ struct CodexLogView: View {
         switch stream {
         case .stdout: return .secondary
         case .stderr: return .orange
-        case .system: return .accentColor
+        case .system: return PremiumStyle.brand
         }
     }
 }

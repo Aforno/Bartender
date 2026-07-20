@@ -3,7 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var providers: AIProviderService
-    @Environment(\.openSettings) private var openSettings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -16,7 +16,12 @@ struct ContentView: View {
                 .environmentObject(providers)
             }
         }
-        .frame(minWidth: 980, minHeight: 640)
+        .frame(minWidth: 720, minHeight: 500)
+        .sheet(isPresented: $model.showingProviderSetup) {
+            ProviderSetupSheet()
+                .environmentObject(model)
+                .environmentObject(providers)
+        }
     }
 
     private var isStillChecking: Bool {
@@ -31,50 +36,41 @@ struct ContentView: View {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 200, ideal: 224, max: 280)
         } detail: {
-            DetailView()
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    ComposerView()
-                }
-                .inspector(isPresented: $model.showInspector) {
-                    InspectorView()
-                        .inspectorColumnWidth(min: 280, ideal: 320, max: 420)
-                }
-        }
-        .navigationSplitViewStyle(.balanced)
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    model.beginNewTool()
-                } label: {
-                    Label("New Tool", systemImage: "plus")
-                }
-                .help("Open a blank page to build a new menu bar tool (⌘N)")
-                .disabled(model.generation?.phase.isActive == true)
-
-                Toggle(isOn: $model.showInspector) {
-                    Label("Inspector", systemImage: "sidebar.trailing")
-                }
-                .toggleStyle(.button)
-                .help("Show or hide the inspector")
-
-                Button {
-                    openSettings()
-                } label: {
-                    Label("Settings", systemImage: "gearshape")
-                }
-                .help("Open settings")
+            VStack(spacing: 0) {
+                DetailView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ComposerView()
+                    .background(PremiumStyle.canvas)
             }
         }
+        .navigationSplitViewStyle(.balanced)
         .overlay(alignment: .top) {
             if let banner = model.bannerMessage {
                 BannerView(text: banner) {
                     model.bannerMessage = nil
                 }
-                .padding(.top, 8)
+                .padding(.top, PremiumStyle.space8)
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .animation(.snappy, value: model.bannerMessage)
+        .animation(reduceMotion ? nil : .snappy, value: model.bannerMessage)
+    }
+}
+
+private struct ProviderSetupSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        SetupErrorView {
+            Task { await model.refreshProviders() }
+        }
+        .overlay(alignment: .topTrailing) {
+            Button("Done") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+                .padding(PremiumStyle.space16)
+        }
+        .frame(minWidth: 680, minHeight: 560)
     }
 }
 
@@ -86,7 +82,7 @@ private struct BannerView: View {
         HStack(spacing: 10) {
             Image(systemName: "info.circle.fill")
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(PremiumStyle.brand)
             Text(text)
                 .font(.callout)
                 .lineLimit(2)
@@ -102,16 +98,18 @@ private struct BannerView: View {
             }
             .buttonStyle(.plain)
             .help("Dismiss")
+            .accessibilityLabel("Dismiss message")
+            .accessibilityIdentifier("dismiss-banner")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, PremiumStyle.space16)
+        .padding(.vertical, PremiumStyle.space12)
+        .background(PremiumStyle.fieldFill, in: RoundedRectangle(cornerRadius: PremiumStyle.cardRadius, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: PremiumStyle.cardRadius, style: .continuous)
                 .strokeBorder(PremiumStyle.cardStroke, lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.10), radius: 12, y: 3)
-        .padding(.horizontal, 20)
+        .padding(.horizontal, PremiumStyle.space20)
         .frame(maxWidth: 560)
     }
 }

@@ -2,7 +2,7 @@ import Foundation
 import OSLog
 
 enum AppLog {
-    static let subsystem = Bundle.main.bundleIdentifier ?? "com.bartender.app"
+    static let subsystem = Bundle.main.bundleIdentifier ?? "io.github.aforno.bartender"
 
     static let app = Logger(subsystem: subsystem, category: "App")
     static let codex = Logger(subsystem: subsystem, category: "Codex")

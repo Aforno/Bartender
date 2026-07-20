@@ -70,6 +70,49 @@ final class ShellApprovalStoreTests: XCTestCase {
         XCTAssertFalse(store.isApproved(edited))
     }
 
+    func testCreateReviewApproveRunReviseRevokeAndReapprove() async throws {
+        let defaults = makeDefaults()
+        let approvals = ShellApprovalStore(defaults: defaults, storageKey: "lifecycle-approvals")
+        let artifacts = GeneratedToolArtifactStore(rootURL: temporaryDirectory())
+        var manifest = generatedManifest(title: "Original")
+
+        let review = await GeneratedToolRunner.run(
+            manifest: manifest,
+            approved: approvals.isApproved(manifest),
+            artifactStore: artifacts
+        )
+        XCTAssertFalse(review.approved)
+        XCTAssertNil(review.output)
+
+        approvals.setApproved(true, for: manifest)
+        let firstRun = await GeneratedToolRunner.run(
+            manifest: manifest,
+            approved: approvals.isApproved(manifest),
+            artifactStore: artifacts
+        )
+        XCTAssertEqual(firstRun.output?.title, "Original", firstRun.message)
+
+        manifest.config.generatedSource = generatedManifest(title: "Revised").config.generatedSource
+        XCTAssertFalse(approvals.isApproved(manifest), "Editing source must revoke the prior fingerprint")
+        let revisedReview = await GeneratedToolRunner.run(
+            manifest: manifest,
+            approved: approvals.isApproved(manifest),
+            artifactStore: artifacts
+        )
+        XCTAssertFalse(revisedReview.approved)
+        XCTAssertNil(revisedReview.output)
+
+        approvals.revoke(id: manifest.id)
+        XCTAssertFalse(approvals.isApproved(manifest))
+        approvals.setApproved(true, for: manifest)
+        let revisedRun = await GeneratedToolRunner.run(
+            manifest: manifest,
+            approved: approvals.isApproved(manifest),
+            artifactStore: artifacts
+        )
+        XCTAssertEqual(revisedRun.output?.title, "Revised", revisedRun.message)
+    }
+
     private func shellManifest(command: String, directory: String?) -> AppletManifest {
         AppletManifest(
             name: "Shell",
@@ -86,5 +129,24 @@ final class ShellApprovalStoreTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
         return defaults
+    }
+
+    private func generatedManifest(title: String) -> AppletManifest {
+        let payload = #"{"title":"\#(title)","status":"OK","details":[],"healthy":true,"values":{"value":"OK"}}"#
+        return AppletManifest(
+            name: title,
+            iconSystemName: "wand.and.sparkles",
+            kind: .generatedTool,
+            titleTemplate: "{{value}}",
+            config: AppletConfig(
+                timeoutSeconds: 5,
+                generatedSource: "#!/bin/zsh\nprintf '%s\\n' '\(payload)'"
+            )
+        )
+    }
+
+    private func temporaryDirectory() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("BarTender-ApprovalLifecycle-\(UUID().uuidString)", isDirectory: true)
     }
 }

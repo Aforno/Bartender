@@ -6,14 +6,23 @@ enum ModelCatalog {
     /// Models available for a provider. Ready providers get cache-backed lists;
     /// others still receive fallbacks so the UI can show options when possible.
     static func models(for provider: AIProvider) -> [AIModelOption] {
+        models(
+            for: provider,
+            homeDirectoryURL: URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        )
+    }
+
+    /// Injectable home directory keeps cache/config compatibility covered by
+    /// deterministic tests as provider CLIs evolve their local schemas.
+    static func models(for provider: AIProvider, homeDirectoryURL: URL) -> [AIModelOption] {
         let discovered: [AIModelOption]
         switch provider {
         case .grok:
-            discovered = readGrokModels()
+            discovered = readGrokModels(homeDirectoryURL: homeDirectoryURL)
         case .codex:
-            discovered = readCodexModels()
+            discovered = readCodexModels(homeDirectoryURL: homeDirectoryURL)
         case .claude:
-            discovered = readClaudeModels()
+            discovered = readClaudeModels(homeDirectoryURL: homeDirectoryURL)
         }
 
         if discovered.isEmpty {
@@ -29,8 +38,8 @@ enum ModelCatalog {
 
     // MARK: - Grok (`~/.grok/models_cache.json` or `grok models` text)
 
-    private static func readGrokModels() -> [AIModelOption] {
-        let url = homeURL(".grok/models_cache.json")
+    private static func readGrokModels(homeDirectoryURL: URL) -> [AIModelOption] {
+        let url = homeURL(".grok/models_cache.json", in: homeDirectoryURL)
         guard
             let data = try? Data(contentsOf: url),
             let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -61,7 +70,7 @@ enum ModelCatalog {
         }
 
         // Mark default from cache / config if present.
-        if let defaultID = readGrokDefaultModelID() {
+        if let defaultID = readGrokDefaultModelID(homeDirectoryURL: homeDirectoryURL) {
             options = options.map {
                 var copy = $0
                 copy.isDefault = ($0.modelID == defaultID)
@@ -80,9 +89,12 @@ enum ModelCatalog {
         return options.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
 
-    private static func readGrokDefaultModelID() -> String? {
+    private static func readGrokDefaultModelID(homeDirectoryURL: URL) -> String? {
         // Prefer config.toml [models] default = "…"
-        if let config = try? String(contentsOf: homeURL(".grok/config.toml"), encoding: .utf8) {
+        if let config = try? String(
+            contentsOf: homeURL(".grok/config.toml", in: homeDirectoryURL),
+            encoding: .utf8
+        ) {
             if let match = config.range(of: #"(?m)^\s*default\s*=\s*"([^"]+)""#, options: .regularExpression) {
                 let line = String(config[match])
                 if let q1 = line.firstIndex(of: "\""),
@@ -98,14 +110,14 @@ enum ModelCatalog {
 
     // MARK: - Codex (`~/.codex/models_cache.json`)
 
-    private static func readCodexModels() -> [AIModelOption] {
-        let url = homeURL(".codex/models_cache.json")
+    private static func readCodexModels(homeDirectoryURL: URL) -> [AIModelOption] {
+        let url = homeURL(".codex/models_cache.json", in: homeDirectoryURL)
         guard
             let data = try? Data(contentsOf: url),
             let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let models = root["models"] as? [[String: Any]]
         else {
-            return codexConfigDefault().map { [$0] } ?? []
+            return codexConfigDefault(homeDirectoryURL: homeDirectoryURL).map { [$0] } ?? []
         }
 
         var options: [AIModelOption] = []
@@ -127,7 +139,7 @@ enum ModelCatalog {
             )
         }
 
-        if let defaultID = codexConfiguredModelID() {
+        if let defaultID = codexConfiguredModelID(homeDirectoryURL: homeDirectoryURL) {
             options = options.map {
                 var copy = $0
                 copy.isDefault = ($0.modelID == defaultID)
@@ -146,8 +158,11 @@ enum ModelCatalog {
         return options
     }
 
-    private static func codexConfiguredModelID() -> String? {
-        guard let config = try? String(contentsOf: homeURL(".codex/config.toml"), encoding: .utf8) else {
+    private static func codexConfiguredModelID(homeDirectoryURL: URL) -> String? {
+        guard let config = try? String(
+            contentsOf: homeURL(".codex/config.toml", in: homeDirectoryURL),
+            encoding: .utf8
+        ) else {
             return nil
         }
         // model = "gpt-5.6-sol"
@@ -162,16 +177,16 @@ enum ModelCatalog {
         return id.isEmpty ? nil : id
     }
 
-    private static func codexConfigDefault() -> AIModelOption? {
-        guard let id = codexConfiguredModelID() else { return nil }
+    private static func codexConfigDefault(homeDirectoryURL: URL) -> AIModelOption? {
+        guard let id = codexConfiguredModelID(homeDirectoryURL: homeDirectoryURL) else { return nil }
         return AIModelOption(provider: .codex, modelID: id, isDefault: true)
     }
 
     // MARK: - Claude (settings + documented aliases)
 
-    private static func readClaudeModels() -> [AIModelOption] {
+    private static func readClaudeModels(homeDirectoryURL: URL) -> [AIModelOption] {
         var options = fallbackModels(for: .claude)
-        if let configured = claudeConfiguredModelID() {
+        if let configured = claudeConfiguredModelID(homeDirectoryURL: homeDirectoryURL) {
             if let idx = options.firstIndex(where: { $0.modelID == configured }) {
                 options = options.map {
                     var copy = $0
@@ -200,8 +215,8 @@ enum ModelCatalog {
         return options
     }
 
-    private static func claudeConfiguredModelID() -> String? {
-        let url = homeURL(".claude/settings.json")
+    private static func claudeConfiguredModelID(homeDirectoryURL: URL) -> String? {
+        let url = homeURL(".claude/settings.json", in: homeDirectoryURL)
         guard
             let data = try? Data(contentsOf: url),
             let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -267,12 +282,6 @@ enum ModelCatalog {
                 ),
                 AIModelOption(
                     provider: .claude,
-                    modelID: "haiku",
-                    displayName: "Haiku",
-                    description: "Fast Claude model alias"
-                ),
-                AIModelOption(
-                    provider: .claude,
                     modelID: "fable",
                     displayName: "Fable",
                     description: "Latest Claude model alias"
@@ -281,7 +290,7 @@ enum ModelCatalog {
         }
     }
 
-    private static func homeURL(_ relative: String) -> URL {
-        URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(relative)
+    private static func homeURL(_ relative: String, in root: URL) -> URL {
+        root.appendingPathComponent(relative)
     }
 }

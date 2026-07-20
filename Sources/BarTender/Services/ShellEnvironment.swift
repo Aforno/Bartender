@@ -9,6 +9,20 @@ enum ShellEnvironment {
         await cache.environment()
     }
 
+    /// Environment exposed to approved generated tools. Authentication tokens
+    /// inherited by the app are intentionally excluded; tools still receive the
+    /// standard user identity, locale, temporary directory, shell, and PATH.
+    static func generatedToolEnvironment() async -> [String: String] {
+        let login = await loginEnvironment()
+        let allowedKeys = [
+            "HOME", "USER", "LOGNAME", "PATH", "SHELL", "TMPDIR",
+            "LANG", "LC_ALL", "LC_CTYPE", "TERM", "NO_COLOR"
+        ]
+        return Dictionary(uniqueKeysWithValues: allowedKeys.compactMap { key in
+            login[key].map { (key, $0) }
+        })
+    }
+
     fileprivate static func buildLoginEnvironment() async -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = await resolveLoginPATH() ?? safeFallbackPATH()

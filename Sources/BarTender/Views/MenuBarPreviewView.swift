@@ -30,6 +30,7 @@ struct MenuBarPreviewView: View {
             }
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(.secondary.opacity(0.7))
+            .accessibilityHidden(true)
 
             // The applet's own menu bar extra, shown "active".
             HStack(spacing: 5) {
@@ -42,12 +43,14 @@ struct MenuBarPreviewView: View {
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 3)
-            .background(.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .background(PremiumStyle.brand.opacity(0.20), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             .padding(.leading, 14)
             .padding(.trailing, 12)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Menu bar item: \(manifest.name), \(snapshot.title)")
         }
         .frame(height: 26)
-        .background(.bar)
+        .background(PremiumStyle.fieldFill)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(PremiumStyle.cardStroke)
@@ -99,7 +102,7 @@ struct MenuBarPreviewView: View {
         }
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial)
+        .background(PremiumStyle.fieldFill)
     }
 
     private var separator: some View {

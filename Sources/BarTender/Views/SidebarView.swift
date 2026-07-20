@@ -5,11 +5,11 @@ struct SidebarView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var store: AppletStore
     @EnvironmentObject private var runtime: AppletRuntimeEngine
-    @Environment(\.openSettings) private var openSettings
 
     @State private var searchText = ""
     @State private var toolsLabelHovering = false
     @FocusState private var searchFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var filteredApplets: [AppletManifest] {
         guard !searchText.isEmpty else { return store.applets }
@@ -20,7 +20,7 @@ struct SidebarView: View {
         VStack(alignment: .leading, spacing: 0) {
             workspaceMenu
             searchRow
-                .padding(.top, 2)
+                .padding(.top, PremiumStyle.space2)
 
             HStack {
                 Text("Tools")
@@ -40,13 +40,15 @@ struct SidebarView: View {
                 .opacity(toolsLabelHovering ? 1 : 0)
                 .disabled(model.generation?.phase.isActive == true)
                 .help("New Tool (⌘N)")
+                .accessibilityLabel("New Tool")
+                .accessibilityIdentifier("new-tool")
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 14)
-            .padding(.bottom, 3)
+            .padding(.horizontal, PremiumStyle.sidebarInset + PremiumStyle.rowInsetH)
+            .padding(.top, PremiumStyle.space12)
+            .padding(.bottom, PremiumStyle.space4)
             .contentShape(Rectangle())
             .onHover { toolsLabelHovering = $0 }
-            .animation(.snappy(duration: 0.12), value: toolsLabelHovering)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.12), value: toolsLabelHovering)
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
@@ -54,8 +56,8 @@ struct SidebarView: View {
                         Text(searchText.isEmpty ? "No tools yet — describe one below." : "No matching tools.")
                             .font(.callout)
                             .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
+                            .padding(.horizontal, PremiumStyle.rowInsetH)
+                            .padding(.vertical, PremiumStyle.rowInsetV)
                     } else {
                         ForEach(filteredApplets) { applet in
                             ToolRow(
@@ -72,11 +74,11 @@ struct SidebarView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 6)
+                .padding(.horizontal, PremiumStyle.sidebarInset)
             }
 
             Divider()
-                .padding(.top, 4)
+                .padding(.top, PremiumStyle.space4)
 
             VStack(alignment: .leading, spacing: 1) {
                 SidebarActionRow(
@@ -87,17 +89,16 @@ struct SidebarView: View {
                 )
                 .disabled(model.generation?.phase.isActive == true)
 
-                SidebarActionRow(
+                SidebarSettingsRow(
                     title: "Settings",
                     systemImage: "gearshape",
-                    shortcutHint: "⌘,",
-                    action: { openSettings() }
+                    shortcutHint: "⌘,"
                 )
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 6)
+            .padding(.horizontal, PremiumStyle.sidebarInset)
+            .padding(.vertical, PremiumStyle.sidebarInset)
         }
-        .padding(.top, 6)
+        .padding(.top, PremiumStyle.sidebarInset)
         .frame(minWidth: 200)
         .background {
             // Hidden shortcut: ⌘K focuses the filter field.
@@ -112,22 +113,32 @@ struct SidebarView: View {
 
     private var workspaceMenu: some View {
         Menu {
-            Button("Settings…") { openSettings() }
+            SettingsLink {
+                Text("Settings…")
+            }
+            Button("Provider Setup…") {
+                model.showingProviderSetup = true
+            }
             Button("Recheck Providers") {
                 Task { await model.refreshProviders() }
             }
         } label: {
-            Text("Bar Tender")
-                .font(.system(size: 13.5, weight: .semibold))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
+            HStack(spacing: 7) {
+                Image(systemName: "wineglass.fill")
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(PremiumStyle.brandGradient)
+                Text("Bar Tender")
+                    .font(.system(size: 14, weight: .semibold, design: .serif))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, PremiumStyle.rowInsetH)
+            .padding(.vertical, PremiumStyle.rowInsetV)
+            .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 4)
+        .padding(.horizontal, PremiumStyle.sidebarInset)
     }
 
     // MARK: - Search
@@ -145,15 +156,16 @@ struct SidebarView: View {
                     searchText = ""
                     searchFocused = false
                 }
+                .accessibilityIdentifier("tool-search")
             if searchText.isEmpty && !searchFocused {
                 Text("⌘K")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(.tertiary)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .padding(.horizontal, 4)
+        .padding(.horizontal, PremiumStyle.rowInsetH)
+        .padding(.vertical, PremiumStyle.rowInsetV)
+        .padding(.horizontal, PremiumStyle.sidebarInset)
     }
 
     // MARK: - Row value
@@ -184,6 +196,7 @@ private struct ToolRow: View {
     let onDelete: () -> Void
 
     @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: onSelect) {
@@ -191,7 +204,7 @@ private struct ToolRow: View {
                 Image(systemName: applet.iconSystemName)
                     .symbolRenderingMode(.hierarchical)
                     .font(.system(size: 12.5))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(selected ? PremiumStyle.brand : Color.secondary)
                     .frame(width: 18)
 
                 Text(applet.name)
@@ -222,21 +235,24 @@ private struct ToolRow: View {
                         .lineLimit(1)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4.5)
+            .padding(.horizontal, PremiumStyle.rowInsetH)
+            .padding(.vertical, PremiumStyle.rowInsetV)
             .foregroundStyle(.primary)
             .background(
                 selected
-                    ? Color.primary.opacity(0.075)
+                    ? PremiumStyle.selectionFill
                     : Color.primary.opacity(hovering ? 0.045 : 0),
-                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(applet.name)
+        .accessibilityValue(value)
+        .accessibilityIdentifier("tool-row.\(applet.id.uuidString)")
         .opacity(applet.enabled ? 1 : 0.5)
         .onHover { hovering = $0 }
-        .animation(.snappy(duration: 0.12), value: hovering)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.12), value: hovering)
         .contextMenu {
             Button(applet.enabled ? "Disable" : "Enable", action: onToggleEnabled)
             Button("Delete", role: .destructive, action: onDelete)
@@ -253,35 +269,74 @@ private struct SidebarActionRow: View {
     let action: () -> Void
 
     @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 18)
-                Text(title)
-                    .font(.system(size: 13))
-                Spacer()
-                if let shortcutHint {
-                    Text(shortcutHint)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4.5)
-            .foregroundStyle(.primary)
-            .background(
-                Color.primary.opacity(hovering ? 0.045 : 0),
-                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+            SidebarRowLabel(
+                title: title,
+                systemImage: systemImage,
+                shortcutHint: shortcutHint,
+                hovering: hovering
             )
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .animation(.snappy(duration: 0.12), value: hovering)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.12), value: hovering)
     }
 }
 
+private struct SidebarSettingsRow: View {
+    let title: String
+    let systemImage: String
+    var shortcutHint: String? = nil
+
+    @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        SettingsLink {
+            SidebarRowLabel(
+                title: title,
+                systemImage: systemImage,
+                shortcutHint: shortcutHint,
+                hovering: hovering
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.12), value: hovering)
+    }
+}
+
+private struct SidebarRowLabel: View {
+    let title: String
+    let systemImage: String
+    let shortcutHint: String?
+    let hovering: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+            Text(title)
+                .font(.system(size: 13))
+            Spacer()
+            if let shortcutHint {
+                Text(shortcutHint)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.horizontal, PremiumStyle.rowInsetH)
+        .padding(.vertical, PremiumStyle.rowInsetV)
+        .foregroundStyle(.primary)
+        .background(
+            Color.primary.opacity(hovering ? 0.045 : 0),
+            in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous))
+    }
+}

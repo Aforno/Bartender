@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import UniformTypeIdentifiers
 import UserNotifications
 
 @MainActor
@@ -8,6 +9,8 @@ final class AppModel: ObservableObject {
     let store = AppletStore()
     let providers = AIProviderService()
     let preferences = AppPreferences()
+    let launchAtLogin = LaunchAtLoginController()
+    let updates = UpdateService()
     let shellApprovals: ShellApprovalStore
     let generatedTools: GeneratedToolArtifactStore
     let runtime: AppletRuntimeEngine
@@ -22,10 +25,10 @@ final class AppModel: ObservableObject {
             }
         }
     }
-    @Published var showInspector: Bool
     @Published var composerText = ""
     @Published var generation: GenerationSession?
     @Published var bannerMessage: String?
+    @Published var showingProviderSetup = false
     /// Mirrored for scene invalidation (dynamic status item count).
     @Published private(set) var enabledApplets: [AppletManifest] = []
 
@@ -41,7 +44,6 @@ final class AppModel: ObservableObject {
         shellApprovals = approvals
         generatedTools = artifacts
         runtime = AppletRuntimeEngine(shellApprovals: approvals, generatedTools: artifacts)
-        showInspector = true
 
         store.objectWillChange
             .receive(on: RunLoop.main)
@@ -74,13 +76,11 @@ final class AppModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        showInspector = preferences.showInspectorOnLaunch
         refreshEnabledApplets()
     }
 
     func bootstrap() async {
         AppLog.app.info("Bar Tender bootstrap")
-        requestNotificationPermission()
         await providers.refreshAvailability()
         runtime.sync(with: store.applets)
         refreshEnabledApplets()
@@ -184,8 +184,7 @@ final class AppModel: ObservableObject {
             let manifest = try await providers.generateManifest(
                 prompt: resolved,
                 existingTool: existingTool,
-                provider: provider,
-                timeout: preferences.generationTimeout
+                provider: provider
             ) { stream, text in
                 session.append(stream: stream, text)
             }
@@ -196,7 +195,7 @@ final class AppModel: ObservableObject {
             session.phase = .parsing
             session.append(stream: .system, "Validating the generated tool…")
             if candidate.kind == .generatedTool {
-                session.append(stream: .system, "Checking zsh syntax and unattended execution requirements…")
+                session.append(stream: .system, "Checking zsh syntax and basic policy rules…")
                 try await GeneratedToolSourceValidator.validate(candidate)
             }
             if candidate.kind == .shellCommand {
@@ -240,8 +239,6 @@ final class AppModel: ObservableObject {
             switch error {
             case .cancelled:
                 session.phase = .cancelled
-            case .timedOut:
-                session.phase = .timedOut
             default:
                 session.phase = .failed
             }
@@ -322,6 +319,34 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func setFailureNotifications(_ enabled: Bool, for manifest: AppletManifest) {
+        setNotifications(enabled, for: manifest, keyPath: \.notifyOnFailure)
+    }
+
+    func setCompletionNotifications(_ enabled: Bool, for manifest: AppletManifest) {
+        setNotifications(enabled, for: manifest, keyPath: \.notifyOnComplete)
+    }
+
+    private func setNotifications(
+        _ enabled: Bool,
+        for manifest: AppletManifest,
+        keyPath: WritableKeyPath<AppletManifest, Bool>
+    ) {
+        Task {
+            if enabled, !(await ensureNotificationPermission()) { return }
+            do {
+                try store.update(manifest.id) { updated in
+                    updated[keyPath: keyPath] = enabled
+                }
+                if let updated = store.applet(id: manifest.id) {
+                    runtime.restart(manifest: updated)
+                }
+            } catch {
+                bannerMessage = error.localizedDescription
+            }
+        }
+    }
+
     func isShellApproved(_ manifest: AppletManifest) -> Bool {
         shellApprovals.isApproved(manifest)
     }
@@ -357,13 +382,145 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func requestNotificationPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
-            if let error {
-                AppLog.app.error("Notification auth error: \(error.localizedDescription, privacy: .public)")
-            } else {
-                AppLog.app.info("Notifications granted=\(granted, privacy: .public)")
+    func exportLibrary() {
+        let panel = NSSavePanel()
+        panel.title = "Export Bar Tender Library"
+        panel.nameFieldStringValue = "BarTender-Library.json"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            try store.exportArchiveData().write(to: url, options: [.atomic])
+            bannerMessage = "Exported \(store.applets.count) tool(s)."
+        } catch {
+            bannerMessage = "Could not export the library: \(error.localizedDescription)"
+        }
+    }
+
+    func importLibrary() {
+        let panel = NSOpenPanel()
+        panel.title = "Import Bar Tender Library"
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let choice = NSAlert()
+        choice.messageText = "Import this tool library?"
+        choice.informativeText = "Merge keeps your current tools. Replace removes the current library first. Imported generated code always requires fresh approval."
+        choice.addButton(withTitle: "Merge")
+        choice.addButton(withTitle: "Replace All")
+        choice.addButton(withTitle: "Cancel")
+        let response = choice.runModal()
+        guard response != .alertThirdButtonReturn else { return }
+        let mode: AppletImportMode = response == .alertSecondButtonReturn ? .replace : .merge
+
+        do {
+            let data = try Data(contentsOf: url)
+            let imported = try store.importArchiveData(data, mode: mode)
+            if mode == .replace {
+                shellApprovals.removeAll()
+                try? generatedTools.removeAll()
             }
+            for manifest in imported {
+                shellApprovals.revoke(id: manifest.id)
+                if manifest.kind == .generatedTool {
+                    _ = try generatedTools.install(manifest)
+                } else {
+                    try? generatedTools.remove(id: manifest.id)
+                }
+            }
+            runtime.sync(with: store.applets)
+            refreshEnabledApplets()
+            selection = imported.first?.id ?? store.applets.first?.id
+            bannerMessage = "Imported \(imported.count) tool(s). Review generated source before running it."
+        } catch {
+            bannerMessage = "Could not import the library: \(error.localizedDescription)"
+        }
+    }
+
+    func exportDiagnostics() {
+        let panel = NSSavePanel()
+        panel.title = "Export Sanitized Diagnostics"
+        panel.nameFieldStringValue = "BarTender-Diagnostics.txt"
+        panel.allowedContentTypes = [.plainText]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            try diagnosticsReport().write(to: url, atomically: true, encoding: .utf8)
+            bannerMessage = "Exported sanitized diagnostics. Prompts, source, paths, credentials, and tool output were excluded."
+        } catch {
+            bannerMessage = "Could not export diagnostics: \(error.localizedDescription)"
+        }
+    }
+
+    func diagnosticsReport() -> String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "Development"
+        let build = info?["CFBundleVersion"] as? String ?? "local"
+        let providerLines = AIProvider.allCases.map { provider in
+            "- \(provider.displayName): \(sanitizedProviderStatus(provider))"
+        }.joined(separator: "\n")
+
+        return """
+        Bar Tender sanitized diagnostics
+        Generated: \(Date().formatted(.iso8601))
+        App: \(version) (\(build))
+        Bundle: \(Bundle.main.bundleIdentifier ?? "development")
+        macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)
+        Architecture: \(Self.architectureName)
+        Tools: \(store.applets.count) total, \(store.enabledApplets.count) enabled
+        Launch at login: \(launchAtLogin.isEnabled ? "enabled" : "disabled")
+        Providers:
+        \(providerLines)
+
+        Privacy: this report excludes prompts, generated source, executable paths,
+        working directories, authentication details, credentials, logs, and tool output.
+        """
+    }
+
+    private func sanitizedProviderStatus(_ provider: AIProvider) -> String {
+        switch providers.status(for: provider) {
+        case .checking:
+            return "checking"
+        case .ready(let installation):
+            return "ready (\(installation.version))"
+        case .unavailable(let issue):
+            switch issue {
+            case .notFound: return "CLI not found"
+            case .notAuthenticated: return "not authenticated"
+            case .versionCheckFailed: return "version check failed"
+            case .loginCheckFailed: return "login check failed"
+            }
+        }
+    }
+
+    private static var architectureName: String {
+        #if arch(arm64)
+        return "arm64"
+        #elseif arch(x86_64)
+        return "x86_64"
+        #else
+        return "unknown"
+        #endif
+    }
+
+    func requestNotificationPermission() {
+        Task { _ = await ensureNotificationPermission() }
+    }
+
+    private func ensureNotificationPermission() async -> Bool {
+        do {
+            let granted = try await UNUserNotificationCenter.current()
+                .requestAuthorization(options: [.alert, .sound])
+            AppLog.app.info("Notifications granted=\(granted, privacy: .public)")
+            if !granted {
+                bannerMessage = "Notifications are off. You can enable Bar Tender in System Settings."
+            }
+            return granted
+        } catch {
+            AppLog.app.error("Notification auth error: \(error.localizedDescription, privacy: .public)")
+            bannerMessage = "Could not enable notifications: \(error.localizedDescription)"
+            return false
         }
     }
 }
