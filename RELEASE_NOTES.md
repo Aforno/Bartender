@@ -9,6 +9,6 @@ This first release includes:
 - No generation deadline: long provider runs continue until completion or explicit cancellation.
 - Launch at login, library export/import, contextual alerts, diagnostics export, provider setup, and update checks.
 - A manager menu that remains usable with many running tools.
-- Universal Apple silicon and Intel packaging for macOS 14 and newer.
+- Universal Apple silicon and Intel packaging for macOS 26 and newer.
 
 Important trust note: approved generated code is not sandboxed. It runs with your user privileges and can access local files, network services, commands, and credentials available to local processes. Review source before approval.

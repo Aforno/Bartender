@@ -17,7 +17,7 @@ body:
     id: macos
     attributes:
       label: macOS version
-      placeholder: macOS 14.7
+      placeholder: macOS 26.0
     validations:
       required: true
   - type: dropdown

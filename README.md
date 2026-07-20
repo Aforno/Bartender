@@ -34,7 +34,7 @@ New natural-language requests use `generatedTool` instead of selecting one of th
 
 ## Requirements
 
-- macOS 14+
+- macOS 26+
 - Swift 5.9+ / Xcode command-line tools
 - At least one local AI CLI on your shell `PATH`, signed in:
 
@@ -65,7 +65,7 @@ The script creates a development app bundle at `dist/BarTender.app`. It is not a
 
 ## Install a release
 
-Download the latest DMG from [GitHub Releases](https://github.com/Aforno/Bartender/releases), verify it against `SHA256SUMS.txt`, open the DMG, and drag **BarTender** to **Applications**. Release artifacts are universal binaries for Apple silicon and Intel Macs and require macOS 14 or newer.
+Download the latest DMG from [GitHub Releases](https://github.com/Aforno/Bartender/releases), verify it against `SHA256SUMS.txt`, open the DMG, and drag **BarTender** to **Applications**. Release artifacts are universal binaries for Apple silicon and Intel Macs and require macOS 26 or newer.
 
 Bar Tender checks for updates only when you choose **Check for Updates** in Settings. When a newer GitHub release exists, it opens that release for a user-controlled download and install; it never replaces the app silently.
 

@@ -21,7 +21,7 @@ Keep the certificate and API key outside the repository. Rotate them through App
 1. Update `VERSION`, increment `BUILD_NUMBER`, `CHANGELOG.md`, and `RELEASE_NOTES.md`.
 2. Run `swift test` and `swift build -c release`.
 3. Run the local universal packaging and install smoke path with `--adhoc --skip-notarization`.
-4. Confirm CI passes macOS 14, 15, and 26 on both Apple silicon and Intel.
+4. Confirm CI passes macOS 26 on both Apple silicon and Intel.
 5. Create and push an annotated `v<contents-of-VERSION>` tag.
 6. The `Release` workflow imports an ephemeral signing identity, builds universal, applies hardened runtime and entitlements, notarizes and staples the app and DMG, enforces Gatekeeper assessment, mounts/copies/launches the DMG, emits checksums, and publishes the assets.
 7. Download the published DMG on a clean Mac, verify its checksum, install it, check all provider setup states, create and approve a generated tool, revise it, and confirm the revision requires approval again.

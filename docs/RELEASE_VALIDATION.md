@@ -39,4 +39,4 @@ The assembled `.app` was launched and inspected through the macOS accessibility 
 
 ## CI matrix
 
-The committed CI matrix targets macOS 14, 15, and 26 on both Apple silicon and Intel. The tag workflow additionally requires Developer ID signing, notarization, stapling, Gatekeeper assessment, clean DMG launch, and immutable release assets before publication.
+The committed CI matrix targets macOS 26 on both Apple silicon and Intel. The tag workflow additionally requires Developer ID signing, notarization, stapling, Gatekeeper assessment, clean DMG launch, and immutable release assets before publication.

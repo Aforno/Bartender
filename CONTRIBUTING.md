@@ -10,7 +10,7 @@ Thanks for helping improve Bar Tender.
 
 ## Local development
 
-You need macOS 14 or later and Swift 5.9 or later. At least one supported AI CLI is needed only for manual generation testing.
+You need macOS 26 or later and Swift 5.9 or later. At least one supported AI CLI is needed only for manual generation testing.
 
 ```bash
 git clone <your-fork-url>
@@ -36,6 +36,6 @@ Changes to generated-tool execution, approval, provider invocation, persistence,
 - Follow the existing Swift and SwiftUI conventions.
 - Prefer small, explicit types and testable services.
 - Surface failures to the user instead of silently discarding them.
-- Preserve macOS 14 compatibility unless a deliberate platform change has been agreed upon.
+- Preserve macOS 26 compatibility unless a deliberate platform change has been agreed upon.
 
 By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
