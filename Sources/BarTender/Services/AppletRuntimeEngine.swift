@@ -64,6 +64,23 @@ final class AppletRuntimeEngine: ObservableObject {
         start(manifest)
     }
 
+    /// Publishes the already-observed approval check and schedules the next refresh normally,
+    /// avoiding an immediate duplicate execution of the generated program.
+    func startValidatedGeneratedTool(
+        manifest: AppletManifest,
+        output: GeneratedToolOutput
+    ) {
+        stop(id: manifest.id)
+        guard manifest.enabled else {
+            snapshots[manifest.id] = .placeholder(for: manifest)
+            return
+        }
+        applyGeneratedToolOutput(output, manifest: manifest)
+        tasks[manifest.id] = Task { [weak self] in
+            await self?.runPollingLoop(manifest, delayFirstTick: true)
+        }
+    }
+
     func stop(id: UUID) {
         tasks[id]?.cancel()
         tasks[id] = nil
@@ -165,8 +182,14 @@ final class AppletRuntimeEngine: ObservableObject {
         }
     }
 
-    private func runPollingLoop(_ manifest: AppletManifest) async {
+    private func runPollingLoop(
+        _ manifest: AppletManifest,
+        delayFirstTick: Bool = false
+    ) async {
         let interval = max(1, manifest.refreshIntervalSeconds ?? manifest.kind.defaultRefreshInterval ?? 10)
+        if delayFirstTick {
+            try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+        }
         while !Task.isCancelled {
             await tick(manifest)
             try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
@@ -346,20 +369,7 @@ final class AppletRuntimeEngine: ObservableObject {
         )
 
         if let output = result.output {
-            var values = output.values
-            values["status"] = values["status"] ?? output.status
-            values["value"] = values["value"] ?? output.title
-            snapshots[manifest.id] = AppletSnapshot(
-                statusText: output.status,
-                title: output.title,
-                detailLines: output.details.isEmpty ? ["Generated tool is running"] : output.details,
-                isHealthy: output.healthy,
-                values: values,
-                updatedAt: .now,
-                isRunning: true,
-                progress: nil
-            )
-            maybeNotifyFailure(manifest: manifest, healthy: output.healthy, body: output.status)
+            applyGeneratedToolOutput(output, manifest: manifest)
         } else {
             let title = result.approved ? "Issue" : "Review"
             snapshots[manifest.id] = AppletSnapshot(
@@ -377,6 +387,26 @@ final class AppletRuntimeEngine: ObservableObject {
             )
             maybeNotifyFailure(manifest: manifest, healthy: !result.approved, body: result.message)
         }
+    }
+
+    private func applyGeneratedToolOutput(
+        _ output: GeneratedToolOutput,
+        manifest: AppletManifest
+    ) {
+        var values = output.values
+        values["status"] = values["status"] ?? output.status
+        values["value"] = values["value"] ?? output.title
+        snapshots[manifest.id] = AppletSnapshot(
+            statusText: output.status,
+            title: output.title,
+            detailLines: output.details.isEmpty ? ["Generated tool is running"] : output.details,
+            isHealthy: output.healthy,
+            values: values,
+            updatedAt: .now,
+            isRunning: true,
+            progress: nil
+        )
+        maybeNotifyFailure(manifest: manifest, healthy: output.healthy, body: output.status)
     }
 
     private func updateTimerSnapshot(manifest: AppletManifest, remaining: Int, running: Bool) {

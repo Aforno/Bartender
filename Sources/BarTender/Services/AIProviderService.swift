@@ -255,6 +255,7 @@ final class AIProviderService: ObservableObject {
         prompt: String,
         existingTool: AppletManifest? = nil,
         provider: AIProvider? = nil,
+        iterationFeedback: String? = nil,
         onLog: @escaping @MainActor (ProviderLogLine.Stream, String) -> Void
     ) async throws -> AppletManifest {
         generationCancellationRequested = false
@@ -280,7 +281,8 @@ final class AIProviderService: ObservableObject {
 
         let fullPrompt = ManifestGenerationSupport.buildPrompt(
             userRequest: trimmed,
-            existingTool: existingTool
+            existingTool: existingTool,
+            iterationFeedback: iterationFeedback
         )
         let invocation = try buildInvocation(
             provider: chosen,
@@ -296,6 +298,9 @@ final class AIProviderService: ObservableObject {
         onLog(.system, "Version: \(installation.version)")
         onLog(.system, "Args: \(invocation.arguments.joined(separator: " "))")
         onLog(.system, existingTool.map { "Mode: Revising \($0.name) in place" } ?? "Mode: Creating a new tool")
+        if iterationFeedback != nil {
+            onLog(.system, "Feedback: Retrying with validator or first-run diagnostics")
+        }
         onLog(.system, "Prompt: \(trimmed)")
 
         let localRunner = ProcessRunner()

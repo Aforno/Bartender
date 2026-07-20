@@ -30,8 +30,8 @@ struct BarTenderApp: App {
                 .onReceive(model.$enabledApplets) { enabled in
                     statusItems.rebuild(enabled: enabled)
                 }
-                .onReceive(model.runtime.$snapshots) { _ in
-                    statusItems.refreshAll()
+                .onReceive(model.runtime.$snapshots) { snapshots in
+                    statusItems.refreshAll(snapshots: snapshots)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .barTenderOpenMainWindow)) { note in
                     if let raw = note.object as? String, let id = UUID(uuidString: raw) {

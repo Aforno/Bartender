@@ -78,6 +78,7 @@ struct SidebarView: View {
             }
 
             Divider()
+                .padding(.horizontal, PremiumStyle.sidebarInset)
                 .padding(.top, PremiumStyle.space4)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -96,7 +97,8 @@ struct SidebarView: View {
                 )
             }
             .padding(.horizontal, PremiumStyle.sidebarInset)
-            .padding(.vertical, PremiumStyle.sidebarInset)
+            .padding(.top, PremiumStyle.space4)
+            .padding(.bottom, PremiumStyle.sidebarInset)
         }
         .padding(.top, PremiumStyle.sidebarInset)
         .frame(minWidth: 200)
@@ -123,10 +125,11 @@ struct SidebarView: View {
                 Task { await model.refreshProviders() }
             }
         } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: 8) {
                 Image(systemName: "wineglass.fill")
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(PremiumStyle.brandGradient)
+                    .frame(width: 18)
                 Text("Bar Tender")
                     .font(.system(size: 14, weight: .semibold, design: .serif))
             }
@@ -144,10 +147,11 @@ struct SidebarView: View {
     // MARK: - Search
 
     private var searchRow: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12))
+                .font(.system(size: 12.5))
                 .foregroundStyle(.tertiary)
+                .frame(width: 18)
             TextField("Search", text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
@@ -318,7 +322,7 @@ private struct SidebarRowLabel: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
-                .font(.system(size: 12))
+                .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
                 .frame(width: 18)
             Text(title)

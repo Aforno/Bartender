@@ -7,7 +7,6 @@ struct ComposerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: PremiumStyle.space12) {
-            composerContext
 
             if model.generation?.phase.isActive == true {
                 generationStatus
@@ -41,31 +40,6 @@ struct ComposerView: View {
         .padding(.horizontal, PremiumStyle.contentMargin)
         .padding(.top, PremiumStyle.space12)
         .padding(.bottom, PremiumStyle.space16)
-    }
-
-    private var composerContext: some View {
-        HStack(spacing: 6) {
-            if let applet = model.selectedApplet {
-                Text("Editing \(applet.name)")
-                    .font(.caption.weight(.semibold))
-                Text("· your message updates this tool in place")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 8)
-                QuietLink("New Tool") {
-                    model.beginNewTool()
-                }
-                .disabled(model.generation?.phase.isActive == true)
-            } else {
-                Text("New Tool")
-                    .font(.caption.weight(.semibold))
-                Text("· your message creates a separate menu bar item")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-            }
-        }
-        .padding(.horizontal, PremiumStyle.space4)
     }
 
     private var composerPlaceholder: String {
@@ -104,30 +78,5 @@ struct ComposerView: View {
         providers.availability.isReady
             && !model.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && model.generation?.phase.isActive != true
-    }
-}
-
-/// Quiet text link — underlines on hover instead of looking like a button.
-private struct QuietLink: View {
-    let title: String
-    let action: () -> Void
-    @State private var hovering = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    init(_ title: String, action: @escaping () -> Void) {
-        self.title = title
-        self.action = action
-    }
-
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(Color.secondary)
-                .underline(hovering, color: .secondary)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .animation(reduceMotion ? nil : .snappy(duration: 0.12), value: hovering)
     }
 }

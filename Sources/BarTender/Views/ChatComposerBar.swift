@@ -25,9 +25,7 @@ struct ChatComposerBar<Accessory: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: compact ? 8 : 10) {
-            if onPlus != nil {
-                plusButton
-            }
+            
 
             ZStack(alignment: .leading) {
                 if text.isEmpty {
@@ -72,23 +70,6 @@ struct ChatComposerBar<Accessory: View>: View {
 
     // MARK: - Controls
 
-    private var plusButton: some View {
-        Button {
-            onPlus?()
-            focused = true
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(Color.primary.opacity(0.50))
-                .frame(width: controlSize, height: controlSize)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .disabled(isBusy)
-        .help("Start with a suggestion")
-        .accessibilityLabel("Use a prompt suggestion")
-        .accessibilityIdentifier("prompt-suggestion")
-    }
 
     private var sendButton: some View {
         Button(action: onSend) {

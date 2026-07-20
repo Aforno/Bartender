@@ -142,7 +142,8 @@ final class AppModel: ObservableObject {
 
     private func generateTool(
         from prompt: String?,
-        replacing existingTool: AppletManifest?
+        replacing existingTool: AppletManifest?,
+        initialFeedback: String? = nil
     ) async {
         let resolved = (prompt ?? composerText).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !resolved.isEmpty else {
@@ -181,31 +182,82 @@ final class AppModel: ObservableObject {
 
         do {
             session.phase = .running
-            let manifest = try await providers.generateManifest(
-                prompt: resolved,
-                existingTool: existingTool,
-                provider: provider
-            ) { stream, text in
-                session.append(stream: stream, text)
+            var attemptContext = existingTool
+            var iterationFeedback = initialFeedback
+            var generatedManifest: AppletManifest?
+            var latestCandidate: AppletManifest?
+            let maximumAttempts = 3
+
+            for attempt in 1...maximumAttempts {
+                guard session.phase != .cancelled, !Task.isCancelled else {
+                    throw ProviderGenerationError.cancelled
+                }
+                if let iterationFeedback {
+                    session.append(
+                        stream: .system,
+                        attempt == 1
+                            ? "Using first-run feedback to repair the tool…"
+                            : "Retrying with validation feedback (attempt \(attempt) of \(maximumAttempts))…"
+                    )
+                    session.append(stream: .system, String(iterationFeedback.prefix(500)))
+                }
+
+                do {
+                    let manifest = try await providers.generateManifest(
+                        prompt: resolved,
+                        existingTool: attemptContext,
+                        provider: provider,
+                        iterationFeedback: iterationFeedback
+                    ) { stream, text in
+                        session.append(stream: stream, text)
+                    }
+                    let candidate = ManifestGenerationSupport.replacing(
+                        manifest,
+                        existingTool: existingTool
+                    )
+                    latestCandidate = candidate
+                    session.phase = .parsing
+                    session.append(stream: .system, "Validating the generated tool…")
+                    if candidate.kind == .generatedTool {
+                        session.append(stream: .system, "Checking zsh syntax and basic policy rules…")
+                        try await GeneratedToolSourceValidator.validate(candidate)
+                    }
+                    if candidate.kind == .shellCommand {
+                        let env = await ShellEnvironment.loginEnvironment()
+                        try ManifestGenerationSupport.requireCommandAvailable(candidate, environment: env)
+                    }
+                    guard session.phase != .cancelled, !Task.isCancelled else {
+                        throw ProviderGenerationError.cancelled
+                    }
+                    generatedManifest = candidate
+                    break
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let error as ProviderGenerationError {
+                    switch error {
+                    case .cancelled, .notReady, .authenticationExpired, .noProvidersReady:
+                        throw error
+                    case .emptyPrompt, .invalidResponse, .missingCommandDependency:
+                        guard attempt < maximumAttempts else { throw error }
+                        iterationFeedback = error.localizedDescription
+                    }
+                } catch {
+                    guard attempt < maximumAttempts else { throw error }
+                    iterationFeedback = error.localizedDescription
+                }
+                attemptContext = latestCandidate ?? attemptContext
+                session.phase = .running
             }
-            let candidate = ManifestGenerationSupport.replacing(
-                manifest,
-                existingTool: existingTool
-            )
-            session.phase = .parsing
-            session.append(stream: .system, "Validating the generated tool…")
-            if candidate.kind == .generatedTool {
-                session.append(stream: .system, "Checking zsh syntax and basic policy rules…")
-                try await GeneratedToolSourceValidator.validate(candidate)
+
+            guard let candidate = generatedManifest else {
+                throw ProviderGenerationError.invalidResponse(
+                    "The provider could not produce a valid generated tool after \(maximumAttempts) attempts."
+                )
             }
-            if candidate.kind == .shellCommand {
-                let env = await ShellEnvironment.loginEnvironment()
-                try ManifestGenerationSupport.requireCommandAvailable(candidate, environment: env)
+            guard session.phase != .cancelled, !Task.isCancelled else {
+                throw ProviderGenerationError.cancelled
             }
             let saved = try store.upsert(candidate)
-            if existingTool != nil {
-                shellApprovals.revoke(id: saved.id)
-            }
             if saved.kind == .generatedTool {
                 let executable = try generatedTools.install(saved)
                 session.append(stream: .system, "Installed executable at \(executable.path)")
@@ -224,7 +276,9 @@ final class AppModel: ObservableObject {
             )
             composerText = ""
             if existingTool != nil {
-                bannerMessage = "Updated “\(saved.name)” in place. Review the revised code to run it."
+                bannerMessage = shellApprovals.isApproved(saved)
+                    ? "Validated “\(saved.name)” and kept it running."
+                    : "Updated “\(saved.name)” in place. Review the revised code to run it."
             } else {
                 bannerMessage = saved.kind == .generatedTool
                     ? "Generated “\(saved.name)”. Review its code once, then allow it to run."
@@ -360,11 +414,66 @@ final class AppModel: ObservableObject {
     }
 
     func setExecutionApproval(_ approved: Bool, for manifest: AppletManifest) {
+        if approved, manifest.kind == .generatedTool {
+            guard generation?.phase.isActive != true else {
+                bannerMessage = "Wait for the current generation to finish before running this tool."
+                return
+            }
+            shellApprovals.setApproved(true, for: manifest)
+            runtime.stop(id: manifest.id)
+            bannerMessage = "Testing “\(manifest.name)” before putting it live…"
+            objectWillChange.send()
+            Task { [weak self] in
+                await self?.validateApprovedGeneratedTool(manifest)
+            }
+            return
+        }
+
         shellApprovals.setApproved(approved, for: manifest)
         if let persisted = store.applet(id: manifest.id) {
             runtime.restart(manifest: persisted)
         }
         objectWillChange.send()
+    }
+
+    private func validateApprovedGeneratedTool(_ manifest: AppletManifest) async {
+        let result = await GeneratedToolRunner.run(
+            manifest: manifest,
+            approved: true,
+            artifactStore: generatedTools
+        )
+
+        guard shellApprovals.isApproved(manifest),
+              let persisted = store.applet(id: manifest.id) else { return }
+
+        if let output = result.output, output.healthy {
+            runtime.startValidatedGeneratedTool(manifest: persisted, output: output)
+            runtime.sync(with: store.applets)
+            bannerMessage = "“\(persisted.name)” passed its first-run check and is live."
+            return
+        }
+
+        guard providers.availability.isReady else {
+            runtime.restart(manifest: persisted)
+            runtime.sync(with: store.applets)
+            bannerMessage = "“\(persisted.name)” needs attention. Recheck the provider to enable automatic repair."
+            return
+        }
+
+        let feedback = ManifestGenerationSupport.runtimeRepairFeedback(for: result)
+        bannerMessage = "The first run needs attention. Sending the result back to \(providers.selectedProvider.displayName)…"
+        let originalRequest = persisted.sourcePrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        await generateTool(
+            from: originalRequest.isEmpty ? "Make this menu bar tool work as intended." : originalRequest,
+            replacing: persisted,
+            initialFeedback: feedback
+        )
+
+        if generation?.phase != .succeeded,
+           let current = store.applet(id: manifest.id) {
+            runtime.restart(manifest: current)
+            runtime.sync(with: store.applets)
+        }
     }
 
     func addSampleLibrary() {

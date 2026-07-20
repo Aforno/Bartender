@@ -127,10 +127,11 @@ enum GeneratedToolRunner {
 
             guard let data = process.stdout.data(using: .utf8),
                   let decoded = try? JSONDecoder().decode(GeneratedToolOutput.self, from: data) else {
-                let detail = firstUsefulLine(process.stderr)
+                let detail = firstUsefulLine(process.stderr) ?? firstUsefulLine(process.stdout)
                 return Result(
                     output: nil,
-                    message: detail ?? "Generated tool returned invalid JSON.",
+                    message: detail.map { "Generated tool returned invalid JSON: \($0)" }
+                        ?? "Generated tool returned invalid JSON.",
                     approved: true
                 )
             }

@@ -64,12 +64,25 @@ final class StatusItemManager: ObservableObject {
         }
     }
 
+    /// Uses the value delivered by `@Published` directly. Its publisher emits in
+    /// `willSet`, so re-reading `model.runtime.snapshots` in that callback would
+    /// refresh every status item with the previous value until the next poll.
+    func refreshAll(snapshots: [UUID: AppletSnapshot]) {
+        for id in boxes.keys {
+            refresh(appletID: id, snapshot: snapshots[id])
+        }
+    }
+
     func refresh(appletID: UUID) {
+        refresh(appletID: appletID, snapshot: model?.runtime.snapshots[appletID])
+    }
+
+    private func refresh(appletID: UUID, snapshot currentSnapshot: AppletSnapshot?) {
         guard let model,
               let box = boxes[appletID],
               let applet = model.store.applet(id: appletID) else { return }
 
-        let snapshot = model.runtime.snapshots[appletID] ?? .placeholder(for: applet)
+        let snapshot = currentSnapshot ?? .placeholder(for: applet)
         if let button = box.item.button {
             let title = TitleRenderer.shortMenuTitle(snapshot.title)
             let image = NSImage(

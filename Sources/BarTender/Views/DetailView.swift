@@ -217,9 +217,9 @@ struct DetailView: View {
                     .frame(width: 16)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Read the source, then allow it once")
+                    Text("Read the source, then allow and test it")
                         .font(.callout.weight(.semibold))
-                    Text("Approval binds to this exact code and working directory—any edit revokes it automatically.")
+                    Text("Approval binds to this exact code and working directory. The first run is tested, and failures go back to your selected provider for repair; changed code requires review again.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -262,7 +262,7 @@ struct DetailView: View {
                 Button {
                     model.setExecutionApproval(true, for: applet)
                 } label: {
-                    Label("Allow & Run", systemImage: "play.fill")
+                    Label("Allow, Test & Run", systemImage: "play.fill")
                 }
                 .buttonStyle(.borderedProminent)
                 .accessibilityIdentifier("allow-and-run.\(applet.id.uuidString)")
@@ -304,7 +304,7 @@ struct DetailView: View {
                         .foregroundStyle(PremiumStyle.brand)
                 }
             } description: {
-                Text("Describe what you want to see or control. Bar Tender uses your local AI CLI to write a dedicated tool, installs it as a menu bar item, and shows you the code before it can run.")
+                Text("Describe what you want to see or control. Bar Tender writes the tool—you review the code before it runs.")
             }
 
             HStack(spacing: 10) {
@@ -322,9 +322,6 @@ struct DetailView: View {
                 }
             }
             .controlSize(.large)
-
-            GeneratedCodeTrustDisclosure(compact: true)
-                .frame(maxWidth: 560, alignment: .leading)
         }
         .frame(maxWidth: .infinity, minHeight: 420)
         .padding(.top, PremiumStyle.space32)

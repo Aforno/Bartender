@@ -17,7 +17,7 @@ Describe a utility:
 
 Select an existing tool in the library and the same composer becomes an editor: your next message is sent with that tool's current manifest and source, then replaces it in place under the same menu bar item. Open **New Tool** (or press `⌘N`) to clear the editing context and build a separate tool.
 
-The selected provider returns a **validated generated-tool manifest** containing the complete source for a one-shot executable. Bar Tender installs it under Application Support, creates its status item immediately, and waits for one explicit source review/approval before execution. Generated tools return structured live menu output (`title`, `status`, `details`, `healthy`, and template `values`).
+The selected provider returns a **validated generated-tool manifest** containing the complete source for a one-shot executable. Bar Tender retries validator failures with concrete feedback, installs the result under Application Support, creates its status item immediately, and waits for explicit source review/approval before execution. After approval, an unhealthy or failed first run is sent back to the selected provider for an in-place repair; changed source requires review again. Generated tools return structured live menu output (`title`, `status`, `details`, `healthy`, and template `values`).
 
 The library also understands these built-in applet kinds for saved samples and backwards compatibility:
 

@@ -124,6 +124,28 @@ final class RuntimeRegressionTests: XCTestCase {
         XCTAssertEqual(result.message, "Generated tool timed out after 1s.")
     }
 
+    func testInvalidGeneratedToolJSONIncludesBoundedOutputFeedback() async {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BarTenderGeneratedToolInvalidJSON-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let manifest = AppletManifest(
+            name: "Invalid Output",
+            iconSystemName: "curlybraces",
+            kind: .generatedTool,
+            titleTemplate: "{{value}}",
+            config: AppletConfig(generatedSource: "#!/bin/zsh\nprintf '%s\\n' 'not-json-output'")
+        )
+
+        let result = await GeneratedToolRunner.run(
+            manifest: manifest,
+            approved: true,
+            artifactStore: GeneratedToolArtifactStore(rootURL: root)
+        )
+
+        XCTAssertNil(result.output)
+        XCTAssertEqual(result.message, "Generated tool returned invalid JSON: not-json-output")
+    }
+
     func testToolRunStateDoesNotCallUnhealthyOutputLive() {
         let manifest = AppletManifest(
             name: "Sensor",
@@ -151,6 +173,31 @@ final class RuntimeRegressionTests: XCTestCase {
             ToolRunState.resolve(manifest: manifest, snapshot: unhealthy, executionApproved: false),
             .reviewRequired
         )
+    }
+
+    func testRuntimeRepairFeedbackIncludesFailureOrUnhealthyStatus() {
+        let failure = GeneratedToolRunner.Result(
+            output: nil,
+            message: "command not found: sample-tool",
+            approved: true
+        )
+        let unhealthy = GeneratedToolRunner.Result(
+            output: GeneratedToolOutput(
+                title: "Unavailable",
+                status: "Could not read the requested value",
+                healthy: false
+            ),
+            message: "Could not read the requested value",
+            approved: true
+        )
+
+        let failureFeedback = ManifestGenerationSupport.runtimeRepairFeedback(for: failure)
+        let unhealthyFeedback = ManifestGenerationSupport.runtimeRepairFeedback(for: unhealthy)
+
+        XCTAssertTrue(failureFeedback.contains("command not found: sample-tool"))
+        XCTAssertTrue(failureFeedback.contains("minimal generated-tool environment"))
+        XCTAssertTrue(unhealthyFeedback.contains("marked itself unhealthy"))
+        XCTAssertTrue(unhealthyFeedback.contains("Could not read the requested value"))
     }
 
     func testGeneratedSourceValidatorRejectsInvalidAndPrivilegedPrograms() async {
