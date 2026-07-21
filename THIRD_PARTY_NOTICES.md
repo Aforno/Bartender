@@ -2,6 +2,8 @@
 
 Bar Tender is distributed under the MIT License in [LICENSE](LICENSE).
 
+The MIT License covers Bar Tender's own source code and artwork. It does not grant rights in third-party names, logos, or trademarks listed below.
+
 ## Provider artwork
 
 - The ChatGPT provider icon uses the OpenAI Blossom mark obtained from OpenAI's published brand artwork through Wikimedia Commons.

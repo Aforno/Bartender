@@ -17,7 +17,7 @@ Harassment, discriminatory language, personal attacks, deliberate intimidation, 
 
 ## Enforcement
 
-Report unacceptable behavior privately to the project maintainer through GitHub's private vulnerability reporting or the contact method listed on the maintainer's GitHub profile. Reports will be reviewed promptly and handled as confidentially as practical.
+Report unacceptable behavior privately through the contact method listed on the maintainer's GitHub profile. Security reports belong in GitHub's private vulnerability reporting channel described in [SECURITY.md](SECURITY.md). Reports will be reviewed promptly and handled as confidentially as practical.
 
 Project maintainers may remove, edit, or reject contributions and may temporarily or permanently ban contributors for behavior they consider inappropriate, threatening, offensive, or harmful.
 

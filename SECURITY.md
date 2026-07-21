@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are made on the latest release and the latest revision of `main`.
+Before the first public release, security fixes are made on the latest revision of `main`. After release, fixes target the latest published version and `main`.
 
 ## Reporting a vulnerability
 

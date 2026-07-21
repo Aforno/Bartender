@@ -13,8 +13,9 @@ Thanks for helping improve Bar Tender.
 You need macOS 26 or later and Swift 5.9 or later. At least one supported AI CLI is needed only for manual generation testing.
 
 ```bash
-git clone <your-fork-url>
+git clone https://github.com/<your-account>/Bartender.git
 cd Bartender
+./script/check_repository.sh
 swift test
 ./script/build_and_run.sh --verify
 ```
@@ -26,7 +27,7 @@ The run script builds a local app bundle in `dist/`. That directory is intention
 1. Create a focused branch from `main`.
 2. Keep unrelated formatting or refactors out of the change.
 3. Add or update tests for behavior changes.
-4. Run `swift test` and `swift build -c release`.
+4. Run `./script/check_repository.sh`, `swift test`, and `swift build -c release`.
 5. Describe the user-visible result, test evidence, and any security implications in the pull request.
 
 Changes to generated-tool execution, approval, provider invocation, persistence, or process handling require regression tests. Generated tools must remain inert until their exact source and working directory have been approved by the user.

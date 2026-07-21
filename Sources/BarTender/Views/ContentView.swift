@@ -233,7 +233,6 @@ private struct WindowChromeConfigurator: NSViewRepresentable {
             }
             window.titlebarAppearsTransparent = true
             window.titlebarSeparatorStyle = .none
-            window.toolbar?.showsBaselineSeparator = false
         }
 
         private func updateWindowShadow() {

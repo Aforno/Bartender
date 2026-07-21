@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: If you use Bar Tender in your work, please cite this software.
+title: Bar Tender
+type: software
+authors:
+  - family-names: Ferreira
+    given-names: Afonso
+repository-code: https://github.com/Aforno/Bartender
+url: https://github.com/Aforno/Bartender
+abstract: A native macOS app that turns natural-language descriptions into reviewable menu bar tools.
+keywords:
+  - macOS
+  - menu bar
+  - SwiftUI
+  - local AI
+license: MIT
+version: 1.0.0
