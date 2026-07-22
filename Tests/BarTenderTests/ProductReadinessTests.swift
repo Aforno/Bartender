@@ -43,7 +43,7 @@ final class ProductReadinessTests: XCTestCase {
         let environment = await ShellEnvironment.generatedToolEnvironment()
         let allowed = Set([
             "HOME", "USER", "LOGNAME", "PATH", "SHELL", "TMPDIR",
-            "LANG", "LC_ALL", "LC_CTYPE", "TERM", "NO_COLOR"
+            "LANG", "LC_ALL", "LC_CTYPE", "TERM", "NO_COLOR", "BARTENDER_CLI"
         ])
         XCTAssertTrue(Set(environment.keys).isSubset(of: allowed))
         XCTAssertNil(environment["OPENAI_API_KEY"])

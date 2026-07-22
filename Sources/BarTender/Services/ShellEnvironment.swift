@@ -12,15 +12,21 @@ enum ShellEnvironment {
     /// Environment exposed to approved generated tools. Authentication tokens
     /// inherited by the app are intentionally excluded; tools still receive the
     /// standard user identity, locale, temporary directory, shell, and PATH.
+    /// BARTENDER_CLI points at the app executable so tools can query hardware
+    /// sensors via `"$BARTENDER_CLI" --sensors` without elevated privileges.
     static func generatedToolEnvironment() async -> [String: String] {
         let login = await loginEnvironment()
         let allowedKeys = [
             "HOME", "USER", "LOGNAME", "PATH", "SHELL", "TMPDIR",
             "LANG", "LC_ALL", "LC_CTYPE", "TERM", "NO_COLOR"
         ]
-        return Dictionary(uniqueKeysWithValues: allowedKeys.compactMap { key in
+        var environment = Dictionary(uniqueKeysWithValues: allowedKeys.compactMap { key in
             login[key].map { (key, $0) }
         })
+        if let executablePath = Bundle.main.executableURL?.path {
+            environment["BARTENDER_CLI"] = executablePath
+        }
+        return environment
     }
 
     fileprivate static func buildLoginEnvironment() async -> [String: String] {

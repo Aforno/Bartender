@@ -142,6 +142,18 @@ private struct GeneralSettingsPane: View {
             }
 
             Section {
+                Toggle(
+                    "Automatically approve edits to generated tools",
+                    isOn: $preferences.autoApproveGeneratedToolEdits
+                )
+                .accessibilityIdentifier("auto-approve-generated-tool-edits")
+            } header: {
+                Text("Generated Tools")
+            } footer: {
+                Text("After you approve a generated tool once, provider-written revisions are approved and first-run tested automatically. New tools, imports, and automatic repairs still require review.")
+            }
+
+            Section {
                 Button("Enable Notifications…") {
                     model.requestNotificationPermission()
                 }

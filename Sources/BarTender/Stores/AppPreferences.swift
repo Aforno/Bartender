@@ -7,6 +7,7 @@ final class AppPreferences: ObservableObject {
     private enum Keys {
         static let confirmBeforeDelete = "BarTender.confirmBeforeDelete"
         static let showProviderInComposer = "BarTender.showProviderInComposer"
+        static let autoApproveGeneratedToolEdits = "BarTender.autoApproveGeneratedToolEdits"
     }
 
     /// Ask for confirmation before deleting applets from the library.
@@ -17,6 +18,13 @@ final class AppPreferences: ObservableObject {
     /// Show the model selector inside the ChatGPT-style composer bar.
     @Published var showProviderInComposer: Bool {
         didSet { defaults.set(showProviderInComposer, forKey: Keys.showProviderInComposer) }
+    }
+
+    /// Approve provider-written revisions after the tool has been approved once.
+    @Published var autoApproveGeneratedToolEdits: Bool {
+        didSet {
+            defaults.set(autoApproveGeneratedToolEdits, forKey: Keys.autoApproveGeneratedToolEdits)
+        }
     }
 
     private let defaults: UserDefaults
@@ -34,6 +42,12 @@ final class AppPreferences: ObservableObject {
             showProviderInComposer = true
         } else {
             showProviderInComposer = defaults.bool(forKey: Keys.showProviderInComposer)
+        }
+
+        if defaults.object(forKey: Keys.autoApproveGeneratedToolEdits) == nil {
+            autoApproveGeneratedToolEdits = false
+        } else {
+            autoApproveGeneratedToolEdits = defaults.bool(forKey: Keys.autoApproveGeneratedToolEdits)
         }
     }
 

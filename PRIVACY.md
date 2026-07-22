@@ -11,13 +11,13 @@ Sanitized diagnostics include app/system/provider status and counts. They exclud
 ## Network and subprocess behavior
 
 - Generation launches the locally installed provider CLI selected by the user. That CLI may communicate with its provider under the provider's own terms and privacy policy.
-- Approved generated tools may use the network or local resources according to their reviewed source.
+- Approved generated tools may use the network or local resources according to their exact approved source.
 - Built-in HTTP monitors contact the URL configured by the user.
 - **Check for Updates** makes a user-initiated request to the public GitHub Releases API for `Aforno/Bartender`.
 - Bar Tender does not request or store provider API keys. Provider authentication remains owned by each local CLI.
 
 ## Permissions
 
-Notification permission is requested only when the user enables an alert. Launch at login is controlled by the user in Settings and may require confirmation in macOS System Settings. Apple Events entitlement is included because approved local tools may launch commands or apps; generated code remains subject to macOS permission prompts and the user's approval decision.
+Notification permission is requested only when the user enables an alert. Launch at login is controlled by the user in Settings and may require confirmation in macOS System Settings. Apple Events entitlement is included because approved local tools may launch commands or apps; generated code remains subject to macOS permission prompts and the user's source approval or opt-in auto-approval preference.
 
 For questions or deletion guidance, use the routes in [SUPPORT.md](SUPPORT.md).

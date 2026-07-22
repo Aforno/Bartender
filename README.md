@@ -15,12 +15,13 @@ Describe a utility:
 
 - “Watch localhost port 3000 and notify me when it goes offline.”
 - “Show CPU and memory usage.”
+- “Show CPU, GPU, and battery temperatures.”
 - “Create a 25-minute focus timer.”
 - “Show the current Git branch and number of changed files.”
 
 Select an existing tool in the library and the same composer becomes an editor: your next message is sent with that tool's current manifest and source, then replaces it in place under the same menu bar item. Open **New Tool** (or press `⌘N`) to clear the editing context and build a separate tool.
 
-The selected provider returns a **validated generated-tool manifest** containing the complete source for a one-shot executable. Bar Tender retries validator failures with concrete feedback, installs the result under Application Support, creates its status item immediately, and waits for explicit source review/approval before execution. After approval, an unhealthy or failed first run is sent back to the selected provider for an in-place repair; changed source requires review again. Generated tools return structured live menu output (`title`, `status`, `details`, `healthy`, and template `values`).
+The selected provider returns a **validated generated-tool manifest** containing the complete source for a one-shot executable. Bar Tender retries validator failures with concrete feedback, installs the result under Application Support, creates its status item immediately, and waits for explicit source review/approval before its first execution. After approval, an unhealthy or failed first run is sent back to the selected provider for an in-place repair. By default, changed source requires review again; an opt-in Settings toggle can automatically approve provider-written edits to tools you previously approved. Generated tools return structured live menu output (`title`, `status`, `details`, `healthy`, and template `values`).
 
 The library also understands these built-in applet kinds for saved samples and backwards compatibility:
 
@@ -33,7 +34,7 @@ The library also understands these built-in applet kinds for saved samples and b
 | `gitStatus` | Branch name + changed file count |
 | `shellCommand` | Runs only after **explicit user approval** in the inspector; approval is bound to the exact command and working directory. The base tool's availability on this Mac is verified at creation time |
 
-New natural-language requests use `generatedTool` instead of selecting one of these pre-made implementations. Approval is bound to the exact generated source and working directory, so any code edit revokes it automatically.
+New natural-language requests use `generatedTool` instead of selecting one of these pre-made implementations. Approval is bound to the exact generated source and working directory, so an edit invalidates the prior fingerprint. The optional auto-approve setting records a new fingerprint only for provider-written revisions to tools you already approved.
 
 ## Requirements
 
@@ -139,7 +140,7 @@ Early interface explorations are preserved in [docs/design-concepts.html](docs/d
 
 ## Security
 
-Generated tools are local zsh executables. They remain inert until you review and approve their exact source and working directory; any edit revokes that approval. Approved code runs with Bar Tender's local process permissions and is not contained by a security sandbox. See [SECURITY.md](SECURITY.md) for the trust model and private vulnerability reporting guidance.
+Generated tools are local zsh executables. New and imported tools remain inert until you review and approve their exact source and working directory. An opt-in setting can automatically approve later provider-written revisions to tools you already approved; automatic repairs still stop for review. Approved code runs with Bar Tender's local process permissions and is not contained by a security sandbox. See [SECURITY.md](SECURITY.md) for the trust model and private vulnerability reporting guidance.
 
 See [PRIVACY.md](PRIVACY.md) for local data and network behavior, [SUPPORT.md](SUPPORT.md) for support routes, [CHANGELOG.md](CHANGELOG.md) for version history, and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for provider icon attribution and trademark notices.
 

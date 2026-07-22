@@ -262,6 +262,13 @@ final class AppModel: ObservableObject {
                 let executable = try generatedTools.install(saved)
                 session.append(stream: .system, "Installed executable at \(executable.path)")
             }
+            let autoApproveEdit = Self.shouldAutoApproveGeneratedToolEdit(
+                replacing: existingTool,
+                with: saved,
+                preferenceEnabled: preferences.autoApproveGeneratedToolEdits,
+                previousVersionApproved: existingTool.map(shellApprovals.isApproved) ?? false,
+                isAutomaticRepair: initialFeedback != nil
+            )
             runtime.restart(manifest: saved)
             runtime.sync(with: store.applets)
             selection = saved.id
@@ -275,7 +282,10 @@ final class AppModel: ObservableObject {
                     : "Updated “\(saved.name)” in place."
             )
             composerText = ""
-            if existingTool != nil {
+            if autoApproveEdit {
+                session.append(stream: .system, "Automatically approved the revised source; starting its first-run check…")
+                setExecutionApproval(true, for: saved)
+            } else if existingTool != nil {
                 bannerMessage = shellApprovals.isApproved(saved)
                     ? "Validated “\(saved.name)” and kept it running."
                     : "Updated “\(saved.name)” in place. Review the revised code to run it."
@@ -407,6 +417,27 @@ final class AppModel: ObservableObject {
 
     func isExecutionApproved(_ manifest: AppletManifest) -> Bool {
         shellApprovals.isApproved(manifest)
+    }
+
+    static func shouldAutoApproveGeneratedToolEdit(
+        replacing existingTool: AppletManifest?,
+        with savedTool: AppletManifest,
+        preferenceEnabled: Bool,
+        previousVersionApproved: Bool,
+        isAutomaticRepair: Bool
+    ) -> Bool {
+        guard preferenceEnabled,
+              previousVersionApproved,
+              !isAutomaticRepair,
+              let existingTool,
+              existingTool.id == savedTool.id,
+              existingTool.kind == .generatedTool,
+              savedTool.kind == .generatedTool else {
+            return false
+        }
+
+        return ShellApprovalStore.fingerprint(for: existingTool)
+            != ShellApprovalStore.fingerprint(for: savedTool)
     }
 
     func setShellApproval(_ approved: Bool, for manifest: AppletManifest) {

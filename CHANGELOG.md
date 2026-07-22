@@ -2,6 +2,11 @@
 
 All notable user-visible changes are recorded here. Bar Tender follows semantic versioning.
 
+## Unreleased
+
+- Added an opt-in setting to automatically approve provider-written edits to previously approved generated tools. New tools, imports, and automatic repairs still require review.
+- Added Mac component temperature readings for generated tools. Tools can run `"$BARTENDER_CLI" --sensors` (key=value lines) or `"$BARTENDER_CLI" --sensors-json` (per-sensor detail) to get CPU, GPU, SoC, battery, ambient, memory, and storage temperatures in °C — no extra software or elevated privileges needed, on Apple silicon and Intel.
+
 ## 1.0.0 — 2026-07-20
 
 - Added generated menu bar tools through local Codex, Claude, and Grok CLIs, with provider and model selection.

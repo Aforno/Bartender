@@ -69,6 +69,12 @@ enum ManifestGenerationSupport {
         - Keep the implementation read-only. Never delete, modify, install, or upload anything.
         - Never access secrets, credentials, browser data, keychains, or private keys.
         - Never use sudo, powermetrics, administrator-only APIs, or commands that prompt for a password.
+        - Mac component temperatures are available without extra software through Bar Tender itself:
+          the tool environment provides BARTENDER_CLI, and "$BARTENDER_CLI" --sensors prints
+          key=value lines in °C (e.g. cpu=54.2; groups: cpu, gpu, soc, battery, ambient, memory,
+          storage — only the groups this Mac exposes are present, each the group's hottest sensor).
+          "$BARTENDER_CLI" --sensors-json prints per-sensor detail. Prefer this over any other
+          temperature source whenever the request involves component temperatures.
         - Never wait for interactive stdin. The tool must refresh unattended from a menu bar process.
         - Prefer tools that ship with macOS and use absolute executable paths when known.
         - Escape dynamic strings so stdout is always valid JSON. Python 3 and jq are not guaranteed.

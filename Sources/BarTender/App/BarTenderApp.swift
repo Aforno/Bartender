@@ -7,6 +7,14 @@ struct BarTenderApp: App {
     @StateObject private var model = AppModel()
     @StateObject private var statusItems = StatusItemManager()
 
+    init() {
+        // Command-line sensor reports for generated tools run before any app
+        // startup so the process exits immediately with the report on stdout.
+        if let exitCode = HardwareSensorsCLI.handledExitCode() {
+            Foundation.exit(Int32(exitCode))
+        }
+    }
+
     var body: some Scene {
         WindowGroup("Bar Tender", id: "main") {
             ContentView()
