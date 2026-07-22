@@ -57,7 +57,7 @@ private struct ProviderSettingsPane: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(provider.displayName)
                                 Text(statusLine(for: provider))
-                                    .font(.caption)
+                                    .font(.inter(.caption))
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
@@ -216,7 +216,7 @@ private struct LibrarySettingsPane: View {
                 Text("Local Library")
             } footer: {
                 Text(preferences.libraryFileURL.path)
-                    .font(.caption2)
+                    .font(.inter(.caption2))
                     .foregroundStyle(.tertiary)
                     .textSelection(.enabled)
             }
@@ -325,7 +325,7 @@ private struct LaunchAtLoginSetting: View {
 
         if let message = controller.statusMessage {
             Text(message)
-                .font(.caption)
+                .font(.inter(.caption))
                 .foregroundStyle(.orange)
         }
     }
@@ -343,7 +343,7 @@ private struct UpdateSetting: View {
 
         if let status = service.statusText {
             Text(status)
-                .font(.caption)
+                .font(.inter(.caption))
                 .foregroundStyle(.secondary)
         }
 

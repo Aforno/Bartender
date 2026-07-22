@@ -19,10 +19,10 @@ struct SetupErrorView: View {
 
             VStack(spacing: 8) {
                 Text("Bar Tender needs a local AI CLI")
-                    .font(.system(.title, design: .serif).weight(.semibold))
+                    .font(.inter(.title, weight: .semibold))
 
                 Text("Install and sign in to at least one provider: Codex, Claude, or Grok. Bar Tender never asks for API keys — it uses CLIs already on your Mac.")
-                    .font(.body)
+                    .font(.inter(.body))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 520)
@@ -42,7 +42,7 @@ struct SetupErrorView: View {
                 Label("Generation uses documented CLI flags only, via Process.", systemImage: "terminal")
                 Label("Generated source is installed locally and shown for review before it can run.", systemImage: "checkmark.shield")
             }
-            .font(.callout)
+            .font(.inter(.callout))
             .foregroundStyle(.secondary)
             .frame(maxWidth: 560, alignment: .leading)
 
@@ -80,30 +80,30 @@ struct SetupErrorView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
                     Text(provider.displayName)
-                        .font(.headline)
+                        .font(.inter(.headline, weight: .semibold))
                     Spacer()
                     statusBadge(status)
                 }
                 switch status {
                 case .checking:
                     Text("Checking…")
-                        .font(.caption)
+                        .font(.inter(.caption))
                         .foregroundStyle(.secondary)
                 case .ready(let install):
                     Text(install.version)
-                        .font(.caption)
+                        .font(.inter(.caption))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Text(install.authSummary)
-                        .font(.caption2)
+                        .font(.inter(.caption2))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 case .unavailable(let issue):
                     Text(issue.title(for: provider))
-                        .font(.caption)
+                        .font(.inter(.caption))
                         .foregroundStyle(.secondary)
                     Text(issue.recoverySuggestion(for: provider))
-                        .font(.caption2)
+                        .font(.inter(.caption2))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
@@ -124,7 +124,7 @@ struct SetupErrorView: View {
             }
         }()
         return Text(text)
-            .font(.caption.weight(.semibold))
+            .font(.inter(.caption, weight: .semibold))
             .foregroundStyle(color)
     }
 }

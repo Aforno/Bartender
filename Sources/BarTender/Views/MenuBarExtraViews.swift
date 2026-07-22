@@ -48,7 +48,7 @@ struct MenuBarManagerMenu: View {
             if !model.enabledApplets.isEmpty {
                 Divider()
                 Text("Running tools")
-                    .font(.caption.weight(.semibold))
+                    .font(.inter(.caption, weight: .semibold))
                     .foregroundStyle(.secondary)
 
                 ScrollView {
@@ -89,10 +89,10 @@ struct MenuBarManagerMenu: View {
                     NSApp.terminate(nil)
                 }
             }
-            .font(.caption)
+            .font(.inter(.caption))
 
             Text("Closing the window keeps tools running; quitting stops them.")
-                .font(.caption2)
+                .font(.inter(.caption2))
                 .foregroundStyle(.tertiary)
         }
         .padding(.horizontal, PremiumStyle.space12)

@@ -21,11 +21,11 @@ struct ProviderPicker: View {
                             Text(provider.displayName)
                             if providers.status(for: provider).isReady {
                                 Text("Ready")
-                                    .font(.caption2)
+                                    .font(.inter(.caption2))
                                     .foregroundStyle(.secondary)
                             } else {
                                 Text("Unavailable")
-                                    .font(.caption2)
+                                    .font(.inter(.caption2))
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -95,7 +95,7 @@ private struct ProviderChip: View {
                     .shadow(color: (ready ? Color.green : Color.orange).opacity(0.5), radius: 2)
                 Text(provider.displayName)
             }
-            .font(.caption.weight(selected ? .semibold : .regular))
+            .font(.inter(.caption, weight: selected ? .semibold : .regular))
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
             .background(

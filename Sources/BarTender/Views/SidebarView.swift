@@ -38,7 +38,7 @@ struct SidebarView: View {
             .padding(.top, PremiumStyle.space4)
 
             Text("Tools")
-                .font(.system(size: 11.5, weight: .medium))
+                .font(.inter(size: 11.5, weight: .medium))
                 .foregroundStyle(.tertiary)
                 .padding(.horizontal, PremiumStyle.sidebarInset + PremiumStyle.rowInsetH)
                 .padding(.top, PremiumStyle.space12)
@@ -48,7 +48,7 @@ struct SidebarView: View {
                 LazyVStack(alignment: .leading, spacing: 1) {
                     if filteredApplets.isEmpty {
                         Text(searchText.isEmpty ? "No tools yet — describe one below." : "No matching tools.")
-                            .font(.callout)
+                            .font(.inter(.callout))
                             .foregroundStyle(.tertiary)
                             .padding(.horizontal, PremiumStyle.rowInsetH)
                             .padding(.vertical, PremiumStyle.rowInsetV)
@@ -100,7 +100,7 @@ struct SidebarView: View {
     private var header: some View {
         HStack(spacing: 8) {
             Text("Bar Tender")
-                .font(.system(size: 14, weight: .semibold, design: .serif))
+                .font(.inter(size: 14, weight: .semibold))
 
             Spacer(minLength: 0)
 
@@ -144,7 +144,7 @@ struct SidebarView: View {
                 .frame(width: 18)
             TextField("Search", text: $searchText)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13))
+                .font(.inter(size: 13))
                 .focused($searchFocused)
                 .onExitCommand {
                     toggleSearch()
@@ -152,7 +152,7 @@ struct SidebarView: View {
                 .accessibilityIdentifier("tool-search")
             if searchText.isEmpty && !searchFocused {
                 Text("⌘K")
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.inter(size: 11))
                     .foregroundStyle(.tertiary)
             }
         }
@@ -201,7 +201,7 @@ private struct ToolRow: View {
                     .frame(width: 18)
 
                 Text(applet.name)
-                    .font(.system(size: 13))
+                    .font(.inter(size: 13))
                     .lineLimit(1)
 
                 Spacer(minLength: 6)
@@ -222,7 +222,7 @@ private struct ToolRow: View {
                     .frame(width: 20)
                 } else {
                     Text(value)
-                        .font(.system(size: 11.5))
+                        .font(.inter(size: 11.5))
                         .foregroundStyle(.tertiary)
                         .monospacedDigit()
                         .lineLimit(1)
@@ -315,11 +315,11 @@ private struct SidebarRowLabel: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 18)
             Text(title)
-                .font(.system(size: 13))
+                .font(.inter(size: 13))
             Spacer()
             if let shortcutHint {
                 Text(shortcutHint)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.inter(size: 11))
                     .foregroundStyle(.tertiary)
             }
         }

@@ -163,7 +163,7 @@ struct StatusLabel: View {
                 .fill(tint)
                 .frame(width: 6, height: 6)
             Text(title)
-                .font(.caption.weight(.medium))
+                .font(.inter(.caption, weight: .medium))
                 .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .ignore)
@@ -191,7 +191,7 @@ struct CardSectionLabel: View {
                 Image(systemName: systemImage)
             }
         }
-        .font(.subheadline.weight(.semibold))
+        .font(.inter(.subheadline, weight: .semibold))
         .foregroundStyle(.secondary)
     }
 }

@@ -309,7 +309,7 @@ private struct BannerView: View {
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(PremiumStyle.brand)
             Text(text)
-                .font(.callout)
+                .font(.inter(.callout))
                 .lineLimit(2)
             Spacer(minLength: 8)
             Button {

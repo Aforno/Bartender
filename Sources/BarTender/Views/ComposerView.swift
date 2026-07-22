@@ -55,14 +55,14 @@ struct ComposerView: View {
                 .controlSize(.small)
             VStack(alignment: .leading, spacing: 2) {
                 Text(model.generation?.phase.displayName(for: model.generation?.provider) ?? "Generating")
-                    .font(.callout.weight(.medium))
+                    .font(.inter(.callout, weight: .medium))
                     .contentTransition(.numericText())
                 Text(
                     model.generation?.isRevision == true
                         ? "The selected menu bar item will be updated in place."
                         : "A dedicated executable will appear as a new menu bar item."
                 )
-                    .font(.caption)
+                    .font(.inter(.caption))
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)

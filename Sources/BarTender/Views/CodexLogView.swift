@@ -12,7 +12,7 @@ struct CodexLogView: View {
 
             if let error = session.errorMessage {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout)
+                    .font(.inter(.callout))
                     .foregroundStyle(.red)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -25,9 +25,9 @@ struct CodexLogView: View {
                 } label: {
                     HStack(spacing: 5) {
                         Text("Technical details")
-                            .font(.callout.weight(.medium))
+                            .font(.inter(.callout, weight: .medium))
                         Text("· \(session.logs.count) events")
-                            .font(.caption)
+                            .font(.inter(.caption))
                             .foregroundStyle(.tertiary)
                     }
                 }
@@ -43,7 +43,7 @@ struct CodexLogView: View {
                 ProgressView()
                     .controlSize(.small)
                 Text(session.phase.displayName(for: session.provider))
-                    .font(.callout)
+                    .font(.inter(.callout))
                 Spacer()
             }
         } else if let manifest = session.resultManifest {
@@ -55,15 +55,15 @@ struct CodexLogView: View {
                         ? "Updated with \(session.provider.displayName)"
                         : "Built with \(session.provider.displayName)"
                 )
-                .font(.callout.weight(.semibold))
+                .font(.inter(.callout, weight: .semibold))
                 .foregroundStyle(.green)
                 Text("· \(sourceLineCount(manifest)) lines · every \(refreshLabel(manifest))" + (elapsedLabel.map { " · \($0)" } ?? ""))
-                    .font(.caption)
+                    .font(.inter(.caption))
                     .foregroundStyle(.tertiary)
             }
         } else if session.errorMessage != nil {
             Label("Build failed", systemImage: "xmark.circle.fill")
-                .font(.callout.weight(.semibold))
+                .font(.inter(.callout, weight: .semibold))
                 .foregroundStyle(.red)
         }
     }

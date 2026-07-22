@@ -30,14 +30,14 @@ struct ChatComposerBar<Accessory: View>: View {
             ZStack(alignment: .leading) {
                 if text.isEmpty {
                     Text(placeholder)
-                        .font(.system(size: compact ? 14 : 15))
+                        .font(.inter(size: compact ? 14 : 15))
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                 }
 
                 TextField("", text: $text, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .font(.system(size: compact ? 14 : 15))
+                    .font(.inter(size: compact ? 14 : 15))
                     .foregroundStyle(.primary)
                     .lineLimit(lineLimit)
                     .focused($focused)
@@ -205,7 +205,7 @@ struct ModelSelector: View {
                 ProviderIcon(provider: providers.selectedModel.provider, size: compact ? 14 : 16)
 
                 Text(providers.selectedModel.shortLabel)
-                    .font(.system(size: compact ? 13 : 14, weight: .medium))
+                    .font(.inter(size: compact ? 13 : 14, weight: .medium))
                     .foregroundStyle(Color.primary.opacity(hovering ? 0.72 : 0.48))
                     .lineLimit(1)
 
@@ -244,13 +244,13 @@ struct ModelSelector: View {
                     Text(model.displayName)
                     if model.isDefault {
                         Text("Default")
-                            .font(.caption2)
+                            .font(.inter(.caption2))
                             .foregroundStyle(.secondary)
                     }
                 }
                 if let description = model.description, !description.isEmpty {
                     Text(description)
-                        .font(.caption)
+                        .font(.inter(.caption))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 } else {

@@ -8,6 +8,8 @@ struct BarTenderApp: App {
     @StateObject private var statusItems = StatusItemManager()
 
     init() {
+        InterFont.registerIfNeeded()
+
         // Command-line sensor reports for generated tools run before any app
         // startup so the process exits immediately with the report on stdout.
         if let exitCode = HardwareSensorsCLI.handledExitCode() {
@@ -19,6 +21,7 @@ struct BarTenderApp: App {
         WindowGroup("Bar Tender", id: "main") {
             ContentView()
                 .tint(PremiumStyle.brand)
+                .font(.inter(.body))
                 .environmentObject(model)
                 .environmentObject(model.store)
                 .environmentObject(model.providers)
@@ -88,6 +91,7 @@ struct BarTenderApp: App {
         MenuBarExtra("Bar Tender", systemImage: "wineglass") {
             MenuBarManagerMenu()
                 .tint(PremiumStyle.brand)
+                .font(.inter(.body))
                 .environmentObject(model)
                 .environmentObject(model.store)
                 .environmentObject(model.runtime)
@@ -99,6 +103,7 @@ struct BarTenderApp: App {
         Settings {
             SettingsView()
                 .tint(PremiumStyle.brand)
+                .font(.inter(.body))
                 .environmentObject(model)
                 .environmentObject(model.store)
                 .environmentObject(model.providers)

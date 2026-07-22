@@ -63,7 +63,7 @@ struct DetailView: View {
 
     private func pageSection(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 17, weight: .semibold, design: .serif))
+            .font(.inter(size: 17, weight: .semibold))
             .padding(.top, PremiumStyle.space24)
             .padding(.bottom, PremiumStyle.space8)
     }
@@ -79,7 +79,7 @@ struct DetailView: View {
                 .frame(height: 40)
 
             Text(applet.name)
-                .font(.system(size: 30, weight: .bold, design: .serif))
+                .font(.inter(size: 30, weight: .bold))
         }
         .padding(.bottom, PremiumStyle.space16)
     }
@@ -197,7 +197,7 @@ struct DetailView: View {
             }
             if applet.notifyOnComplete {
                 Text("Notification fires on completion")
-                    .font(.caption)
+                    .font(.inter(.caption))
                     .foregroundStyle(.tertiary)
                     .padding(.leading, PremiumStyle.space4)
             }
@@ -218,9 +218,9 @@ struct DetailView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Read the source, then allow and test it")
-                        .font(.callout.weight(.semibold))
+                        .font(.inter(.callout, weight: .semibold))
                     Text("Approval binds to this exact code and working directory. The first run is tested, and failures go back to your selected provider for repair; changed code requires review again.")
-                        .font(.caption)
+                        .font(.inter(.caption))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -248,7 +248,7 @@ struct DetailView: View {
                 )
 
                 Text("zsh")
-                    .font(.system(size: 10.5))
+                    .font(.inter(size: 10.5))
                     .foregroundStyle(.tertiary)
                     .padding(.top, PremiumStyle.space8)
                     .padding(.trailing, PremiumStyle.space12)
@@ -256,7 +256,7 @@ struct DetailView: View {
 
             HStack(spacing: 6) {
                 Label("\(sourceLineCount(applet)) lines · any edit revokes approval", systemImage: "checkmark.shield")
-                    .font(.caption)
+                    .font(.inter(.caption))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button {
@@ -283,10 +283,10 @@ struct DetailView: View {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
             Text(applet.kind == .generatedTool ? "Source installed" : "Built-in tool saved")
-                .font(.callout.weight(.medium))
+                .font(.inter(.callout, weight: .medium))
                 .foregroundStyle(.green)
             Text("· \(applet.createdAt.formatted(date: .abbreviated, time: .shortened)) · \(refreshLabel(applet).lowercased()) · source-bound approval")
-                .font(.caption)
+                .font(.inter(.caption))
                 .foregroundStyle(.tertiary)
         }
     }
@@ -343,12 +343,12 @@ private struct PropertyRow<Content: View>: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Label(label, systemImage: systemImage)
-                .font(.system(size: 12.5))
+                .font(.inter(size: 12.5))
                 .foregroundStyle(.tertiary)
                 .frame(width: 148, alignment: .leading)
 
             content()
-                .font(.system(size: 13))
+                .font(.inter(size: 13))
 
             Spacer(minLength: 0)
         }

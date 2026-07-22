@@ -12,9 +12,9 @@ struct GeneratedCodeTrustDisclosure: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("Approval grants local code execution")
-                    .font(.callout.weight(.semibold))
+                    .font(.inter(.callout, weight: .semibold))
                 Text(message)
-                    .font(compact ? .caption : .callout)
+                    .font(compact ? .inter(.caption) : .inter(.callout))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

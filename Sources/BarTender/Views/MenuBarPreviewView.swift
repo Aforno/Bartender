@@ -37,7 +37,7 @@ struct MenuBarPreviewView: View {
                 Image(systemName: manifest.iconSystemName)
                     .font(.system(size: 12, weight: .medium))
                 Text(snapshot.title)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .font(.inter(size: 13, weight: .medium))
                     .monospacedDigit()
                     .lineLimit(1)
             }
@@ -94,7 +94,7 @@ struct MenuBarPreviewView: View {
             HStack {
                 Spacer()
                 Text("Updated \(snapshot.updatedAt.formatted(date: .omitted, time: .standard))")
-                    .font(.system(size: 10))
+                    .font(.inter(size: 10))
                     .foregroundStyle(.tertiary)
             }
             .padding(.horizontal, 14)
@@ -134,7 +134,7 @@ struct MenuBarPreviewView: View {
                 Color.clear.frame(width: 16)
             }
             Text(title)
-                .font(.system(size: 13, weight: isHeader ? .semibold : .regular))
+                .font(.inter(size: 13, weight: isHeader ? .semibold : .regular))
                 .lineLimit(1)
             Spacer(minLength: 16)
         }
