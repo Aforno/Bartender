@@ -10,7 +10,7 @@ Gatekeeper will block a normal double-click after download. That is expected.
 
 ### Install on macOS
 
-1. Download `BarTender-1.0.0-adhoc.dmg` from this release.
+1. Download the `BarTender-<version>.dmg` file listed in this release's assets.
 2. Optionally verify the file against `SHA256SUMS.txt`.
 3. Open the DMG and drag **BarTender** to **Applications**.
 4. First launch — use one of these:
@@ -37,10 +37,12 @@ A future release signed with Developer ID and notarized will remove this step wh
 ### What's in this release
 
 - Review-before-run generated zsh tools with approval bound to the exact source and working directory.
+- Opt-in setting to automatically approve provider-written edits to tools you already approved (new tools, imports, and automatic repairs still require review).
+- Generated tools can read Mac component temperatures via `"$BARTENDER_CLI" --sensors` or `--sensors-json` (CPU, GPU, SoC, battery, ambient, memory, storage; °C; no elevated privileges).
 - Provider and model selection with native ChatGPT, Claude, and Grok artwork.
 - No generation deadline: long provider runs continue until completion or explicit cancellation.
 - Launch at login, library export/import, contextual alerts, diagnostics export, provider setup, and update checks.
 - A manager menu that remains usable with many running tools.
-- Universal packaging for macOS 26 and newer.
+- Universal ad-hoc packaging for macOS 26 and newer (unsigned; Gatekeeper bypass required once).
 
 Important trust note: approved generated code is not sandboxed. It runs with your user privileges and can access local files, network services, commands, and credentials available to local processes. Review source before approval.
