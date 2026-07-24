@@ -24,7 +24,7 @@ enum ShellEnvironment {
         var environment = Dictionary(uniqueKeysWithValues: allowedKeys.compactMap { key in
             login[key].map { (key, $0) }
         })
-        if let cliPath = ensureSensorCLIWrapper() {
+        if let cliPath = await Task.detached(priority: .utility) { Self.ensureSensorCLIWrapper() }.value {
             environment["BARTENDER_CLI"] = cliPath
         }
         return environment
