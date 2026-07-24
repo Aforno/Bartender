@@ -82,6 +82,17 @@ final class ProcessAndProviderTests: XCTestCase {
         XCTAssertNoThrow(try ManifestGenerationSupport.makeManifest(from: payload ?? "", sourcePrompt: "test"))
     }
 
+    func testExtractsManifestFromGeminiResponseEnvelope() throws {
+        // Gemini `--output-format json` puts the assistant text in `response`.
+        let envelope = #"{"response":"{\"name\":\"CPU & Memory\",\"iconSystemName\":\"cpu\",\"kind\":\"systemMetrics\",\"titleTemplate\":\"{{cpu}}\",\"config\":{\"metrics\":[\"cpu\"]}}","stats":{"models":{}}}"#
+        let payload = ManifestGenerationSupport.extractMessagePayload(from: envelope)
+
+        XCTAssertNotNil(payload)
+        XCTAssertTrue(payload?.contains("\"kind\":\"systemMetrics\"") == true)
+        XCTAssertFalse(payload?.contains("\"stats\"") ?? true)
+        XCTAssertNoThrow(try ManifestGenerationSupport.makeManifest(from: payload ?? "", sourcePrompt: "test"))
+    }
+
     func testExtractsManifestFromCodexJSONLItem() {
         let manifest = #"{"name":"Timer","iconSystemName":"timer","kind":"timer","titleTemplate":"{{remaining}}","config":{"durationSeconds":60}}"#
         let escaped = manifest.replacingOccurrences(of: "\"", with: "\\\"")

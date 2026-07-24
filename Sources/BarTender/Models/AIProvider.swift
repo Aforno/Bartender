@@ -5,6 +5,8 @@ enum AIProvider: String, CaseIterable, Identifiable, Codable, Sendable {
     case codex
     case claude
     case grok
+    case gemini
+    case agy
 
     var id: String { rawValue }
 
@@ -13,6 +15,8 @@ enum AIProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .codex: return "Codex"
         case .claude: return "Claude"
         case .grok: return "Grok"
+        case .gemini: return "Gemini"
+        case .agy: return "Antigravity"
         }
     }
 
@@ -21,6 +25,8 @@ enum AIProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .codex: return "codex"
         case .claude: return "claude"
         case .grok: return "grok"
+        case .gemini: return "gemini"
+        case .agy: return "agy"
         }
     }
 
@@ -29,6 +35,8 @@ enum AIProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .codex: return "chatgpt"
         case .claude: return "claude"
         case .grok: return "grok"
+        case .gemini: return "gemini"
+        case .agy: return "agy"
         }
     }
 
@@ -40,6 +48,10 @@ enum AIProvider: String, CaseIterable, Identifiable, Codable, Sendable {
             return "Install Claude Code and ensure `claude` is on your shell PATH."
         case .grok:
             return "Install the Grok CLI and ensure `grok` is on your shell PATH."
+        case .gemini:
+            return "Install the Gemini CLI and ensure `gemini` is on your shell PATH."
+        case .agy:
+            return "Install Antigravity CLI and ensure `agy` is on your shell PATH."
         }
     }
 
@@ -51,6 +63,10 @@ enum AIProvider: String, CaseIterable, Identifiable, Codable, Sendable {
             return "Run `claude auth login` in Terminal, complete authentication, then recheck."
         case .grok:
             return "Run `grok login` in Terminal, complete authentication, then recheck."
+        case .gemini:
+            return "Run `gemini` in Terminal, complete authentication, then recheck."
+        case .agy:
+            return "Run `agy` in Terminal, complete Google Sign-In, then recheck."
         }
     }
 
@@ -59,6 +75,8 @@ enum AIProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .codex: return "codex login"
         case .claude: return "claude auth login"
         case .grok: return "grok login"
+        case .gemini: return "gemini"
+        case .agy: return "agy"
         }
     }
 }

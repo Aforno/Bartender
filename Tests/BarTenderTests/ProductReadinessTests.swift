@@ -88,6 +88,20 @@ final class ProviderEndToEndMatrixTests: XCTestCase {
             atomically: true,
             encoding: .utf8
         )
+        try FileManager.default.createDirectory(
+            at: temporaryDirectory.appendingPathComponent(".gemini/antigravity-cli", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try #"{"access_token":"fixture"}"#.write(
+            to: temporaryDirectory.appendingPathComponent(".gemini/oauth_creds.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "fixture-oauth-token".write(
+            to: temporaryDirectory.appendingPathComponent(".gemini/antigravity-cli/antigravity-oauth-token"),
+            atomically: true,
+            encoding: .utf8
+        )
         defaultsSuite = "BarTenderTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: defaultsSuite)!
     }
@@ -102,7 +116,7 @@ final class ProviderEndToEndMatrixTests: XCTestCase {
         executablePaths = [:]
     }
 
-    func testAllThreeProvidersProbeAndGenerateThroughRealProcesses() async throws {
+    func testAllProvidersProbeAndGenerateThroughRealProcesses() async throws {
         try installHealthyProviderFixtures()
         let service = makeService()
         await service.refreshAvailability()
@@ -147,6 +161,23 @@ final class ProviderEndToEndMatrixTests: XCTestCase {
             authMatcher: "models",
             authOutput: "auth: token expired, re-authentication required"
         ))
+        try installFixture(named: "gemini", source: probeScript(
+            version: "gemini fixture",
+            authMatcher: "unused",
+            authOutput: "unused"
+        ))
+        try installFixture(named: "agy", source: probeScript(
+            version: "agy fixture",
+            authMatcher: "models",
+            authOutput: "auth: token expired, re-authentication required"
+        ))
+        // Gemini and Antigravity probe local credential files before CLI checks.
+        try? FileManager.default.removeItem(
+            at: temporaryDirectory.appendingPathComponent(".gemini/oauth_creds.json")
+        )
+        try? FileManager.default.removeItem(
+            at: temporaryDirectory.appendingPathComponent(".gemini/antigravity-cli/antigravity-oauth-token")
+        )
 
         let service = makeService()
         await service.refreshAvailability()
@@ -284,6 +315,35 @@ final class ProviderEndToEndMatrixTests: XCTestCase {
                 generationDelay: generationDelay
             )
         )
+        try installFixture(
+            named: "gemini",
+            source: providerScript(
+                version: "gemini fixture 99.0-nightly",
+                authMatcher: "unused",
+                authOutput: "unused",
+                generationOutput: geminiEnvelope(for: output),
+                generationDelay: generationDelay
+            )
+        )
+        try installFixture(
+            named: "agy",
+            source: providerScript(
+                version: "agy fixture 99.0-nightly",
+                authMatcher: "models",
+                authOutput: "gemini-3.1-pro-high\ngemini-3.6-flash-medium",
+                generationOutput: output,
+                generationDelay: generationDelay
+            )
+        )
+    }
+
+    /// Gemini `--output-format json` wraps the assistant answer in a `response` field.
+    private func geminiEnvelope(for generationOutput: String) -> String {
+        let escaped = generationOutput
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+        return #"{"response":"\#(escaped)","stats":{"models":{}}}"#
     }
 
     private func installFixture(named name: String, source: String) throws {

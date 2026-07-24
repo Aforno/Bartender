@@ -23,6 +23,10 @@ enum ModelCatalog {
             discovered = readCodexModels(homeDirectoryURL: homeDirectoryURL)
         case .claude:
             discovered = readClaudeModels(homeDirectoryURL: homeDirectoryURL)
+        case .gemini:
+            discovered = readGeminiModels(homeDirectoryURL: homeDirectoryURL)
+        case .agy:
+            discovered = readAgyModels(homeDirectoryURL: homeDirectoryURL)
         }
 
         if discovered.isEmpty {
@@ -228,6 +232,108 @@ enum ModelCatalog {
         return model
     }
 
+    // MARK: - Gemini (`~/.gemini/settings.json`)
+
+    private static func readGeminiModels(homeDirectoryURL: URL) -> [AIModelOption] {
+        var options = fallbackModels(for: .gemini)
+        if let configured = geminiConfiguredModelID(homeDirectoryURL: homeDirectoryURL) {
+            if let idx = options.firstIndex(where: { $0.modelID == configured }) {
+                options = options.enumerated().map { i, m in
+                    var copy = m
+                    copy.isDefault = (i == idx)
+                    return copy
+                }
+            } else {
+                options.insert(
+                    AIModelOption(
+                        provider: .gemini,
+                        modelID: configured,
+                        displayName: configured,
+                        description: "From Gemini settings",
+                        isDefault: true
+                    ),
+                    at: 0
+                )
+                options = options.enumerated().map { i, m in
+                    var copy = m
+                    if i > 0 { copy.isDefault = false }
+                    return copy
+                }
+            }
+        }
+        return options
+    }
+
+    private static func geminiConfiguredModelID(homeDirectoryURL: URL) -> String? {
+        let url = homeURL(".gemini/settings.json", in: homeDirectoryURL)
+        guard
+            let data = try? Data(contentsOf: url),
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return nil
+        }
+        if let model = root["model"] as? String, !model.isEmpty {
+            return model
+        }
+        if let modelObj = root["model"] as? [String: Any],
+           let name = modelObj["name"] as? String,
+           !name.isEmpty {
+            return name
+        }
+        return nil
+    }
+
+    // MARK: - Antigravity / agy (`~/.gemini/antigravity-cli/settings.json`)
+
+    private static func readAgyModels(homeDirectoryURL: URL) -> [AIModelOption] {
+        var options = fallbackModels(for: .agy)
+        if let configured = agyConfiguredModelID(homeDirectoryURL: homeDirectoryURL) {
+            // Settings may store either a slug (`gemini-3.1-pro-high`) or a display
+            // label (`Claude Opus 4.6 (Thinking)`). Prefer exact modelID match, then
+            // case-insensitive displayName match.
+            if let idx = options.firstIndex(where: {
+                $0.modelID == configured
+                    || $0.displayName.caseInsensitiveCompare(configured) == .orderedSame
+            }) {
+                options = options.enumerated().map { i, m in
+                    var copy = m
+                    copy.isDefault = (i == idx)
+                    return copy
+                }
+            } else {
+                options.insert(
+                    AIModelOption(
+                        provider: .agy,
+                        modelID: configured,
+                        displayName: configured,
+                        description: "From Antigravity settings",
+                        isDefault: true
+                    ),
+                    at: 0
+                )
+                options = options.enumerated().map { i, m in
+                    var copy = m
+                    if i > 0 { copy.isDefault = false }
+                    return copy
+                }
+            }
+        }
+        return options
+    }
+
+    private static func agyConfiguredModelID(homeDirectoryURL: URL) -> String? {
+        let url = homeURL(".gemini/antigravity-cli/settings.json", in: homeDirectoryURL)
+        guard
+            let data = try? Data(contentsOf: url),
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let model = root["model"] as? String,
+            !model.isEmpty
+        else {
+            return nil
+        }
+        return model
+    }
+
     // MARK: - Fallbacks
 
     private static func fallbackModels(for provider: AIProvider) -> [AIModelOption] {
@@ -285,6 +391,58 @@ enum ModelCatalog {
                     modelID: "fable",
                     displayName: "Fable",
                     description: "Latest Claude model alias"
+                )
+            ]
+        case .gemini:
+            // Common Gemini CLI model IDs; settings can override the default.
+            return [
+                AIModelOption(
+                    provider: .gemini,
+                    modelID: "gemini-3.1-pro-preview",
+                    displayName: "Gemini 3.1 Pro",
+                    description: "Default Gemini CLI model",
+                    isDefault: true
+                ),
+                AIModelOption(
+                    provider: .gemini,
+                    modelID: "gemini-3-flash-preview",
+                    displayName: "Gemini 3 Flash",
+                    description: "Fast Gemini model"
+                ),
+                AIModelOption(
+                    provider: .gemini,
+                    modelID: "gemini-2.5-pro",
+                    displayName: "Gemini 2.5 Pro",
+                    description: "Stable Gemini Pro model"
+                )
+            ]
+        case .agy:
+            // Documented IDs from `agy models` (Antigravity CLI).
+            return [
+                AIModelOption(
+                    provider: .agy,
+                    modelID: "gemini-3.1-pro-high",
+                    displayName: "Gemini 3.1 Pro (High)",
+                    description: "Default Antigravity model",
+                    isDefault: true
+                ),
+                AIModelOption(
+                    provider: .agy,
+                    modelID: "gemini-3.6-flash-medium",
+                    displayName: "Gemini 3.6 Flash (Medium)",
+                    description: "Balanced Flash model"
+                ),
+                AIModelOption(
+                    provider: .agy,
+                    modelID: "claude-sonnet-4-6",
+                    displayName: "Claude Sonnet 4.6 (Thinking)",
+                    description: "Claude via Antigravity"
+                ),
+                AIModelOption(
+                    provider: .agy,
+                    modelID: "claude-opus-4-6-thinking",
+                    displayName: "Claude Opus 4.6 (Thinking)",
+                    description: "Highest-capability Claude via Antigravity"
                 )
             ]
         }

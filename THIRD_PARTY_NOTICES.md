@@ -9,8 +9,10 @@ The MIT License covers Bar Tender's own source code and artwork. It does not gra
 - The ChatGPT provider icon uses the OpenAI Blossom mark obtained from OpenAI's published brand artwork through Wikimedia Commons.
 - The Claude provider icon is sourced from the public Claude website application icon.
 - The Grok provider icon is sourced from the public Grok website application icon.
+- The Gemini provider icon is sourced from Google's published Gemini favicon artwork on gstatic.
+- The Antigravity (`agy`) provider icon is taken from the Antigravity.app application icon.
 
-These marks identify compatible third-party CLI providers. OpenAI, ChatGPT, Claude, Anthropic, Grok, and xAI are trademarks or service marks of their respective owners. Their appearance does not imply sponsorship or endorsement. Contributors should preserve the marks' proportions and follow each owner's current brand guidance.
+These marks identify compatible third-party CLI providers. OpenAI, ChatGPT, Claude, Anthropic, Grok, xAI, Gemini, Google, and Antigravity are trademarks or service marks of their respective owners. Their appearance does not imply sponsorship or endorsement. Contributors should preserve the marks' proportions and follow each owner's current brand guidance.
 
 Source URLs and integrity hashes are recorded in `Packaging/provider-icons.json` so release review can reproduce and audit the bundled files.
 

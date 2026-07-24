@@ -1,6 +1,6 @@
 import Foundation
 
-/// Discovers and invokes local AI CLIs (Codex, Claude, Grok).
+/// Discovers and invokes local AI CLIs (Codex, Claude, Grok, Gemini, Antigravity).
 /// Uses only documented flags inspected from each CLI's `--help`.
 @MainActor
 final class AIProviderService: ObservableObject {
@@ -20,7 +20,9 @@ final class AIProviderService: ObservableObject {
     @Published private(set) var statuses: [AIProvider: ProviderAvailability] = [
         .codex: .checking,
         .claude: .checking,
-        .grok: .checking
+        .grok: .checking,
+        .gemini: .checking,
+        .agy: .checking
     ]
 
     /// User preference: which providers appear in the model selector and may be used for generation.
@@ -413,10 +415,10 @@ final class AIProviderService: ObservableObject {
 
     private func readVersion(provider: AIProvider, path: String, env: [String: String]) async throws -> String {
         // Documented version flags:
-        // codex --version | claude --version | grok --version / grok version
+        // codex/claude/grok/gemini/agy --version
         let args: [String]
         switch provider {
-        case .codex, .claude, .grok:
+        case .codex, .claude, .grok, .gemini, .agy:
             args = ["--version"]
         }
         let result = try await runner.run(executable: path, arguments: args, environment: env, timeout: 15)
@@ -514,6 +516,60 @@ final class AIProviderService: ObservableObject {
                 return AuthProbe(ok: false, summary: "Authentication expired or unavailable — run `grok login`.")
             }
             return AuthProbe(ok: true, summary: "Authenticated")
+
+        case .gemini:
+            // Gemini has no `login status` command. OAuth lives in ~/.gemini/oauth_creds.json.
+            let authURL = homeDirectoryURL.appendingPathComponent(".gemini/oauth_creds.json")
+            guard FileManager.default.fileExists(atPath: authURL.path) else {
+                return AuthProbe(ok: false, summary: "Missing ~/.gemini/oauth_creds.json — run `gemini` and sign in.")
+            }
+            guard
+                let data = try? Data(contentsOf: authURL),
+                !data.isEmpty,
+                let obj = try? JSONSerialization.jsonObject(with: data),
+                (obj as? [String: Any])?.isEmpty == false
+            else {
+                return AuthProbe(ok: false, summary: "Auth file present but empty — run `gemini` and sign in.")
+            }
+            // Prefer an account label when present (never log tokens).
+            let accountsURL = homeDirectoryURL.appendingPathComponent(".gemini/google_accounts.json")
+            if let accountsData = try? Data(contentsOf: accountsURL),
+               let accounts = try? JSONSerialization.jsonObject(with: accountsData) as? [String: Any],
+               let active = accounts["active"] as? String,
+               !active.isEmpty {
+                return AuthProbe(ok: true, summary: active)
+            }
+            return AuthProbe(ok: true, summary: "Authenticated")
+
+        case .agy:
+            // Antigravity CLI stores OAuth under ~/.gemini/antigravity-cli/.
+            // `agy models` is non-generative and fails closed when auth is missing/expired.
+            let tokenURL = homeDirectoryURL
+                .appendingPathComponent(".gemini/antigravity-cli/antigravity-oauth-token")
+            guard FileManager.default.fileExists(atPath: tokenURL.path) else {
+                return AuthProbe(ok: false, summary: "Missing Antigravity OAuth token — run `agy` and sign in.")
+            }
+            guard
+                let data = try? Data(contentsOf: tokenURL),
+                !data.isEmpty
+            else {
+                return AuthProbe(ok: false, summary: "Auth token present but empty — run `agy` and sign in.")
+            }
+            let result = try await runner.run(
+                executable: path,
+                arguments: ["models"],
+                environment: env,
+                timeout: 20
+            )
+            if result.timedOut {
+                throw ProbeError.auth("Model/auth check timed out.")
+            }
+            let output = (result.stdout + "\n" + result.stderr)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if result.exitCode != 0 || Self.looksUnauthenticated(output) {
+                return AuthProbe(ok: false, summary: "Authentication expired or unavailable — run `agy` and sign in.")
+            }
+            return AuthProbe(ok: true, summary: "Authenticated")
         }
     }
 
@@ -532,7 +588,7 @@ final class AIProviderService: ObservableObject {
         prompt: String,
         tempRoot: URL
     ) throws -> Invocation {
-        // All three CLIs document `-m` / `--model <MODEL>`.
+        // All supported CLIs document `-m` / `--model <MODEL>`.
         let modelArgs = modelFlag(for: provider, modelID: model.modelID)
 
         switch provider {
@@ -609,6 +665,38 @@ final class AIProviderService: ObservableObject {
                 currentDirectory: tempRoot.path,
                 outputFile: nil
             )
+
+        case .gemini:
+            // Documented: gemini -p/--prompt <prompt> -m/--model <model>
+            // --output-format json wraps the answer in {response, stats, error}.
+            // --approval-mode plan is read-only; --skip-trust avoids workspace prompts.
+            // No JSON-schema flag — the prompt requires a bare manifest object.
+            return Invocation(
+                arguments: [
+                    "--prompt", prompt
+                ] + modelArgs + [
+                    "--output-format", "json",
+                    "--approval-mode", "plan",
+                    "--skip-trust"
+                ],
+                currentDirectory: tempRoot.path,
+                outputFile: nil
+            )
+
+        case .agy:
+            // Documented: agy --print/--prompt/-p <prompt> --model <model>
+            // --mode plan keeps the run non-mutating; --sandbox enables terminal restrictions.
+            // No JSON-schema / output-format flags — stdout is the assistant text.
+            return Invocation(
+                arguments: [
+                    "--print", prompt
+                ] + modelArgs + [
+                    "--mode", "plan",
+                    "--sandbox"
+                ],
+                currentDirectory: tempRoot.path,
+                outputFile: nil
+            )
         }
     }
 
@@ -616,7 +704,7 @@ final class AIProviderService: ObservableObject {
         let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != "default" else { return [] }
         switch provider {
-        case .codex, .claude, .grok:
+        case .codex, .claude, .grok, .gemini, .agy:
             return ["--model", trimmed]
         }
     }
@@ -692,7 +780,11 @@ final class AIProviderService: ObservableObject {
             "invalid_grant",
             "\"loggedin\": false",
             "\"loggedin\":false",
-            "loggedin=false"
+            "loggedin=false",
+            "ineligibletier",
+            "no longer supported for gemini",
+            "migrate to the antigravity",
+            "error authenticating"
         ]
         if negativeSignals.contains(where: { lower.contains($0) }) {
             return true

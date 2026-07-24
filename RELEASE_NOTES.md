@@ -1,6 +1,6 @@
 # Bar Tender 1.0.0-adhoc
 
-Bar Tender turns a plain-language request into a dedicated macOS menu bar tool using an already installed Codex, Claude, or Grok CLI.
+Bar Tender turns a plain-language request into a dedicated macOS menu bar tool using an already installed Codex, Claude, Grok, Gemini, or Antigravity (`agy`) CLI.
 
 ## Distribution notice (read this)
 
@@ -32,7 +32,7 @@ A future release signed with Developer ID and notarized will remove this step wh
 
 - macOS 26 or newer
 - Universal binary (Apple silicon and Intel)
-- At least one local AI CLI signed in: `codex`, `claude`, or `grok`
+- At least one local AI CLI signed in: `codex`, `claude`, `grok`, `gemini`, or `agy`
 
 ### What's in this release
 

@@ -49,6 +49,26 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertTrue(claude.contains { $0.modelID == "sonnet" })
     }
 
+    func testGeminiAndAgySettingsMarkConfiguredDefaults() throws {
+        let home = temporaryHome()
+        try write(
+            #"{"model":{"name":"gemini-future-pro"}}"#,
+            to: home.appendingPathComponent(".gemini/settings.json")
+        )
+        try write(
+            #"{"model":"Claude Opus 4.6 (Thinking)"}"#,
+            to: home.appendingPathComponent(".gemini/antigravity-cli/settings.json")
+        )
+
+        let gemini = ModelCatalog.models(for: .gemini, homeDirectoryURL: home)
+        XCTAssertEqual(gemini.first(where: \.isDefault)?.modelID, "gemini-future-pro")
+        XCTAssertTrue(gemini.contains { $0.modelID == "gemini-3.1-pro-preview" })
+
+        let agy = ModelCatalog.models(for: .agy, homeDirectoryURL: home)
+        XCTAssertEqual(agy.first(where: \.isDefault)?.modelID, "claude-opus-4-6-thinking")
+        XCTAssertTrue(agy.contains { $0.modelID == "gemini-3.1-pro-high" })
+    }
+
     private func temporaryHome() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("BarTender-ModelCatalog-\(UUID().uuidString)", isDirectory: true)

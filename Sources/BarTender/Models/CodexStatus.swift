@@ -142,7 +142,7 @@ enum ProviderGenerationError: LocalizedError {
                 + "Install it (for example `brew install \(tool)`) and generate again, "
                 + "or rephrase your request to use tools that ship with macOS."
         case .noProvidersReady:
-            return "No AI provider CLI is ready. Install and sign in to Codex, Claude, or Grok."
+            return "No AI provider CLI is ready. Install and sign in to Codex, Claude, Grok, Gemini, or Antigravity."
         }
     }
 }

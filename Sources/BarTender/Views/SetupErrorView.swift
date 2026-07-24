@@ -21,7 +21,7 @@ struct SetupErrorView: View {
                 Text("Bar Tender needs a local AI CLI")
                     .font(.inter(.title, weight: .semibold))
 
-                Text("Install and sign in to at least one provider: Codex, Claude, or Grok. Bar Tender never asks for API keys — it uses CLIs already on your Mac.")
+                Text("Install and sign in to at least one provider: Codex, Claude, Grok, Gemini, or Antigravity. Bar Tender never asks for API keys — it uses CLIs already on your Mac.")
                     .font(.inter(.body))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
