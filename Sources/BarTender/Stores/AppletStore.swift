@@ -189,10 +189,8 @@ final class AppletStore: ObservableObject {
         try encoder.encode(AppletLibraryArchive(applets: applets))
     }
 
-    /// Imports only manifests. Approval fingerprints and executable artifacts
-    /// are deliberately outside the archive and are handled by AppModel.
-    @discardableResult
-    func importArchiveData(_ data: Data, mode: AppletImportMode) throws -> [AppletManifest] {
+    /// Decodes and validates an archive without mutating the on-disk library.
+    func validatedManifests(from data: Data) throws -> [AppletManifest] {
         let archive: AppletLibraryArchive
         do {
             archive = try decoder.decode(AppletLibraryArchive.self, from: data)
@@ -202,8 +200,20 @@ final class AppletStore: ObservableObject {
         guard archive.formatVersion == AppletLibraryArchive.currentFormatVersion else {
             throw AppletStoreError.unsupportedArchiveVersion(archive.formatVersion)
         }
+        return try archive.applets.map(ManifestValidator.normalizedAndValidated)
+    }
 
-        let imported = try archive.applets.map(ManifestValidator.normalizedAndValidated)
+    /// Imports only manifests. Approval fingerprints and executable artifacts
+    /// are deliberately outside the archive and are handled by AppModel.
+    @discardableResult
+    func importArchiveData(_ data: Data, mode: AppletImportMode) throws -> [AppletManifest] {
+        let imported = try validatedManifests(from: data)
+        try applyImport(imported, mode: mode)
+        return imported
+    }
+
+    /// Commits a previously validated import set (see `validatedManifests(from:)`).
+    func applyImport(_ imported: [AppletManifest], mode: AppletImportMode) throws {
         var next = mode == .replace ? [] : applets
         for manifest in imported.reversed() {
             if let index = next.firstIndex(where: { $0.id == manifest.id }) {
@@ -213,7 +223,11 @@ final class AppletStore: ObservableObject {
             }
         }
         try commit(next)
-        return imported
+    }
+
+    /// Replaces the entire library (used to roll back a failed import).
+    func replaceAll(_ manifests: [AppletManifest]) throws {
+        try commit(manifests)
     }
 
     /// On-disk location of the library file (for Settings “Reveal in Finder”).

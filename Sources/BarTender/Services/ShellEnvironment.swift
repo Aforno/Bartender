@@ -12,8 +12,9 @@ enum ShellEnvironment {
     /// Environment exposed to approved generated tools. Authentication tokens
     /// inherited by the app are intentionally excluded; tools still receive the
     /// standard user identity, locale, temporary directory, shell, and PATH.
-    /// BARTENDER_CLI points at the app executable so tools can query hardware
-    /// sensors via `"$BARTENDER_CLI" --sensors` without elevated privileges.
+    /// BARTENDER_CLI points at a sensor-only wrapper (not the GUI executable) so
+    /// tools can run `"$BARTENDER_CLI" --sensors` without launching a second app
+    /// instance that would race on applets.json / UserDefaults.
     static func generatedToolEnvironment() async -> [String: String] {
         let login = await loginEnvironment()
         let allowedKeys = [
@@ -23,10 +24,66 @@ enum ShellEnvironment {
         var environment = Dictionary(uniqueKeysWithValues: allowedKeys.compactMap { key in
             login[key].map { (key, $0) }
         })
-        if let executablePath = Bundle.main.executableURL?.path {
-            environment["BARTENDER_CLI"] = executablePath
+        if let cliPath = await Task.detached(priority: .utility) { Self.ensureSensorCLIWrapper() }.value {
+            environment["BARTENDER_CLI"] = cliPath
         }
         return environment
+    }
+
+    /// Writes (or refreshes) a small zsh wrapper that only allows `--sensors` /
+    /// `--sensors-json` and execs the real app binary for those flags. Bare or
+    /// unknown invocations exit with an error instead of opening a full GUI.
+    static func ensureSensorCLIWrapper(
+        appExecutable: String? = Bundle.main.executableURL?.path,
+        fileManager: FileManager = .default
+    ) -> String? {
+        guard let appExecutable, !appExecutable.isEmpty else { return nil }
+
+        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fileManager.temporaryDirectory
+        let binDirectory = appSupport
+            .appendingPathComponent("BarTender", isDirectory: true)
+            .appendingPathComponent("bin", isDirectory: true)
+        let wrapperURL = binDirectory.appendingPathComponent("bartender-cli", isDirectory: false)
+
+        // Single-quote the app path for zsh; escape any embedded single quotes.
+        let escapedApp = appExecutable.replacingOccurrences(of: "'", with: "'\\''")
+        let wrapperScript = """
+        #!/bin/zsh
+        set -euo pipefail
+        APP='\(escapedApp)'
+        if [[ $# -lt 1 ]]; then
+          print -u2 'Bar Tender CLI supports only --sensors and --sensors-json.'
+          exit 2
+        fi
+        case "$1" in
+          --sensors|--sensors-json)
+            exec "$APP" "$@"
+            ;;
+          *)
+            print -u2 'Bar Tender CLI supports only --sensors and --sensors-json.'
+            exit 2
+            ;;
+        esac
+        """
+
+        do {
+            try fileManager.createDirectory(at: binDirectory, withIntermediateDirectories: true)
+            let existing = try? String(contentsOf: wrapperURL, encoding: .utf8)
+            if existing != wrapperScript {
+                try wrapperScript.write(to: wrapperURL, atomically: true, encoding: .utf8)
+                try fileManager.setAttributes(
+                    [.posixPermissions: NSNumber(value: Int16(0o755))],
+                    ofItemAtPath: wrapperURL.path
+                )
+            }
+            return wrapperURL.path
+        } catch {
+            AppLog.app.error(
+                "Could not install BARTENDER_CLI wrapper: \(error.localizedDescription, privacy: .public)"
+            )
+            return nil
+        }
     }
 
     fileprivate static func buildLoginEnvironment() async -> [String: String] {

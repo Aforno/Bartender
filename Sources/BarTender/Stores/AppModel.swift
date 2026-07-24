@@ -556,25 +556,70 @@ final class AppModel: ObservableObject {
 
         do {
             let data = try Data(contentsOf: url)
-            let imported = try store.importArchiveData(data, mode: mode)
-            if mode == .replace {
-                shellApprovals.removeAll()
-                try? generatedTools.removeAll()
+            // Validate + preflight artifact installs before mutating the live library.
+            let imported = try store.validatedManifests(from: data)
+            let stagingRoot = FileManager.default.temporaryDirectory
+                .appendingPathComponent("BarTender-Import-\(UUID().uuidString)", isDirectory: true)
+            defer { try? FileManager.default.removeItem(at: stagingRoot) }
+            let staging = GeneratedToolArtifactStore(rootURL: stagingRoot)
+            for manifest in imported where manifest.kind == .generatedTool {
+                _ = try staging.install(manifest)
             }
-            for manifest in imported {
-                shellApprovals.revoke(id: manifest.id)
-                if manifest.kind == .generatedTool {
-                    _ = try generatedTools.install(manifest)
-                } else {
-                    try? generatedTools.remove(id: manifest.id)
+
+            let previousApplets = store.applets
+            let previousApprovals = shellApprovals.snapshot()
+            // Stop live tasks before swapping artifacts so stale polling loops
+            // cannot reinstall pre-import generatedSource over the import.
+            runtime.stopAll()
+
+            do {
+                try store.applyImport(imported, mode: mode)
+                if mode == .replace {
+                    shellApprovals.removeAll()
+                    try generatedTools.removeAll()
                 }
+                for manifest in imported {
+                    shellApprovals.revoke(id: manifest.id)
+                    if manifest.kind == .generatedTool {
+                        _ = try generatedTools.install(manifest)
+                    } else {
+                        try? generatedTools.remove(id: manifest.id)
+                    }
+                }
+                runtime.sync(with: store.applets)
+                refreshEnabledApplets()
+                selection = imported.first?.id ?? store.applets.first?.id
+                bannerMessage = "Imported \(imported.count) tool(s). Review generated source before running it."
+            } catch {
+                // Roll back library, approvals, and generated-tool artifacts.
+                try? store.replaceAll(previousApplets)
+                shellApprovals.restore(previousApprovals)
+                try? restoreGeneratedToolArtifacts(from: previousApplets, replaceMode: mode == .replace)
+                runtime.sync(with: store.applets)
+                refreshEnabledApplets()
+                throw error
             }
-            runtime.sync(with: store.applets)
-            refreshEnabledApplets()
-            selection = imported.first?.id ?? store.applets.first?.id
-            bannerMessage = "Imported \(imported.count) tool(s). Review generated source before running it."
         } catch {
             bannerMessage = "Could not import the library: \(error.localizedDescription)"
+        }
+    }
+
+    /// Reinstalls generated-tool artifacts from a prior library snapshot after a failed import.
+    private func restoreGeneratedToolArtifacts(
+        from previousApplets: [AppletManifest],
+        replaceMode: Bool
+    ) throws {
+        if replaceMode {
+            // Replace may have wiped the artifact root; rebuild from the snapshot.
+            try? generatedTools.removeAll()
+            for manifest in previousApplets where manifest.kind == .generatedTool {
+                _ = try generatedTools.install(manifest)
+            }
+            return
+        }
+        // Merge: reinstall any previous generated tools that may have been overwritten.
+        for manifest in previousApplets where manifest.kind == .generatedTool {
+            _ = try generatedTools.install(manifest)
         }
     }
 
