@@ -24,5 +24,7 @@ xcuserdata/
 .idea/
 *.swp
 
-# Grok / local agent tooling
+# Local agent tooling
 .grok/
+.codex/
+.claude/
