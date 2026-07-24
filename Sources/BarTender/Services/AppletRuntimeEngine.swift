@@ -24,6 +24,9 @@ final class AppletRuntimeEngine: ObservableObject {
     private let shellApprovals: ShellApprovalStore
     private let generatedTools: GeneratedToolArtifactStore
     private var tasks: [UUID: Task<Void, Never>] = [:]
+    /// Manifest last captured into each running task. Used so `sync` can restart
+    /// same-UUID tools when import/edit changes content without changing the id.
+    private var startedManifests: [UUID: AppletManifest] = [:]
     private var timerEnds: [UUID: Date] = [:]
     private var timerPausedRemaining: [UUID: Int] = [:]
     private var metricCollectors: [UUID: SystemMetricsCollector] = [:]
@@ -51,6 +54,10 @@ final class AppletRuntimeEngine: ObservableObject {
             }
             if tasks[manifest.id] == nil {
                 start(manifest)
+            } else if startedManifests[manifest.id] != manifest {
+                // Same UUID but content changed (e.g. library import/merge).
+                // Restart so the polling loop captures the new manifest.
+                restart(manifest: manifest)
             }
         }
     }
@@ -76,6 +83,7 @@ final class AppletRuntimeEngine: ObservableObject {
             return
         }
         applyGeneratedToolOutput(output, manifest: manifest)
+        startedManifests[manifest.id] = manifest
         tasks[manifest.id] = Task { [weak self] in
             await self?.runPollingLoop(manifest, delayFirstTick: true)
         }
@@ -84,6 +92,7 @@ final class AppletRuntimeEngine: ObservableObject {
     func stop(id: UUID) {
         tasks[id]?.cancel()
         tasks[id] = nil
+        startedManifests[id] = nil
         timerEnds[id] = nil
         timerPausedRemaining[id] = nil
         metricCollectors[id] = nil
@@ -132,6 +141,7 @@ final class AppletRuntimeEngine: ObservableObject {
 
     private func start(_ manifest: AppletManifest) {
         AppLog.runtime.info("Starting applet \(manifest.name, privacy: .public) (\(manifest.kind.rawValue, privacy: .public))")
+        startedManifests[manifest.id] = manifest
 
         switch manifest.kind {
         case .timer, .countdown:

@@ -45,6 +45,16 @@ final class ShellApprovalStore {
         persist()
     }
 
+    /// Snapshot of approval fingerprints for transactional import rollback.
+    func snapshot() -> [String: String] {
+        approvals
+    }
+
+    func restore(_ snapshot: [String: String]) {
+        approvals = snapshot
+        persist()
+    }
+
     static func fingerprint(for manifest: AppletManifest) -> String? {
         let executableContent: String
         switch manifest.kind {

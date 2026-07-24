@@ -98,13 +98,7 @@ actor ProcessRunner {
                 guard !Task.isCancelled else { return }
                 if let process, process.isRunning {
                     timedOutFlag.set()
-                    process.terminate()
-                    // Escalate if needed.
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
-                    if process.isRunning {
-                        process.interrupt()
-                        kill(process.processIdentifier, SIGKILL)
-                    }
+                    await Self.terminateEscalating(process)
                 }
             }
         }
@@ -113,7 +107,8 @@ actor ProcessRunner {
             await terminationWaiter.wait()
         } onCancel: {
             cancelledFlag.set()
-            process.terminate()
+            // SIGTERM now; escalate to SIGKILL if the child ignores it (same as timeout).
+            Self.scheduleTerminateEscalating(process)
         }
 
         timeoutTask?.cancel()
@@ -134,7 +129,30 @@ actor ProcessRunner {
     func cancel() {
         for active in activeProcesses.values where active.process.isRunning {
             active.cancelledFlag.set()
-            active.process.terminate()
+            Self.scheduleTerminateEscalating(active.process)
+        }
+    }
+
+    /// SIGTERM immediately, then interrupt + SIGKILL after 1s if still running.
+    private static func scheduleTerminateEscalating(_ process: Process) {
+        process.terminate()
+        Task {
+            await terminateEscalating(process, alreadyTerminated: true)
+        }
+    }
+
+    /// SIGTERM (unless already sent), wait briefly, then interrupt + SIGKILL if still running.
+    private static func terminateEscalating(
+        _ process: Process,
+        alreadyTerminated: Bool = false
+    ) async {
+        if !alreadyTerminated, process.isRunning {
+            process.terminate()
+        }
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        if process.isRunning {
+            process.interrupt()
+            kill(process.processIdentifier, SIGKILL)
         }
     }
 }
