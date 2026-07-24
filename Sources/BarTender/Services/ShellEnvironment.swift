@@ -72,11 +72,11 @@ enum ShellEnvironment {
             let existing = try? String(contentsOf: wrapperURL, encoding: .utf8)
             if existing != wrapperScript {
                 try wrapperScript.write(to: wrapperURL, atomically: true, encoding: .utf8)
+                try fileManager.setAttributes(
+                    [.posixPermissions: NSNumber(value: Int16(0o755))],
+                    ofItemAtPath: wrapperURL.path
+                )
             }
-            try fileManager.setAttributes(
-                [.posixPermissions: NSNumber(value: Int16(0o755))],
-                ofItemAtPath: wrapperURL.path
-            )
             return wrapperURL.path
         } catch {
             AppLog.app.error(
