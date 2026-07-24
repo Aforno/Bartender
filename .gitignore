@@ -23,3 +23,6 @@ xcuserdata/
 # Editors
 .idea/
 *.swp
+
+# Grok / local agent tooling
+.grok/
