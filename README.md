@@ -5,7 +5,7 @@
 
 A native macOS app that turns natural-language descriptions into live menu bar applets.
 
-> **Project status:** Bar Tender is open-source pre-release software. The source and automated packaging path are ready for 1.0, but no signed public binary has been published yet. Tagged releases are built as universal macOS apps, signed with Developer ID, notarized, stapled, and published as ZIP and DMG assets when the repository's release credentials are configured.
+> **Project status:** This branch ships **ad-hoc (unsigned) binaries** so testers can download a DMG without a paid Apple Developer Program membership. Builds are universal, hardened-runtime sealed, and published as ZIP/DMG prereleases. They are **not** Developer ID signed or notarized—users must bypass Gatekeeper on first open (see the release notes). The `main` branch still targets the paid-account signed/notarized path.
 
 Bar Tender uses an already installed and authenticated **Codex, Claude, or Grok CLI** on your Mac. It does **not** ask for API keys. Each prompt produces a dedicated, reviewable zsh tool artifact that becomes its own live menu bar item.
 
@@ -69,7 +69,9 @@ The script creates a development app bundle at `dist/BarTender.app`. It is not a
 
 ## Install a release
 
-When a signed release is available, download its DMG from [GitHub Releases](https://github.com/Aforno/Bartender/releases), verify it against `SHA256SUMS.txt`, open the DMG, and drag **BarTender** to **Applications**. Release artifacts are universal binaries for Apple silicon and Intel Macs and require macOS 26 or newer.
+Ad-hoc prerelease DMGs are published on [GitHub Releases](https://github.com/Aforno/Bartender/releases). Download the DMG, verify it against `SHA256SUMS.txt`, open it, and drag **BarTender** to **Applications**.
+
+**First launch:** Control-click the app → **Open** → **Open** (or use **Privacy & Security → Open Anyway**). Ad-hoc builds are not notarized, so Gatekeeper blocks a normal double-click until you approve the app once. Artifacts are universal for Apple silicon and Intel and require macOS 26 or newer.
 
 Bar Tender checks for updates only when you choose **Check for Updates** in Settings. When a newer GitHub release exists, it opens that release for a user-controlled download and install; it never replaces the app silently.
 
