@@ -1,4 +1,8 @@
-name: Release
+name: Release (ad-hoc)
+
+# Ad-hoc distribution path for this branch only. Does not require a paid Apple
+# Developer Program membership. Artifacts are not Developer ID signed or notarized.
+# Users must bypass Gatekeeper on first launch. See RELEASE_NOTES.md.
 
 on:
   push:
@@ -8,12 +12,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-adhoc-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  signed-release:
-    name: Sign, notarize, staple, verify, and publish
+  adhoc-release:
+    name: Package ad-hoc universal release and publish
     runs-on: macos-26
     timeout-minutes: 45
 
@@ -24,45 +28,16 @@ jobs:
       - name: Require tag to match VERSION
         run: test "$GITHUB_REF_NAME" = "v$(tr -d '[:space:]' < VERSION)"
 
-      - name: Import Developer ID identity and notarization key
-        env:
-          CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.RELEASE_KEYCHAIN_PASSWORD }}
-          NOTARY_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
-        run: |
-          test -n "$CERTIFICATE_BASE64"
-          test -n "$CERTIFICATE_PASSWORD"
-          test -n "$KEYCHAIN_PASSWORD"
-          test -n "$NOTARY_KEY_BASE64"
-          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
-          NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
-          KEYCHAIN_PATH="$RUNNER_TEMP/bartender-release.keychain-db"
-          printf '%s' "$CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
-          printf '%s' "$NOTARY_KEY_BASE64" | base64 --decode > "$NOTARY_KEY_PATH"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERTIFICATE_PATH" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH"
-          printf 'BARTENDER_NOTARY_KEY_PATH=%s\n' "$NOTARY_KEY_PATH" >> "$GITHUB_ENV"
-          printf 'BARTENDER_RELEASE_KEYCHAIN=%s\n' "$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+      - name: Build ad-hoc universal release
+        run: ./script/package_release.sh --adhoc --skip-notarization --arch universal
 
-      - name: Build signed and notarized universal release
-        env:
-          BARTENDER_SIGNING_IDENTITY: ${{ secrets.DEVELOPER_ID_APPLICATION }}
-          BARTENDER_NOTARY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          BARTENDER_NOTARY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-        run: ./script/package_release.sh --arch universal
+      - name: Verify ad-hoc package integrity
+        run: ./script/verify_release.sh --app dist/release/BarTender.app --dmg "dist/release/BarTender-$(tr -d '[:space:]' < VERSION).dmg"
 
-      - name: Enforce distribution signature, Gatekeeper, and staples
-        run: ./script/verify_release.sh --distribution --app dist/release/BarTender.app --dmg "dist/release/BarTender-$(tr -d '[:space:]' < VERSION).dmg"
-
-      - name: Mount, copy, and launch the notarized DMG
+      - name: Mount, copy, and launch the DMG
         run: ./script/install_smoke_test.sh "dist/release/BarTender-$(tr -d '[:space:]' < VERSION).dmg"
 
-      - name: Publish immutable release assets
+      - name: Publish prerelease assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -72,13 +47,6 @@ jobs:
             "dist/release/BarTender-$VERSION.dmg" \
             "dist/release/SHA256SUMS.txt" \
             --verify-tag \
-            --title "Bar Tender $VERSION" \
+            --prerelease \
+            --title "Bar Tender $VERSION (ad-hoc)" \
             --notes-file RELEASE_NOTES.md
-
-      - name: Remove ephemeral signing material
-        if: always()
-        run: |
-          if [ -n "${BARTENDER_RELEASE_KEYCHAIN:-}" ]; then
-            security delete-keychain "$BARTENDER_RELEASE_KEYCHAIN" || true
-          fi
-          rm -f "${BARTENDER_NOTARY_KEY_PATH:-}" "$RUNNER_TEMP/developer-id.p12"
