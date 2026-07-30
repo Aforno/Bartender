@@ -40,7 +40,7 @@ import json
 from pathlib import Path
 
 manifest = json.loads(Path("Packaging/provider-icons.json").read_text())
-if set(manifest) != {"chatgpt", "claude", "grok"}:
+if set(manifest) != {"chatgpt", "claude", "grok", "gemini", "agy"}:
     raise SystemExit("Repository check failed: provider icon manifest has unexpected entries")
 
 for provider, entry in manifest.items():

@@ -6,11 +6,16 @@ import UserNotifications
 
 @MainActor
 final class AppModel: ObservableObject {
-    let store = AppletStore()
-    let providers = AIProviderService()
-    let preferences = AppPreferences()
-    let launchAtLogin = LaunchAtLoginController()
-    let updates = UpdateService()
+    private struct PersistedManifest {
+        var manifest: AppletManifest
+        var executable: URL?
+    }
+
+    let store: AppletStore
+    let providers: AIProviderService
+    let preferences: AppPreferences
+    let launchAtLogin: LaunchAtLoginController
+    let updates: UpdateService
     let shellApprovals: ShellApprovalStore
     let generatedTools: GeneratedToolArtifactStore
     let runtime: AppletRuntimeEngine
@@ -26,26 +31,50 @@ final class AppModel: ObservableObject {
         }
     }
     @Published var composerText = ""
-    @Published var generation: GenerationSession?
+    @Published var generation: GenerationSession? {
+        didSet {
+            observeGenerationSession()
+        }
+    }
     @Published var bannerMessage: String?
     @Published var showingProviderSetup = false
     /// Mirrored for scene invalidation (dynamic status item count).
     @Published private(set) var enabledApplets: [AppletManifest] = []
 
     private var cancellables = Set<AnyCancellable>()
+    private var generationCancellable: AnyCancellable?
+    private var bootstrapTask: Task<Void, Never>?
+    private var validationTasks: [UUID: Task<Void, Never>] = [:]
+    private var validationTokens: [UUID: UUID] = [:]
 
     var selectedApplet: AppletManifest? {
         store.applet(id: selection)
     }
 
-    init() {
-        let approvals = ShellApprovalStore()
-        let artifacts = GeneratedToolArtifactStore()
-        shellApprovals = approvals
-        generatedTools = artifacts
-        runtime = AppletRuntimeEngine(shellApprovals: approvals, generatedTools: artifacts)
+    init(
+        store: AppletStore? = nil,
+        providers: AIProviderService? = nil,
+        preferences: AppPreferences? = nil,
+        launchAtLogin: LaunchAtLoginController? = nil,
+        updates: UpdateService? = nil,
+        shellApprovals: ShellApprovalStore? = nil,
+        generatedTools: GeneratedToolArtifactStore? = nil
+    ) {
+        let resolvedApprovals = shellApprovals ?? ShellApprovalStore()
+        let resolvedArtifacts = generatedTools ?? GeneratedToolArtifactStore()
+        self.store = store ?? AppletStore()
+        self.providers = providers ?? AIProviderService()
+        self.preferences = preferences ?? AppPreferences()
+        self.launchAtLogin = launchAtLogin ?? LaunchAtLoginController()
+        self.updates = updates ?? UpdateService()
+        self.shellApprovals = resolvedApprovals
+        self.generatedTools = resolvedArtifacts
+        self.runtime = AppletRuntimeEngine(
+            shellApprovals: resolvedApprovals,
+            generatedTools: resolvedArtifacts
+        )
 
-        store.objectWillChange
+        self.store.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
@@ -55,21 +84,21 @@ final class AppModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        runtime.objectWillChange
+        self.runtime.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
 
-        providers.objectWillChange
+        self.providers.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
 
-        preferences.objectWillChange
+        self.preferences.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
@@ -80,8 +109,24 @@ final class AppModel: ObservableObject {
     }
 
     func bootstrap() async {
+        if let bootstrapTask {
+            await bootstrapTask.value
+            return
+        }
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performBootstrap()
+        }
+        bootstrapTask = task
+        await task.value
+    }
+
+    private func performBootstrap() async {
         AppLog.app.info("Bar Tender bootstrap")
-        await providers.refreshAvailability()
+        // Saved tools do not depend on an AI provider. Start them before CLI
+        // discovery so a slow or broken provider cannot suppress the menu bar.
+        let artifactIssue = restoreCurrentGeneratedToolArtifacts()
         runtime.sync(with: store.applets)
         refreshEnabledApplets()
         if selection == nil {
@@ -89,29 +134,88 @@ final class AppModel: ObservableObject {
         }
         if let loadIssue = store.loadIssue {
             bannerMessage = loadIssue
+        } else if let artifactIssue {
+            bannerMessage = artifactIssue
         }
+        await providers.refreshAvailability()
+    }
+
+    /// Reconcile executable artifacts from the persisted manifests before any
+    /// polling loop starts. Runners can then treat the shared UUID artifact as
+    /// immutable input and never recreate or overwrite it from a stale task.
+    private func restoreCurrentGeneratedToolArtifacts() -> String? {
+        var failures: [String] = []
+        for manifest in store.applets where manifest.kind == .generatedTool {
+            do {
+                _ = try generatedTools.install(manifest)
+            } catch {
+                failures.append(manifest.name)
+                AppLog.store.error(
+                    "Could not restore generated tool artifact for \(manifest.name, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+        guard !failures.isEmpty else { return nil }
+        return failures.count == 1
+            ? "Could not restore the executable for “\(failures[0])”. Save or rebuild that tool before running it."
+            : "Could not restore executables for \(failures.count) generated tools. Save or rebuild them before running."
     }
 
     func clearLibrary() {
+        guard generation?.phase.isActive != true else {
+            bannerMessage = "Cancel the current generation before clearing the library."
+            return
+        }
+
         do {
+            cancelAllValidations()
             try store.removeAll()
             shellApprovals.removeAll()
+            var artifactCleanupError: Error?
             do {
                 try generatedTools.removeAll()
             } catch {
+                artifactCleanupError = error
                 AppLog.store.error("Could not remove generated tool artifacts: \(error.localizedDescription, privacy: .public)")
             }
             runtime.stopAll()
             runtime.sync(with: store.applets)
             selection = nil
-            bannerMessage = "Library cleared."
+            bannerMessage = artifactCleanupError.map {
+                "Library cleared, but some generated files could not be removed: \($0.localizedDescription)"
+            } ?? "Library cleared."
         } catch {
             bannerMessage = error.localizedDescription
         }
     }
 
+    func shutdown() {
+        providers.cancelGeneration()
+        generation?.phase = .cancelled
+        generation?.finishedAt = .now
+        cancelAllValidations()
+        runtime.stopAll()
+    }
+
     private func refreshEnabledApplets() {
         enabledApplets = store.enabledApplets
+    }
+
+    private func observeGenerationSession() {
+        guard let generation else {
+            generationCancellable = nil
+            return
+        }
+
+        generationCancellable = Publishers.Merge4(
+            generation.$phase.dropFirst().map { _ in () },
+            generation.$resultManifest.dropFirst().map { _ in () },
+            generation.$errorMessage.dropFirst().map { _ in () },
+            generation.$finishedAt.dropFirst().map { _ in () }
+        )
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
     }
 
     func refreshCodex() async {
@@ -189,7 +293,7 @@ final class AppModel: ObservableObject {
             let maximumAttempts = 3
 
             for attempt in 1...maximumAttempts {
-                guard session.phase != .cancelled, !Task.isCancelled else {
+                guard !session.phase.isCancellationRequested, !Task.isCancelled else {
                     throw ProviderGenerationError.cancelled
                 }
                 if let iterationFeedback {
@@ -211,6 +315,9 @@ final class AppModel: ObservableObject {
                     ) { stream, text in
                         session.append(stream: stream, text)
                     }
+                    guard !session.phase.isCancellationRequested, !Task.isCancelled else {
+                        throw ProviderGenerationError.cancelled
+                    }
                     let candidate = ManifestGenerationSupport.replacing(
                         manifest,
                         existingTool: existingTool
@@ -226,7 +333,7 @@ final class AppModel: ObservableObject {
                         let env = await ShellEnvironment.loginEnvironment()
                         try ManifestGenerationSupport.requireCommandAvailable(candidate, environment: env)
                     }
-                    guard session.phase != .cancelled, !Task.isCancelled else {
+                    guard !session.phase.isCancellationRequested, !Task.isCancelled else {
                         throw ProviderGenerationError.cancelled
                     }
                     generatedManifest = candidate
@@ -234,6 +341,9 @@ final class AppModel: ObservableObject {
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch let error as ProviderGenerationError {
+                    guard !session.phase.isCancellationRequested, !Task.isCancelled else {
+                        throw ProviderGenerationError.cancelled
+                    }
                     switch error {
                     case .cancelled, .notReady, .authenticationExpired, .noProvidersReady:
                         throw error
@@ -242,8 +352,14 @@ final class AppModel: ObservableObject {
                         iterationFeedback = error.localizedDescription
                     }
                 } catch {
+                    guard !session.phase.isCancellationRequested, !Task.isCancelled else {
+                        throw ProviderGenerationError.cancelled
+                    }
                     guard attempt < maximumAttempts else { throw error }
                     iterationFeedback = error.localizedDescription
+                }
+                guard !session.phase.isCancellationRequested, !Task.isCancelled else {
+                    throw ProviderGenerationError.cancelled
                 }
                 attemptContext = latestCandidate ?? attemptContext
                 session.phase = .running
@@ -254,12 +370,25 @@ final class AppModel: ObservableObject {
                     "The provider could not produce a valid generated tool after \(maximumAttempts) attempts."
                 )
             }
-            guard session.phase != .cancelled, !Task.isCancelled else {
+            guard !session.phase.isCancellationRequested, !Task.isCancelled else {
                 throw ProviderGenerationError.cancelled
             }
-            let saved = try store.upsert(candidate)
-            if saved.kind == .generatedTool {
-                let executable = try generatedTools.install(saved)
+            if let existingTool {
+                guard let current = store.applet(id: existingTool.id) else {
+                    throw ProviderGenerationError.invalidResponse(
+                        "“\(existingTool.name)” was removed while it was being updated, so the stale result was discarded."
+                    )
+                }
+                guard current == existingTool else {
+                    throw ProviderGenerationError.invalidResponse(
+                        "“\(existingTool.name)” changed while it was being updated. Its newer state was kept; try the update again."
+                    )
+                }
+            }
+
+            let persisted = try persistManifestAndArtifact(candidate, replacing: existingTool)
+            let saved = persisted.manifest
+            if let executable = persisted.executable {
                 session.append(stream: .system, "Installed executable at \(executable.path)")
             }
             let autoApproveEdit = Self.shouldAutoApproveGeneratedToolEdit(
@@ -283,7 +412,7 @@ final class AppModel: ObservableObject {
             )
             composerText = ""
             if autoApproveEdit {
-                session.append(stream: .system, "Automatically approved the revised source; starting its first-run check…")
+                session.append(stream: .system, "Auto-approval selected; starting the revised source’s first-run check…")
                 setExecutionApproval(true, for: saved)
             } else if existingTool != nil {
                 bannerMessage = shellApprovals.isApproved(saved)
@@ -303,13 +432,16 @@ final class AppModel: ObservableObject {
             switch error {
             case .cancelled:
                 session.phase = .cancelled
+                session.errorMessage = nil
+                session.finishedAt = .now
+                session.append(stream: .system, "Cancelled.")
             default:
                 session.phase = .failed
+                session.errorMessage = error.localizedDescription
+                session.finishedAt = .now
+                session.append(stream: .system, error.localizedDescription)
+                bannerMessage = error.localizedDescription
             }
-            session.errorMessage = error.localizedDescription
-            session.finishedAt = .now
-            session.append(stream: .system, error.localizedDescription)
-            bannerMessage = error.localizedDescription
         } catch {
             session.phase = .failed
             session.errorMessage = error.localizedDescription
@@ -320,36 +452,55 @@ final class AppModel: ObservableObject {
     }
 
     func cancelGeneration() {
+        guard let generation, generation.phase.isActive else { return }
         providers.cancelGeneration()
-        generation?.phase = .cancelled
-        generation?.finishedAt = .now
-        generation?.append(stream: .system, "Cancellation requested…")
+        guard generation.phase != .cancelling else { return }
+        generation.phase = .cancelling
+        generation.append(stream: .system, "Cancelling generation…")
     }
 
     func deleteSelected() {
-        guard let id = selection, let applet = store.applet(id: id) else { return }
+        guard let id = selection else { return }
+        deleteApplet(id: id)
+    }
+
+    func deleteApplet(id: UUID) {
+        guard generation?.phase.isActive != true else {
+            bannerMessage = "Cancel the current generation before deleting a tool."
+            return
+        }
+        guard let applet = store.applet(id: id) else { return }
 
         if preferences.confirmBeforeDelete {
             let alert = NSAlert()
             alert.messageText = "Delete “\(applet.name)”?"
             alert.informativeText = "This removes the applet from your library. This cannot be undone."
             alert.alertStyle = .warning
-            alert.addButton(withTitle: "Delete")
             alert.addButton(withTitle: "Cancel")
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            let deleteButton = alert.addButton(withTitle: "Delete")
+            deleteButton.hasDestructiveAction = true
+            guard alert.runModal() == .alertSecondButtonReturn else { return }
         }
 
         do {
+            cancelValidation(id: id)
             try store.delete(id: id)
             shellApprovals.revoke(id: id)
+            var artifactCleanupError: Error?
             do {
                 try generatedTools.remove(id: id)
             } catch {
+                artifactCleanupError = error
                 AppLog.store.error("Could not remove generated tool artifact: \(error.localizedDescription, privacy: .public)")
             }
             runtime.stop(id: id)
             runtime.sync(with: store.applets)
-            selection = store.applets.first?.id
+            if selection == id {
+                selection = store.applets.first?.id
+            }
+            if let artifactCleanupError {
+                bannerMessage = "“\(applet.name)” was removed, but its generated files need manual cleanup: \(artifactCleanupError.localizedDescription)"
+            }
         } catch {
             bannerMessage = error.localizedDescription
         }
@@ -357,15 +508,60 @@ final class AppModel: ObservableObject {
 
     func saveEdits(_ manifest: AppletManifest) {
         do {
-            let saved = try store.upsert(manifest)
-            if saved.kind == .generatedTool {
-                _ = try generatedTools.install(saved)
-            }
+            let previous = store.applet(id: manifest.id)
+            let saved = try persistManifestAndArtifact(manifest, replacing: previous).manifest
             runtime.restart(manifest: saved)
             runtime.sync(with: store.applets)
             bannerMessage = "Saved “\(saved.name)”."
         } catch {
             bannerMessage = error.localizedDescription
+        }
+    }
+
+    /// Installs executable content before publishing the manifest. If either
+    /// side fails, restore the previous artifact so a failed save cannot leave
+    /// a ghost manifest or destroy the last runnable revision.
+    private func persistManifestAndArtifact(
+        _ candidate: AppletManifest,
+        replacing previous: AppletManifest?
+    ) throws -> PersistedManifest {
+        cancelValidation(id: candidate.id)
+        var executable: URL?
+
+        do {
+            if candidate.kind == .generatedTool {
+                executable = try generatedTools.install(candidate)
+            } else if previous?.kind == .generatedTool {
+                try generatedTools.remove(id: candidate.id)
+            }
+        } catch {
+            restoreArtifact(afterFailedPersistenceOf: candidate, previous: previous)
+            throw error
+        }
+
+        do {
+            let saved = try store.upsert(candidate)
+            return PersistedManifest(manifest: saved, executable: executable)
+        } catch {
+            restoreArtifact(afterFailedPersistenceOf: candidate, previous: previous)
+            throw error
+        }
+    }
+
+    private func restoreArtifact(
+        afterFailedPersistenceOf candidate: AppletManifest,
+        previous: AppletManifest?
+    ) {
+        do {
+            if let previous, previous.kind == .generatedTool {
+                _ = try generatedTools.install(previous)
+            } else {
+                try generatedTools.remove(id: candidate.id)
+            }
+        } catch {
+            AppLog.store.error(
+                "Could not restore generated tool artifact after a failed save: \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
@@ -375,6 +571,7 @@ final class AppModel: ObservableObject {
 
     func setEnabled(_ manifest: AppletManifest, enabled: Bool) {
         do {
+            cancelValidation(id: manifest.id)
             guard let updated = try store.setEnabled(id: manifest.id, enabled: enabled) else { return }
             runtime.restart(manifest: updated)
             runtime.sync(with: store.applets)
@@ -399,6 +596,7 @@ final class AppModel: ObservableObject {
         Task {
             if enabled, !(await ensureNotificationPermission()) { return }
             do {
+                cancelValidation(id: manifest.id)
                 try store.update(manifest.id) { updated in
                     updated[keyPath: keyPath] = enabled
                 }
@@ -417,6 +615,10 @@ final class AppModel: ObservableObject {
 
     func isExecutionApproved(_ manifest: AppletManifest) -> Bool {
         shellApprovals.isApproved(manifest)
+    }
+
+    func isValidatingExecution(_ manifest: AppletManifest) -> Bool {
+        validationTokens[manifest.id] != nil
     }
 
     static func shouldAutoApproveGeneratedToolEdit(
@@ -450,16 +652,27 @@ final class AppModel: ObservableObject {
                 bannerMessage = "Wait for the current generation to finish before running this tool."
                 return
             }
-            shellApprovals.setApproved(true, for: manifest)
+            guard store.applet(id: manifest.id) == manifest else {
+                bannerMessage = "This tool changed before approval. Review the current source and try again."
+                return
+            }
+            cancelValidation(id: manifest.id)
+            // Approval becomes durable only after this exact revision completes
+            // its first-run check. Cancelling the check must not turn a
+            // provisional decision into an executable-on-next-launch state.
+            shellApprovals.setApproved(false, for: manifest)
             runtime.stop(id: manifest.id)
             bannerMessage = "Testing “\(manifest.name)” before putting it live…"
-            objectWillChange.send()
-            Task { [weak self] in
-                await self?.validateApprovedGeneratedTool(manifest)
+            let token = UUID()
+            validationTokens[manifest.id] = token
+            validationTasks[manifest.id] = Task { [weak self] in
+                await self?.validateApprovedGeneratedTool(manifest, token: token)
             }
+            objectWillChange.send()
             return
         }
 
+        cancelValidation(id: manifest.id)
         shellApprovals.setApproved(approved, for: manifest)
         if let persisted = store.applet(id: manifest.id) {
             runtime.restart(manifest: persisted)
@@ -467,20 +680,34 @@ final class AppModel: ObservableObject {
         objectWillChange.send()
     }
 
-    private func validateApprovedGeneratedTool(_ manifest: AppletManifest) async {
+    private func validateApprovedGeneratedTool(_ manifest: AppletManifest, token: UUID) async {
+        defer {
+            if validationTokens[manifest.id] == token {
+                validationTokens[manifest.id] = nil
+                validationTasks[manifest.id] = nil
+                objectWillChange.send()
+            }
+        }
+
         let result = await GeneratedToolRunner.run(
             manifest: manifest,
             approved: true,
             artifactStore: generatedTools
         )
 
-        guard shellApprovals.isApproved(manifest),
-              let persisted = store.applet(id: manifest.id) else { return }
+        guard !Task.isCancelled,
+              validationTokens[manifest.id] == token,
+              let persisted = store.applet(id: manifest.id),
+              persisted == manifest else { return }
 
         if let output = result.output, output.healthy {
+            shellApprovals.setApproved(true, for: persisted)
             runtime.startValidatedGeneratedTool(manifest: persisted, output: output)
             runtime.sync(with: store.applets)
-            bannerMessage = "“\(persisted.name)” passed its first-run check and is live."
+            objectWillChange.send()
+            bannerMessage = persisted.enabled
+                ? "“\(persisted.name)” passed its first-run check and is live."
+                : "“\(persisted.name)” passed its first-run check. Enable it when you are ready."
             return
         }
 
@@ -507,16 +734,46 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func cancelValidation(id: UUID) {
+        let hadToken = validationTokens.removeValue(forKey: id) != nil
+        let task = validationTasks.removeValue(forKey: id)
+        task?.cancel()
+        if hadToken || task != nil {
+            objectWillChange.send()
+        }
+    }
+
+    private func cancelAllValidations() {
+        let hadValidations = !validationTokens.isEmpty || !validationTasks.isEmpty
+        for task in validationTasks.values {
+            task.cancel()
+        }
+        validationTasks.removeAll()
+        validationTokens.removeAll()
+        if hadValidations {
+            objectWillChange.send()
+        }
+    }
+
     func addSampleLibrary() {
+        guard generation?.phase.isActive != true else {
+            bannerMessage = "Cancel the current generation before changing the library."
+            return
+        }
+
         do {
+            var addedCount = 0
             for sample in AppletManifest.samples {
                 if !store.applets.contains(where: { $0.name == sample.name && $0.kind == sample.kind }) {
                     try store.upsert(sample)
+                    addedCount += 1
                 }
             }
             runtime.sync(with: store.applets)
             selection = store.applets.first?.id
-            bannerMessage = "Sample applets added to the library."
+            bannerMessage = addedCount == 0
+                ? "The built-in samples are already in your library."
+                : "Added \(addedCount) built-in sample\(addedCount == 1 ? "" : "s")."
         } catch {
             bannerMessage = error.localizedDescription
         }
@@ -538,6 +795,11 @@ final class AppModel: ObservableObject {
     }
 
     func importLibrary() {
+        guard generation?.phase.isActive != true else {
+            bannerMessage = "Cancel the current generation before importing a library."
+            return
+        }
+
         let panel = NSOpenPanel()
         panel.title = "Import Bar Tender Library"
         panel.allowedContentTypes = [.json]
@@ -546,7 +808,7 @@ final class AppModel: ObservableObject {
 
         let choice = NSAlert()
         choice.messageText = "Import this tool library?"
-        choice.informativeText = "Merge keeps your current tools. Replace removes the current library first. Imported generated code always requires fresh approval."
+        choice.informativeText = "Merge keeps tools with different IDs and updates matching IDs. Replace removes the current library first. Imported generated code always requires fresh approval."
         choice.addButton(withTitle: "Merge")
         choice.addButton(withTitle: "Replace All")
         choice.addButton(withTitle: "Cancel")
@@ -570,6 +832,7 @@ final class AppModel: ObservableObject {
             let previousApprovals = shellApprovals.snapshot()
             // Stop live tasks before swapping artifacts so stale polling loops
             // cannot reinstall pre-import generatedSource over the import.
+            cancelAllValidations()
             runtime.stopAll()
 
             do {
@@ -591,13 +854,32 @@ final class AppModel: ObservableObject {
                 selection = imported.first?.id ?? store.applets.first?.id
                 bannerMessage = "Imported \(imported.count) tool(s). Review generated source before running it."
             } catch {
+                let importError = error
+                var rollbackErrors: [String] = []
                 // Roll back library, approvals, and generated-tool artifacts.
-                try? store.replaceAll(previousApplets)
+                do {
+                    try store.replaceAll(previousApplets)
+                } catch {
+                    rollbackErrors.append("library: \(error.localizedDescription)")
+                }
                 shellApprovals.restore(previousApprovals)
-                try? restoreGeneratedToolArtifacts(from: previousApplets, replaceMode: mode == .replace)
+                do {
+                    try restoreGeneratedToolArtifacts(
+                        from: previousApplets,
+                        removingImported: imported,
+                        replaceMode: mode == .replace
+                    )
+                } catch {
+                    rollbackErrors.append("generated files: \(error.localizedDescription)")
+                }
                 runtime.sync(with: store.applets)
                 refreshEnabledApplets()
-                throw error
+                if rollbackErrors.isEmpty {
+                    throw importError
+                }
+                throw AppletStoreError.persistenceFailed(
+                    "Import failed: \(importError.localizedDescription). Rollback also failed for \(rollbackErrors.joined(separator: "; "))."
+                )
             }
         } catch {
             bannerMessage = "Could not import the library: \(error.localizedDescription)"
@@ -607,6 +889,7 @@ final class AppModel: ObservableObject {
     /// Reinstalls generated-tool artifacts from a prior library snapshot after a failed import.
     private func restoreGeneratedToolArtifacts(
         from previousApplets: [AppletManifest],
+        removingImported imported: [AppletManifest],
         replaceMode: Bool
     ) throws {
         if replaceMode {
@@ -617,7 +900,11 @@ final class AppModel: ObservableObject {
             }
             return
         }
-        // Merge: reinstall any previous generated tools that may have been overwritten.
+        // Merge: remove imported-only or type-changed artifacts, then reinstall
+        // any previous generated tools that may have been overwritten.
+        for manifest in imported {
+            try generatedTools.remove(id: manifest.id)
+        }
         for manifest in previousApplets where manifest.kind == .generatedTool {
             _ = try generatedTools.install(manifest)
         }

@@ -45,11 +45,16 @@ struct MenuBarManagerMenu: View {
                 }
             }
 
+            if let generation = model.generation {
+                generationFeedback(generation)
+            }
+
             if !model.enabledApplets.isEmpty {
                 Divider()
                 Text("Running tools")
                     .font(.inter(.caption, weight: .semibold))
                     .foregroundStyle(.secondary)
+                    .accessibilityAddTraits(.isHeader)
 
                 ScrollView {
                     LazyVStack(spacing: 2) {
@@ -109,9 +114,7 @@ struct MenuBarManagerMenu: View {
     }
 
     private func openMainWindow() {
-        openWindow(id: "main")
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.windows.first(where: \.canBecomeKey)?.makeKeyAndOrderFront(nil)
+        MainWindowRouter.open(using: openWindow)
     }
 
     // MARK: - Actions
@@ -131,67 +134,29 @@ struct MenuBarManagerMenu: View {
             promptText = ""
         }
     }
-}
 
-struct AppletMenuLabel: View {
-    let appletID: UUID
-    @EnvironmentObject private var store: AppletStore
-    @EnvironmentObject private var runtime: AppletRuntimeEngine
-
-    var body: some View {
-        let applet = store.applet(id: appletID)
-        let snapshot = runtime.snapshots[appletID]
-        let title = snapshot?.title ?? applet?.name ?? "Applet"
-        let icon = applet?.iconSystemName ?? "questionmark.circle"
-
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-            Text(TitleRenderer.shortMenuTitle(title))
-                .monospacedDigit()
-        }
-    }
-}
-
-struct AppletMenuContent: View {
-    let appletID: UUID
-    @EnvironmentObject private var model: AppModel
-    @EnvironmentObject private var store: AppletStore
-    @EnvironmentObject private var runtime: AppletRuntimeEngine
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        if let applet = store.applet(id: appletID) {
-            let snapshot = runtime.snapshots[appletID] ?? .placeholder(for: applet)
-
-            Text(TitleRenderer.shortMenuTitle(applet.name))
-            Text(TitleRenderer.shortMenuTitle(snapshot.statusText))
-            Divider()
-
-            ForEach(snapshot.detailLines.prefix(5), id: \.self) { line in
-                Text(TitleRenderer.shortMenuTitle(line))
-            }
-
-            if applet.kind == .timer || applet.kind == .countdown {
-                Divider()
-                Button(snapshot.isRunning ? "Pause" : "Start") {
-                    runtime.toggleTimer(id: applet.id, manifest: applet)
-                }
-                Button("Reset") {
-                    runtime.resetTimer(id: applet.id, manifest: applet)
-                }
-            }
-
-            Divider()
-            Button("Open in Bar Tender") {
-                model.selection = applet.id
-                openWindow(id: "main")
-                NSApp.activate(ignoringOtherApps: true)
-            }
-            Button(applet.enabled ? "Disable" : "Enable") {
-                model.toggleEnabled(applet)
-            }
-        } else {
-            Text("Applet unavailable")
+    @ViewBuilder
+    private func generationFeedback(_ session: GenerationSession) -> some View {
+        if session.phase.isActive {
+            Label(session.phase.displayName(for: session.provider), systemImage: "sparkles")
+                .font(.inter(.caption))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        } else if session.phase == .failed {
+            Label(session.errorMessage ?? "Generation failed.", systemImage: "exclamationmark.triangle.fill")
+                .font(.inter(.caption))
+                .foregroundStyle(.red)
+                .lineLimit(3)
+                .help(session.errorMessage ?? "Generation failed.")
+        } else if session.phase == .cancelled {
+            Label("Generation cancelled", systemImage: "xmark.circle")
+                .font(.inter(.caption))
+                .foregroundStyle(.secondary)
+        } else if session.phase == .succeeded, let manifest = session.resultManifest {
+            Label("Ready: \(manifest.name)", systemImage: "checkmark.circle.fill")
+                .font(.inter(.caption))
+                .foregroundStyle(.green)
+                .lineLimit(2)
         }
     }
 }

@@ -28,8 +28,12 @@ enum GitStatusProbe {
                 environment: env,
                 timeout: 10
             )
-            guard branchResult.exitCode == 0 else {
-                return Result(ok: false, branch: "—", changedFiles: 0, message: "Not a git repository")
+            if let failure = failureMessage(
+                for: branchResult,
+                operation: "Reading branch",
+                fallback: "Not a git repository"
+            ) {
+                return Result(ok: false, branch: "—", changedFiles: 0, message: failure)
             }
             let branch = branchResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -39,8 +43,12 @@ enum GitStatusProbe {
                 environment: env,
                 timeout: 15
             )
-            guard statusResult.exitCode == 0 else {
-                return Result(ok: false, branch: branch, changedFiles: 0, message: "git status failed")
+            if let failure = failureMessage(
+                for: statusResult,
+                operation: "Reading status",
+                fallback: "git status failed"
+            ) {
+                return Result(ok: false, branch: branch, changedFiles: 0, message: failure)
             }
             let lines = statusResult.stdout
                 .split(whereSeparator: \.isNewline)
@@ -53,7 +61,32 @@ enum GitStatusProbe {
                 message: "\(branch) · \(lines.count) changed"
             )
         } catch {
-            return Result(ok: false, branch: "—", changedFiles: 0, message: error.localizedDescription)
+            return Result(
+                ok: false,
+                branch: "—",
+                changedFiles: 0,
+                message: Task.isCancelled ? "Cancelled" : error.localizedDescription
+            )
         }
+    }
+
+    static func failureMessage(
+        for process: ProcessResult,
+        operation: String,
+        fallback: String
+    ) -> String? {
+        if process.cancelled {
+            return "Cancelled"
+        }
+        if process.timedOut {
+            return "\(operation) timed out"
+        }
+        guard process.exitCode != 0 else { return nil }
+
+        let detail = process.stderr
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty })
+        return detail.map { TitleRenderer.shortMenuTitle($0) } ?? fallback
     }
 }

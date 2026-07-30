@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// Creates one `NSStatusItem` per enabled applet (SwiftUI SceneBuilder cannot ForEach MenuBarExtra).
@@ -20,10 +21,34 @@ final class StatusItemManager: ObservableObject {
 
     private weak var model: AppModel?
     private var boxes: [UUID: ItemBox] = [:]
+    private var cancellables = Set<AnyCancellable>()
 
     func attach(model: AppModel) {
+        if self.model === model, !cancellables.isEmpty {
+            rebuild(enabled: model.enabledApplets)
+            refreshAll(snapshots: model.runtime.snapshots)
+            return
+        }
+
         self.model = model
-        rebuild()
+        cancellables.removeAll()
+
+        model.$enabledApplets
+            .receive(on: RunLoop.main)
+            .sink { [weak self] enabled in
+                self?.rebuild(enabled: enabled)
+            }
+            .store(in: &cancellables)
+
+        model.runtime.$snapshots
+            .receive(on: RunLoop.main)
+            .sink { [weak self] snapshots in
+                self?.refreshAll(snapshots: snapshots)
+            }
+            .store(in: &cancellables)
+
+        rebuild(enabled: model.enabledApplets)
+        refreshAll(snapshots: model.runtime.snapshots)
     }
 
     /// Rebuilds status items from the enabled applet list.
@@ -94,6 +119,9 @@ final class StatusItemManager: ObservableObject {
             button.title = " " + title
             button.imagePosition = .imageLeading
             button.toolTip = "\(applet.name): \(snapshot.statusText)"
+            button.setAccessibilityLabel(applet.name)
+            button.setAccessibilityValue(title)
+            button.setAccessibilityHelp(snapshot.statusText)
         }
 
         let menu = NSMenu()
@@ -119,7 +147,7 @@ final class StatusItemManager: ObservableObject {
             menu.addItem(toggle)
 
             let reset = NSMenuItem(
-                title: "Reset",
+                title: "Restart",
                 action: #selector(AppActions.resetTimer(_:)),
                 keyEquivalent: ""
             )
@@ -187,14 +215,15 @@ final class AppActions: NSObject {
     }
 
     @objc func openApplet(_ sender: NSMenuItem) {
-        guard let id = uuid(from: sender), let model else { return }
-        model.selection = id
-        NotificationCenter.default.post(name: .barTenderOpenMainWindow, object: id.uuidString)
-        openWindowAction?()
-        NSApp.activate(ignoringOtherApps: true)
-        for window in NSApp.windows where window.canBecomeKey {
-            window.makeKeyAndOrderFront(nil)
+        guard let id = uuid(from: sender) else { return }
+        openMainWindow(selecting: id)
+    }
+
+    func openMainWindow(selecting id: UUID? = nil) {
+        if let id {
+            model?.selection = id
         }
+        openWindowAction?()
     }
 
     @objc func toggleEnabled(_ sender: NSMenuItem) {

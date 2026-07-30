@@ -1,11 +1,12 @@
 # Release Validation Record
 
-Validation date: 2026-07-20  
+Validation baseline: 2026-07-20
+Automated-gate refresh: 2026-07-30
 Host: macOS 26.5.1, Apple silicon, Xcode 26 toolchain
 
 ## Automated gates
 
-- `swift test`: 55 tests pass, including provider subprocesses, malformed output, cancellation without a generation timeout, revoked authentication downgrade, exact-source approval lifecycle, archive migration, 12-tool relaunch, overflow planning, long logs/titles, and model cache/config drift.
+- `swift test`: 116 tests pass, including provider subprocesses, malformed output, bounded cancellation, revoked authentication downgrade, exact-source approval lifecycle, archive migration and duplicate-ID rejection, runtime-state isolation, process-tree cleanup, 12-tool relaunch, overflow planning, long logs/titles, and model cache/config drift.
 - `swift build -c release`: passes.
 - `script/package_release.sh --adhoc --skip-notarization --arch universal`: produces a sealed hardened-runtime app, ZIP, DMG, and SHA-256 list from release binaries.
 - `script/verify_release.sh`: confirms stable bundle identity/version, compiled icon catalog, provider assets, resource schema, strict code seal, runtime flag, and DMG checksum.

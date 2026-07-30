@@ -10,7 +10,7 @@ struct CodexLogView: View {
         VStack(alignment: .leading, spacing: 10) {
             statusLine
 
-            if let error = session.errorMessage {
+            if let error = session.errorMessage, session.phase != .cancelled {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.inter(.callout))
                     .foregroundStyle(.red)
@@ -57,10 +57,14 @@ struct CodexLogView: View {
                 )
                 .font(.inter(.callout, weight: .semibold))
                 .foregroundStyle(.green)
-                Text("· \(sourceLineCount(manifest)) lines · every \(refreshLabel(manifest))" + (elapsedLabel.map { " · \($0)" } ?? ""))
+                Text("· \(successMetadata(for: manifest))")
                     .font(.inter(.caption))
                     .foregroundStyle(.tertiary)
             }
+        } else if session.phase == .cancelled {
+            Label("Build cancelled", systemImage: "stop.circle.fill")
+                .font(.inter(.callout, weight: .semibold))
+                .foregroundStyle(.secondary)
         } else if session.errorMessage != nil {
             Label("Build failed", systemImage: "xmark.circle.fill")
                 .font(.inter(.callout, weight: .semibold))
@@ -92,13 +96,34 @@ struct CodexLogView: View {
         .borderedContainer(cornerRadius: PremiumStyle.chipRadius)
     }
 
+    private func successMetadata(for manifest: AppletManifest) -> String {
+        var details = [artifactLabel(for: manifest), refreshLabel(manifest)]
+        if let elapsedLabel {
+            details.append(elapsedLabel)
+        }
+        return details.joined(separator: " · ")
+    }
+
+    private func artifactLabel(for manifest: AppletManifest) -> String {
+        guard manifest.kind == .generatedTool else {
+            return "\(manifest.kind.displayName) configuration"
+        }
+        let count = sourceLineCount(manifest)
+        return "\(count) \(count == 1 ? "line" : "lines") of zsh"
+    }
+
     private func sourceLineCount(_ manifest: AppletManifest) -> Int {
-        max(1, manifest.config.generatedSource?.split(whereSeparator: \.isNewline).count ?? 0)
+        guard let source = manifest.config.generatedSource, !source.isEmpty else { return 0 }
+        let pieces = source.split(separator: "\n", omittingEmptySubsequences: false)
+        return source.hasSuffix("\n") ? max(1, pieces.count - 1) : pieces.count
     }
 
     private func refreshLabel(_ manifest: AppletManifest) -> String {
-        let seconds = Int(manifest.refreshIntervalSeconds ?? manifest.kind.defaultRefreshInterval ?? 30)
-        return seconds == 1 ? "second" : "\(seconds) seconds"
+        guard let interval = manifest.refreshIntervalSeconds ?? manifest.kind.defaultRefreshInterval else {
+            return "event driven"
+        }
+        let seconds = Int(interval)
+        return seconds == 1 ? "refreshes every second" : "refreshes every \(seconds) seconds"
     }
 
     private var elapsedLabel: String? {

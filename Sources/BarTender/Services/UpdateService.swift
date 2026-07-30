@@ -68,21 +68,89 @@ final class UpdateService: ObservableObject {
     }
 
     nonisolated static func isVersion(_ candidate: String, newerThan current: String) -> Bool {
-        let lhs = numericComponents(candidate)
-        let rhs = numericComponents(current)
-        guard !lhs.isEmpty, !rhs.isEmpty else { return false }
-        for index in 0..<max(lhs.count, rhs.count) {
-            let a = index < lhs.count ? lhs[index] : 0
-            let b = index < rhs.count ? rhs[index] : 0
-            if a != b { return a > b }
-        }
-        return false
+        guard let lhs = SemanticVersion(candidate),
+              let rhs = SemanticVersion(current) else { return false }
+        return lhs > rhs
     }
 
-    private nonisolated static func numericComponents(_ version: String) -> [Int] {
-        version.split(separator: ".").compactMap { component in
-            let digits = component.prefix { $0.isNumber }
-            return digits.isEmpty ? nil : Int(digits)
+    private struct SemanticVersion: Comparable {
+        private enum Identifier: Equatable {
+            case numeric(Int)
+            case text(String)
+        }
+
+        private let core: [Int]
+        private let prerelease: [Identifier]?
+
+        init?(_ rawValue: String) {
+            var value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if value.first == "v" || value.first == "V" {
+                value.removeFirst()
+            }
+            value = String(value.split(separator: "+", maxSplits: 1, omittingEmptySubsequences: false)[0])
+
+            let parts = value.split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
+            guard let corePart = parts.first, !corePart.isEmpty else { return nil }
+            let coreStrings = corePart.split(separator: ".", omittingEmptySubsequences: false)
+            guard !coreStrings.isEmpty,
+                  coreStrings.allSatisfy({ !$0.isEmpty && $0.allSatisfy(\.isNumber) }) else {
+                return nil
+            }
+            let parsedCore = coreStrings.compactMap { Int($0) }
+            guard parsedCore.count == coreStrings.count else { return nil }
+            core = parsedCore
+
+            if parts.count == 1 {
+                prerelease = nil
+                return
+            }
+
+            let identifiers = parts[1].split(separator: ".", omittingEmptySubsequences: false)
+            guard !identifiers.isEmpty, identifiers.allSatisfy({ !$0.isEmpty }) else { return nil }
+            prerelease = identifiers.map { identifier in
+                if identifier.allSatisfy(\.isNumber), let number = Int(identifier) {
+                    return .numeric(number)
+                }
+                return .text(identifier.lowercased())
+            }
+        }
+
+        static func < (lhs: SemanticVersion, rhs: SemanticVersion) -> Bool {
+            for index in 0..<max(lhs.core.count, rhs.core.count) {
+                let left = index < lhs.core.count ? lhs.core[index] : 0
+                let right = index < rhs.core.count ? rhs.core[index] : 0
+                if left != right { return left < right }
+            }
+
+            switch (lhs.prerelease, rhs.prerelease) {
+            case (nil, nil):
+                return false
+            case (.some, nil):
+                return true
+            case (nil, .some):
+                return false
+            case let (.some(left), .some(right)):
+                for index in 0..<min(left.count, right.count) {
+                    let comparison = compare(left[index], right[index])
+                    if comparison != 0 { return comparison < 0 }
+                }
+                return left.count < right.count
+            }
+        }
+
+        private static func compare(_ lhs: Identifier, _ rhs: Identifier) -> Int {
+            switch (lhs, rhs) {
+            case let (.numeric(left), .numeric(right)):
+                return left == right ? 0 : (left < right ? -1 : 1)
+            case (.numeric, .text):
+                return -1
+            case (.text, .numeric):
+                return 1
+            case let (.text(left), .text(right)):
+                let result = left.compare(right)
+                if result == .orderedSame { return 0 }
+                return result == .orderedAscending ? -1 : 1
+            }
         }
     }
 }

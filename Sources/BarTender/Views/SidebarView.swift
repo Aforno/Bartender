@@ -40,6 +40,7 @@ struct SidebarView: View {
             Text("Tools")
                 .font(.inter(size: 11.5, weight: .medium))
                 .foregroundStyle(.tertiary)
+                .accessibilityAddTraits(.isHeader)
                 .padding(.horizontal, PremiumStyle.sidebarInset + PremiumStyle.rowInsetH)
                 .padding(.top, PremiumStyle.space12)
                 .padding(.bottom, PremiumStyle.space4)
@@ -60,10 +61,8 @@ struct SidebarView: View {
                                 selected: model.selection == applet.id,
                                 onSelect: { model.selection = applet.id },
                                 onToggleEnabled: { model.toggleEnabled(applet) },
-                                onDelete: {
-                                    model.selection = applet.id
-                                    model.deleteSelected()
-                                }
+                                deletionDisabled: model.generation?.phase.isActive == true,
+                                onDelete: { model.deleteApplet(id: applet.id) }
                             )
                         }
                     }
@@ -165,7 +164,9 @@ struct SidebarView: View {
 
     private func value(for applet: AppletManifest) -> String {
         if !applet.enabled { return "off" }
-        if applet.kind == .generatedTool && !model.isExecutionApproved(applet) {
+        if model.isValidatingExecution(applet) { return "testing" }
+        if (applet.kind == .generatedTool || applet.kind == .shellCommand)
+            && !model.isExecutionApproved(applet) {
             return "waiting"
         }
         if let snap = runtime.snapshots[applet.id] {
@@ -186,69 +187,75 @@ private struct ToolRow: View {
     let selected: Bool
     let onSelect: () -> Void
     let onToggleEnabled: () -> Void
+    let deletionDisabled: Bool
     let onDelete: () -> Void
 
     @State private var hovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 8) {
-                Image(systemName: applet.iconSystemName)
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(selected ? PremiumStyle.brand : Color.secondary)
-                    .frame(width: 18)
+        HStack(spacing: 4) {
+            Button(action: onSelect) {
+                HStack(spacing: 8) {
+                    Image(systemName: applet.iconSystemName)
+                        .symbolRenderingMode(.hierarchical)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(selected ? PremiumStyle.brand : Color.secondary)
+                        .frame(width: 18)
 
-                Text(applet.name)
-                    .font(.inter(size: 13))
-                    .lineLimit(1)
+                    Text(applet.name)
+                        .font(.inter(size: 13))
+                        .lineLimit(1)
 
-                Spacer(minLength: 6)
+                    Spacer(minLength: 6)
 
-                if hovering {
-                    Menu {
-                        Button(applet.enabled ? "Disable" : "Enable", action: onToggleEnabled)
-                        Button("Delete", role: .destructive, action: onDelete)
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 18, height: 16)
-                            .contentShape(Rectangle())
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .frame(width: 20)
-                } else {
                     Text(value)
                         .font(.inter(size: 11.5))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                         .monospacedDigit()
                         .lineLimit(1)
                 }
+                .padding(.leading, PremiumStyle.rowInsetH)
+                .padding(.vertical, PremiumStyle.rowInsetV)
+                .foregroundStyle(.primary)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, PremiumStyle.rowInsetH)
-            .padding(.vertical, PremiumStyle.rowInsetV)
-            .foregroundStyle(.primary)
-            .background(
-                selected
-                    ? PremiumStyle.selectionFill
-                    : Color.primary.opacity(hovering ? 0.045 : 0),
-                in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous))
+            .buttonStyle(.plain)
+            .accessibilityLabel(applet.name)
+            .accessibilityValue(value)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            .accessibilityIdentifier("tool-row.\(applet.id.uuidString)")
+
+            Menu {
+                Button(applet.enabled ? "Disable" : "Enable", action: onToggleEnabled)
+                Button("Delete", role: .destructive, action: onDelete)
+                    .disabled(deletionDisabled)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary.opacity(hovering || selected ? 1 : 0.45))
+                    .frame(width: 24, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .help("Actions for \(applet.name)")
+            .accessibilityLabel("Actions for \(applet.name)")
+            .padding(.trailing, 2)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(applet.name)
-        .accessibilityValue(value)
-        .accessibilityIdentifier("tool-row.\(applet.id.uuidString)")
-        .opacity(applet.enabled ? 1 : 0.5)
+        .background(
+            selected
+                ? PremiumStyle.selectionFill
+                : Color.primary.opacity(hovering ? 0.045 : 0),
+            in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous))
         .onHover { hovering = $0 }
         .animation(reduceMotion ? nil : .snappy(duration: 0.12), value: hovering)
         .contextMenu {
             Button(applet.enabled ? "Disable" : "Enable", action: onToggleEnabled)
             Button("Delete", role: .destructive, action: onDelete)
+                .disabled(deletionDisabled)
         }
     }
 }

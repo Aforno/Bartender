@@ -84,6 +84,7 @@ final class ShellApprovalStoreTests: XCTestCase {
         XCTAssertFalse(review.approved)
         XCTAssertNil(review.output)
 
+        _ = try artifacts.install(manifest)
         approvals.setApproved(true, for: manifest)
         let firstRun = await GeneratedToolRunner.run(
             manifest: manifest,
@@ -102,6 +103,7 @@ final class ShellApprovalStoreTests: XCTestCase {
         XCTAssertFalse(revisedReview.approved)
         XCTAssertNil(revisedReview.output)
 
+        _ = try artifacts.install(manifest)
         approvals.revoke(id: manifest.id)
         XCTAssertFalse(approvals.isApproved(manifest))
         approvals.setApproved(true, for: manifest)

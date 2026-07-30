@@ -25,7 +25,24 @@ struct ChatComposerBar<Accessory: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: compact ? 8 : 10) {
-            
+            if let onPlus {
+                Button {
+                    onPlus()
+                    focused = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: controlSize, height: controlSize)
+                        .background(Color.primary.opacity(0.055), in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isBusy)
+                .help("Insert a prompt suggestion")
+                .accessibilityLabel("Insert a prompt suggestion")
+                .accessibilityIdentifier("prompt-suggestion")
+            }
 
             ZStack(alignment: .leading) {
                 if text.isEmpty {
@@ -43,7 +60,10 @@ struct ChatComposerBar<Accessory: View>: View {
                     .focused($focused)
                     .disabled(isBusy)
                     .frame(minHeight: controlSize, alignment: .center)
-                    .onSubmit(onSend)
+                    .onSubmit {
+                        guard canSend else { return }
+                        onSend()
+                    }
                     .accessibilityLabel(placeholder)
                     .accessibilityIdentifier("tool-prompt")
             }
@@ -206,12 +226,12 @@ struct ModelSelector: View {
 
                 Text(providers.selectedModel.shortLabel)
                     .font(.inter(size: compact ? 13 : 14, weight: .medium))
-                    .foregroundStyle(Color.primary.opacity(hovering ? 0.72 : 0.48))
+                    .foregroundStyle(Color.primary.opacity(hovering ? 0.84 : 0.68))
                     .lineLimit(1)
 
                 Image(systemName: "chevron.down")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(Color.primary.opacity(hovering ? 0.55 : 0.35))
+                    .foregroundStyle(Color.primary.opacity(hovering ? 0.68 : 0.50))
             }
             .padding(.horizontal, compact ? PremiumStyle.space8 : PremiumStyle.space12)
             .padding(.vertical, compact ? PremiumStyle.rowInsetV : PremiumStyle.space8)

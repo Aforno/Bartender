@@ -16,6 +16,41 @@ struct FailureTransitionTracker {
     }
 }
 
+/// Issues monotonically increasing tokens for each applet execution.
+///
+/// A cancelled probe may still return a normal value (for example, a Network
+/// continuation can finish after its parent task is cancelled). The token and
+/// captured manifest together prevent that old result from publishing into a
+/// restarted or same-UUID replacement tool.
+struct AppletExecutionEpochs {
+    private var epochs: [UUID: UInt64] = [:]
+
+    mutating func begin(for id: UUID) -> UInt64 {
+        let next = (epochs[id] ?? 0) &+ 1
+        let epoch = next == 0 ? 1 : next
+        epochs[id] = epoch
+        return epoch
+    }
+
+    mutating func invalidate(_ id: UUID) {
+        _ = begin(for: id)
+    }
+
+    func accepts(
+        _ epoch: UInt64,
+        manifest: AppletManifest,
+        currentManifest: AppletManifest?
+    ) -> Bool {
+        epochs[manifest.id] == epoch && currentManifest == manifest
+    }
+}
+
+enum AppletTimerLoopDisposition: Equatable {
+    case idle
+    case running(remaining: Int)
+    case completed
+}
+
 /// Interprets validated applet manifests and produces live menu bar snapshots.
 @MainActor
 final class AppletRuntimeEngine: ObservableObject {
@@ -31,6 +66,12 @@ final class AppletRuntimeEngine: ObservableObject {
     private var timerPausedRemaining: [UUID: Int] = [:]
     private var metricCollectors: [UUID: SystemMetricsCollector] = [:]
     private var failureTransitions = FailureTransitionTracker()
+    private var executionEpochs = AppletExecutionEpochs()
+
+    /// Useful for lifecycle diagnostics and deterministic regression tests.
+    var activeExecutionIDs: Set<UUID> {
+        Set(tasks.keys)
+    }
 
     init(
         shellApprovals: ShellApprovalStore? = nil,
@@ -41,18 +82,29 @@ final class AppletRuntimeEngine: ObservableObject {
     }
 
     func sync(with manifests: [AppletManifest]) {
+        let manifestIDs = Set(manifests.map(\.id))
         let enabled = manifests.filter(\.enabled)
         let enabledIDs = Set(enabled.map(\.id))
+        let trackedIDs = Set(tasks.keys).union(startedManifests.keys)
 
-        for id in tasks.keys where !enabledIDs.contains(id) {
+        for id in trackedIDs where !enabledIDs.contains(id) {
             stop(id: id)
+        }
+
+        for manifest in manifests where !manifest.enabled {
+            snapshots[manifest.id] = .placeholder(for: manifest)
+        }
+
+        for id in Array(snapshots.keys) where !manifestIDs.contains(id) {
+            snapshots.removeValue(forKey: id)
+            failureTransitions.remove(id: id)
         }
 
         for manifest in enabled {
             if snapshots[manifest.id] == nil {
                 snapshots[manifest.id] = .placeholder(for: manifest)
             }
-            if tasks[manifest.id] == nil {
+            if startedManifests[manifest.id] == nil {
                 start(manifest)
             } else if startedManifests[manifest.id] != manifest {
                 // Same UUID but content changed (e.g. library import/merge).
@@ -64,8 +116,8 @@ final class AppletRuntimeEngine: ObservableObject {
 
     func restart(manifest: AppletManifest) {
         stop(id: manifest.id)
+        snapshots[manifest.id] = .placeholder(for: manifest)
         guard manifest.enabled else {
-            snapshots[manifest.id] = .placeholder(for: manifest)
             return
         }
         start(manifest)
@@ -82,14 +134,16 @@ final class AppletRuntimeEngine: ObservableObject {
             snapshots[manifest.id] = .placeholder(for: manifest)
             return
         }
-        applyGeneratedToolOutput(output, manifest: manifest)
         startedManifests[manifest.id] = manifest
+        let epoch = executionEpochs.begin(for: manifest.id)
+        applyGeneratedToolOutput(output, manifest: manifest)
         tasks[manifest.id] = Task { [weak self] in
-            await self?.runPollingLoop(manifest, delayFirstTick: true)
+            await self?.runPollingLoop(manifest, epoch: epoch, delayFirstTick: true)
         }
     }
 
     func stop(id: UUID) {
+        executionEpochs.invalidate(id)
         tasks[id]?.cancel()
         tasks[id] = nil
         startedManifests[id] = nil
@@ -100,17 +154,28 @@ final class AppletRuntimeEngine: ObservableObject {
     }
 
     func stopAll() {
-        for id in Array(tasks.keys) {
+        let trackedIDs = Set(tasks.keys)
+            .union(startedManifests.keys)
+            .union(snapshots.keys)
+        for id in trackedIDs {
             stop(id: id)
         }
+        snapshots.removeAll()
     }
 
     func toggleTimer(id: UUID, manifest: AppletManifest) {
-        guard manifest.kind == .timer || manifest.kind == .countdown else { return }
+        guard manifest.enabled,
+              manifest.kind == .timer || manifest.kind == .countdown else { return }
+        guard startedManifests[id] == manifest else {
+            restart(manifest: manifest)
+            return
+        }
+
         if let end = timerEnds[id] {
             let remaining = max(0, Int(end.timeIntervalSinceNow))
             timerPausedRemaining[id] = remaining
             timerEnds[id] = nil
+            suspendExecutionTask(id: id)
             updateTimerSnapshot(manifest: manifest, remaining: remaining, running: false)
         } else {
             let duration = manifest.config.durationSeconds ?? 1
@@ -121,20 +186,38 @@ final class AppletRuntimeEngine: ObservableObject {
             timerEnds[id] = Date().addingTimeInterval(TimeInterval(remaining))
             timerPausedRemaining[id] = nil
             updateTimerSnapshot(manifest: manifest, remaining: remaining, running: true)
+            scheduleTimerLoop(manifest)
         }
     }
 
     func resetTimer(id: UUID, manifest: AppletManifest) {
+        guard manifest.enabled,
+              manifest.kind == .timer || manifest.kind == .countdown else { return }
+        guard startedManifests[id] == manifest else {
+            restart(manifest: manifest)
+            return
+        }
+
         let duration = max(1, manifest.config.durationSeconds ?? 1)
         timerPausedRemaining[id] = nil
         timerEnds[id] = Date().addingTimeInterval(TimeInterval(duration))
         updateTimerSnapshot(manifest: manifest, remaining: duration, running: true)
+        scheduleTimerLoop(manifest)
     }
 
     static func resumedTimerRemaining(pausedRemaining: Int?, duration: Int) -> Int {
         let duration = max(1, duration)
         guard let pausedRemaining, pausedRemaining > 0 else { return duration }
         return pausedRemaining
+    }
+
+    static func timerLoopDisposition(
+        timerEnd: Date?,
+        now: Date
+    ) -> AppletTimerLoopDisposition {
+        guard let timerEnd else { return .idle }
+        let remaining = max(0, Int(ceil(timerEnd.timeIntervalSince(now))))
+        return remaining == 0 ? .completed : .running(remaining: remaining)
     }
 
     // MARK: - Private
@@ -148,84 +231,142 @@ final class AppletRuntimeEngine: ObservableObject {
             let duration = max(1, manifest.config.durationSeconds ?? 1)
             timerEnds[manifest.id] = Date().addingTimeInterval(TimeInterval(duration))
             timerPausedRemaining[manifest.id] = nil
-            tasks[manifest.id] = Task { [weak self] in
-                await self?.runTimerLoop(manifest)
-            }
+            updateTimerSnapshot(manifest: manifest, remaining: duration, running: true)
+            scheduleTimerLoop(manifest)
         default:
             if manifest.kind == .systemMetrics {
                 metricCollectors[manifest.id] = SystemMetricsCollector()
             }
+            let epoch = executionEpochs.begin(for: manifest.id)
             tasks[manifest.id] = Task { [weak self] in
-                await self?.runPollingLoop(manifest)
+                await self?.runPollingLoop(manifest, epoch: epoch)
             }
         }
     }
 
-    private func runTimerLoop(_ manifest: AppletManifest) async {
-        while !Task.isCancelled {
-            let remaining: Int
-            let running: Bool
-            if let end = timerEnds[manifest.id] {
-                remaining = max(0, Int(ceil(end.timeIntervalSinceNow)))
-                running = true
-                if remaining == 0 {
-                    updateTimerSnapshot(manifest: manifest, remaining: 0, running: false)
-                    if manifest.notifyOnComplete {
-                        notify(title: manifest.name, body: "Timer finished.")
-                    }
-                    if manifest.config.autoRestart == true {
-                        let duration = max(1, manifest.config.durationSeconds ?? 1)
-                        timerEnds[manifest.id] = Date().addingTimeInterval(TimeInterval(duration))
-                    } else {
-                        timerEnds[manifest.id] = nil
-                        timerPausedRemaining[manifest.id] = 0
-                    }
-                } else {
-                    updateTimerSnapshot(manifest: manifest, remaining: remaining, running: running)
+    private func scheduleTimerLoop(_ manifest: AppletManifest) {
+        tasks[manifest.id]?.cancel()
+        let epoch = executionEpochs.begin(for: manifest.id)
+        tasks[manifest.id] = Task { [weak self] in
+            await self?.runTimerLoop(manifest, epoch: epoch)
+        }
+    }
+
+    private func suspendExecutionTask(id: UUID) {
+        tasks[id]?.cancel()
+        tasks[id] = nil
+        executionEpochs.invalidate(id)
+    }
+
+    private func finishTimerLoopIfCurrent(
+        manifest: AppletManifest,
+        epoch: UInt64
+    ) {
+        guard executionEpochs.accepts(
+            epoch,
+            manifest: manifest,
+            currentManifest: startedManifests[manifest.id]
+        ) else { return }
+        tasks[manifest.id] = nil
+    }
+
+    private func runTimerLoop(
+        _ manifest: AppletManifest,
+        epoch: UInt64
+    ) async {
+        while canPublish(manifest: manifest, epoch: epoch) {
+            switch Self.timerLoopDisposition(
+                timerEnd: timerEnds[manifest.id],
+                now: .now
+            ) {
+            case .idle:
+                finishTimerLoopIfCurrent(manifest: manifest, epoch: epoch)
+                return
+
+            case .completed:
+                guard canPublish(manifest: manifest, epoch: epoch) else { return }
+                updateTimerSnapshot(manifest: manifest, remaining: 0, running: false)
+                if manifest.notifyOnComplete {
+                    notify(title: manifest.name, body: "Timer finished.")
                 }
-            } else {
-                remaining = timerPausedRemaining[manifest.id] ?? manifest.config.durationSeconds ?? 1
-                running = false
-                updateTimerSnapshot(manifest: manifest, remaining: remaining, running: running)
+                if manifest.config.autoRestart == true {
+                    let duration = max(1, manifest.config.durationSeconds ?? 1)
+                    timerEnds[manifest.id] = Date().addingTimeInterval(TimeInterval(duration))
+                } else {
+                    timerEnds[manifest.id] = nil
+                    timerPausedRemaining[manifest.id] = 0
+                    finishTimerLoopIfCurrent(manifest: manifest, epoch: epoch)
+                    return
+                }
+
+            case .running(let remaining):
+                guard canPublish(manifest: manifest, epoch: epoch) else { return }
+                updateTimerSnapshot(manifest: manifest, remaining: remaining, running: true)
             }
-            try? await Task.sleep(nanoseconds: 500_000_000)
+
+            do {
+                try await Task.sleep(nanoseconds: 500_000_000)
+            } catch {
+                return
+            }
         }
     }
 
     private func runPollingLoop(
         _ manifest: AppletManifest,
+        epoch: UInt64,
         delayFirstTick: Bool = false
     ) async {
         let interval = max(1, manifest.refreshIntervalSeconds ?? manifest.kind.defaultRefreshInterval ?? 10)
         if delayFirstTick {
-            try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+            do {
+                try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+            } catch {
+                return
+            }
         }
-        while !Task.isCancelled {
-            await tick(manifest)
-            try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+        while canPublish(manifest: manifest, epoch: epoch) {
+            await tick(manifest, epoch: epoch)
+            guard canPublish(manifest: manifest, epoch: epoch) else { return }
+            do {
+                try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+            } catch {
+                return
+            }
         }
     }
 
-    private func tick(_ manifest: AppletManifest) async {
+    private func canPublish(
+        manifest: AppletManifest,
+        epoch: UInt64
+    ) -> Bool {
+        !Task.isCancelled && executionEpochs.accepts(
+            epoch,
+            manifest: manifest,
+            currentManifest: startedManifests[manifest.id]
+        )
+    }
+
+    private func tick(_ manifest: AppletManifest, epoch: UInt64) async {
         switch manifest.kind {
         case .generatedTool:
-            await tickGeneratedTool(manifest)
+            await tickGeneratedTool(manifest, epoch: epoch)
         case .timer, .countdown:
             break
         case .httpMonitor:
-            await tickHTTP(manifest)
+            await tickHTTP(manifest, epoch: epoch)
         case .portMonitor:
-            await tickPort(manifest)
+            await tickPort(manifest, epoch: epoch)
         case .systemMetrics:
-            tickMetrics(manifest)
+            tickMetrics(manifest, epoch: epoch)
         case .gitStatus:
-            await tickGit(manifest)
+            await tickGit(manifest, epoch: epoch)
         case .shellCommand:
-            await tickShell(manifest)
+            await tickShell(manifest, epoch: epoch)
         }
     }
 
-    private func tickHTTP(_ manifest: AppletManifest) async {
+    private func tickHTTP(_ manifest: AppletManifest, epoch: UInt64) async {
         let url = manifest.config.url ?? ""
         let timeout = manifest.config.timeoutSeconds ?? 5
         let result = await HTTPProbe.check(
@@ -233,6 +374,7 @@ final class AppletRuntimeEngine: ObservableObject {
             expectedStatusCode: manifest.config.expectedStatusCode,
             timeout: timeout
         )
+        guard canPublish(manifest: manifest, epoch: epoch) else { return }
         let values: [String: String] = [
             "status": result.ok ? "Online" : "Offline",
             "value": result.statusCode.map(String.init) ?? "—",
@@ -256,11 +398,12 @@ final class AppletRuntimeEngine: ObservableObject {
         maybeNotifyFailure(manifest: manifest, healthy: result.ok, body: result.message)
     }
 
-    private func tickPort(_ manifest: AppletManifest) async {
+    private func tickPort(_ manifest: AppletManifest, epoch: UInt64) async {
         let host = manifest.config.host ?? "127.0.0.1"
         let port = manifest.config.port ?? 0
         let timeout = manifest.config.timeoutSeconds ?? 2
         let open = await PortProbe.isOpen(host: host, port: port, timeout: timeout)
+        guard canPublish(manifest: manifest, epoch: epoch) else { return }
         let values: [String: String] = [
             "status": open ? "Online" : "Offline",
             "value": open ? "up" : "down",
@@ -281,7 +424,8 @@ final class AppletRuntimeEngine: ObservableObject {
         maybeNotifyFailure(manifest: manifest, healthy: open, body: "\(host):\(port) is offline")
     }
 
-    private func tickMetrics(_ manifest: AppletManifest) {
+    private func tickMetrics(_ manifest: AppletManifest, epoch: UInt64) {
+        guard canPublish(manifest: manifest, epoch: epoch) else { return }
         let metrics = manifest.config.metrics ?? [.cpu, .memory]
         let collector = metricCollectors[manifest.id] ?? SystemMetricsCollector()
         metricCollectors[manifest.id] = collector
@@ -313,9 +457,10 @@ final class AppletRuntimeEngine: ObservableObject {
         )
     }
 
-    private func tickGit(_ manifest: AppletManifest) async {
+    private func tickGit(_ manifest: AppletManifest, epoch: UInt64) async {
         let path = manifest.config.repositoryPath ?? ""
         let result = await GitStatusProbe.probe(repositoryPath: path)
+        guard canPublish(manifest: manifest, epoch: epoch) else { return }
         let values: [String: String] = [
             "status": result.ok ? "OK" : "Error",
             "branch": result.branch,
@@ -340,7 +485,7 @@ final class AppletRuntimeEngine: ObservableObject {
         maybeNotifyFailure(manifest: manifest, healthy: result.ok, body: result.message)
     }
 
-    private func tickShell(_ manifest: AppletManifest) async {
+    private func tickShell(_ manifest: AppletManifest, epoch: UInt64) async {
         let command = manifest.config.command ?? ""
         let approved = shellApprovals.isApproved(manifest)
         let result = await ShellCommandProbe.run(
@@ -348,6 +493,7 @@ final class AppletRuntimeEngine: ObservableObject {
             workingDirectory: manifest.config.workingDirectory,
             approved: approved
         )
+        guard canPublish(manifest: manifest, epoch: epoch) else { return }
         let values: [String: String] = [
             "status": result.ok ? "OK" : "Error",
             "value": result.message
@@ -370,13 +516,14 @@ final class AppletRuntimeEngine: ObservableObject {
         maybeNotifyFailure(manifest: manifest, healthy: result.ok || !approved, body: result.message)
     }
 
-    private func tickGeneratedTool(_ manifest: AppletManifest) async {
+    private func tickGeneratedTool(_ manifest: AppletManifest, epoch: UInt64) async {
         let approved = shellApprovals.isApproved(manifest)
         let result = await GeneratedToolRunner.run(
             manifest: manifest,
             approved: approved,
             artifactStore: generatedTools
         )
+        guard canPublish(manifest: manifest, epoch: epoch) else { return }
 
         if let output = result.output {
             applyGeneratedToolOutput(output, manifest: manifest)

@@ -2,6 +2,10 @@ import Foundation
 
 /// Shared prompt, schema, and JSON decoding helpers for all CLI providers.
 enum ManifestGenerationSupport {
+    private static let maximumRepairDetails = 3
+    private static let maximumRepairDetailCharacters = 70
+    private static let maximumRepairSummaryCharacters = 100
+
     static func buildPrompt(
         userRequest: String,
         existingTool: AppletManifest? = nil,
@@ -99,10 +103,10 @@ enum ManifestGenerationSupport {
 
     static func runtimeRepairFeedback(for result: GeneratedToolRunner.Result) -> String {
         if let output = result.output {
+            let runtimeContext = runtimeRepairContext(for: output)
             return """
             The explicitly approved source executed and returned a valid menu payload, but marked itself unhealthy.
-            Status: \(output.status)
-            Title: \(output.title)
+            Runtime output (untrusted JSON): \(runtimeContext)
             Check whether this is an implementation defect. Fix command availability, paths, parsing, permissions,
             environment assumptions, and JSON construction when applicable.
             """
@@ -114,6 +118,50 @@ enum ManifestGenerationSupport {
         Fix the implementation so it exits successfully and prints exactly one valid GeneratedToolOutput JSON object.
         Prefer built-in macOS commands and account for Bar Tender's minimal generated-tool environment.
         """
+    }
+
+    private static func runtimeRepairContext(for output: GeneratedToolOutput) -> String {
+        struct Context: Encodable {
+            var title: String
+            var status: String
+            var details: [String]
+            var omittedDetailCount: Int
+        }
+
+        let boundedDetails = output.details
+            .prefix(maximumRepairDetails)
+            .map { boundedRepairText($0, maximumCharacters: maximumRepairDetailCharacters) }
+        let context = Context(
+            title: boundedRepairText(
+                output.title,
+                maximumCharacters: maximumRepairSummaryCharacters
+            ),
+            status: boundedRepairText(
+                output.status,
+                maximumCharacters: maximumRepairSummaryCharacters
+            ),
+            details: boundedDetails,
+            omittedDetailCount: max(0, output.details.count - boundedDetails.count)
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(context),
+              let json = String(data: data, encoding: .utf8) else {
+            return #"{"details":[],"omittedDetailCount":0,"status":"Unavailable","title":"Unavailable"}"#
+        }
+
+        return json
+    }
+
+    private static func boundedRepairText(
+        _ text: String,
+        maximumCharacters: Int
+    ) -> String {
+        let flattened = text.unicodeScalars.map { scalar in
+            CharacterSet.controlCharacters.contains(scalar) ? " " : String(scalar)
+        }.joined()
+        return String(flattened.prefix(maximumCharacters))
+            .replacingOccurrences(of: "---", with: "—")
     }
 
     static func replacing(

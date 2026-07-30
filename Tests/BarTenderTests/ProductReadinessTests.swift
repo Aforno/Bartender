@@ -97,6 +97,11 @@ final class ProviderEndToEndMatrixTests: XCTestCase {
             atomically: true,
             encoding: .utf8
         )
+        try #"{"security":{"auth":{"selectedType":"oauth-personal"}}}"#.write(
+            to: temporaryDirectory.appendingPathComponent(".gemini/settings.json"),
+            atomically: true,
+            encoding: .utf8
+        )
         try "fixture-oauth-token".write(
             to: temporaryDirectory.appendingPathComponent(".gemini/antigravity-cli/antigravity-oauth-token"),
             atomically: true,
@@ -230,7 +235,7 @@ final class ProviderEndToEndMatrixTests: XCTestCase {
         }
     }
 
-    func testGenerationCanBeCancelledWithoutAnyGenerationTimeout() async throws {
+    func testAntigravityGenerationCanBeCancelledWithUnlimitedPrintTimeout() async throws {
         try installHealthyProviderFixtures(generationDelay: 5)
         let service = makeService()
         await service.refreshAvailability()
@@ -239,7 +244,7 @@ final class ProviderEndToEndMatrixTests: XCTestCase {
         let task = Task {
             try await service.generateManifest(
                 prompt: "Wait for cancellation",
-                provider: .claude,
+                provider: .agy,
                 onLog: { stream, message in
                     if stream == .system, message.hasPrefix("Launching:") {
                         launched.fulfill()

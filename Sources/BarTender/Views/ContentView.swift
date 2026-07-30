@@ -20,6 +20,7 @@ struct ContentView: View {
 
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var providers: AIProviderService
+    @EnvironmentObject private var store: AppletStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var sidebarVisible = true
     @State private var backHistory: [NavigationDestination] = []
@@ -27,16 +28,7 @@ struct ContentView: View {
     @State private var suppressNextHistoryUpdate = false
 
     var body: some View {
-        Group {
-            if providers.anyProviderReady || isStillChecking {
-                mainWorkspace
-            } else {
-                SetupErrorView {
-                    Task { await model.refreshProviders() }
-                }
-                .environmentObject(providers)
-            }
-        }
+        mainWorkspace
         .frame(minWidth: 720, minHeight: 500)
         .background(WindowChromeConfigurator())
         .sheet(isPresented: $model.showingProviderSetup) {
@@ -63,8 +55,24 @@ struct ContentView: View {
                 suppressNextHistoryUpdate = false
                 return
             }
-            backHistory.append(NavigationDestination(selection: oldSelection))
+            if oldSelection == nil || store.applet(id: oldSelection) != nil {
+                backHistory.append(NavigationDestination(selection: oldSelection))
+            }
             forwardHistory.removeAll()
+        }
+        .onReceive(store.$applets) { applets in
+            let ids = Set(applets.map(\.id))
+            backHistory.removeAll { destination in
+                if case .tool(let id) = destination { return !ids.contains(id) }
+                return false
+            }
+            forwardHistory.removeAll { destination in
+                if case .tool(let id) = destination { return !ids.contains(id) }
+                return false
+            }
+            if let selection = model.selection, !ids.contains(selection) {
+                model.selection = applets.first?.id
+            }
         }
     }
 
@@ -82,26 +90,29 @@ struct ContentView: View {
                     sidebarVisible.toggle()
                 }
             } label: {
-                ToolbarSVGIcon(name: "sidebar-toggle")
+                ToolbarSVGIcon(name: "sidebar-toggle", fallbackSystemImage: "sidebar.left")
             }
             .buttonStyle(.plain)
             .help(sidebarVisible ? "Hide Sidebar" : "Show Sidebar")
+            .accessibilityLabel(sidebarVisible ? "Hide Sidebar" : "Show Sidebar")
             .accessibilityIdentifier("toggle-sidebar")
 
             Button(action: navigateBack) {
-                ToolbarSVGIcon(name: "back")
+                ToolbarSVGIcon(name: "back", fallbackSystemImage: "chevron.left")
             }
             .buttonStyle(.plain)
             .disabled(backHistory.isEmpty)
             .help("Back")
+            .accessibilityLabel("Back")
             .accessibilityIdentifier("navigate-back")
 
             Button(action: navigateForward) {
-                ToolbarSVGIcon(name: "forward")
+                ToolbarSVGIcon(name: "forward", fallbackSystemImage: "chevron.right")
             }
             .buttonStyle(.plain)
             .disabled(forwardHistory.isEmpty)
             .help("Forward")
+            .accessibilityLabel("Forward")
             .accessibilityIdentifier("navigate-forward")
         }
     }
@@ -139,13 +150,21 @@ struct ContentView: View {
         }
         .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: sidebarVisible)
         .overlay(alignment: .top) {
-            if let banner = model.bannerMessage {
-                BannerView(text: banner) {
-                    model.bannerMessage = nil
+            VStack(spacing: PremiumStyle.space8) {
+                if !providers.anyProviderReady, !isStillChecking {
+                    ProviderUnavailableBanner {
+                        model.showingProviderSetup = true
+                    }
                 }
-                .padding(.top, PremiumStyle.space8)
-                .transition(.move(edge: .top).combined(with: .opacity))
+
+                if let banner = model.bannerMessage {
+                    BannerView(text: banner) {
+                        model.bannerMessage = nil
+                    }
+                }
             }
+            .padding(.top, PremiumStyle.space8)
+            .transition(.move(edge: .top).combined(with: .opacity))
         }
         .animation(reduceMotion ? nil : .snappy, value: model.bannerMessage)
     }
@@ -163,6 +182,9 @@ struct ContentView: View {
     }
 
     private func navigate(to destination: NavigationDestination) {
+        if case .tool(let id) = destination, store.applet(id: id) == nil {
+            return
+        }
         suppressNextHistoryUpdate = true
         model.selection = destination.selection
     }
@@ -255,18 +277,26 @@ private struct WindowChromeConfigurator: NSViewRepresentable {
 
 private struct ToolbarSVGIcon: View {
     let name: String
+    let fallbackSystemImage: String
 
     var body: some View {
-        if let image = Self.load(name) {
-            Image(nsImage: image)
-                .renderingMode(.template)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 20, height: 20)
-                .foregroundStyle(.primary)
-                .frame(width: 28, height: 28)
-                .contentShape(Rectangle())
+        Group {
+            if let image = Self.load(name) {
+                Image(nsImage: image)
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: fallbackSystemImage)
+                    .resizable()
+                    .scaledToFit()
+            }
         }
+        .accessibilityHidden(true)
+        .frame(width: 20, height: 20)
+        .foregroundStyle(.primary)
+        .frame(width: 28, height: 28)
+        .contentShape(Rectangle())
     }
 
     private static func load(_ name: String) -> NSImage? {
@@ -297,8 +327,8 @@ private struct ProviderSetupSheet: View {
     }
 }
 
-private struct BannerView: View {
-    private static let dismissalDelayNanoseconds: UInt64 = 5_000_000_000
+struct BannerView: View {
+    private static let dismissalDelayNanoseconds: UInt64 = 8_000_000_000
 
     let text: String
     let onDismiss: () -> Void
@@ -308,9 +338,10 @@ private struct BannerView: View {
             Image(systemName: "info.circle.fill")
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(PremiumStyle.brand)
+                .accessibilityHidden(true)
             Text(text)
                 .font(.inter(.callout))
-                .lineLimit(2)
+                .lineLimit(4)
             Spacer(minLength: 8)
             Button {
                 onDismiss()
@@ -336,7 +367,18 @@ private struct BannerView: View {
         .shadow(color: .black.opacity(0.10), radius: 12, y: 3)
         .padding(.horizontal, PremiumStyle.space20)
         .frame(maxWidth: 560)
+        .accessibilityElement(children: .contain)
         .task(id: text) {
+            if let application = NSApp {
+                NSAccessibility.post(
+                    element: application,
+                    notification: .announcementRequested,
+                    userInfo: [
+                        .announcement: text,
+                        .priority: NSAccessibilityPriorityLevel.medium.rawValue
+                    ]
+                )
+            }
             do {
                 try await Task.sleep(nanoseconds: Self.dismissalDelayNanoseconds)
             } catch {
@@ -344,5 +386,37 @@ private struct BannerView: View {
             }
             onDismiss()
         }
+    }
+}
+
+private struct ProviderUnavailableBanner: View {
+    let onSetup: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .accessibilityHidden(true)
+            Text("Your tools remain available, but creating or updating one needs a ready model provider.")
+                .font(.inter(.callout))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            Button("Set Up…", action: onSetup)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, PremiumStyle.space16)
+        .padding(.vertical, PremiumStyle.space12)
+        .background(
+            PremiumStyle.fieldFill,
+            in: RoundedRectangle(cornerRadius: PremiumStyle.cardRadius, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: PremiumStyle.cardRadius, style: .continuous)
+                .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.10), radius: 12, y: 3)
+        .padding(.horizontal, PremiumStyle.space20)
+        .frame(maxWidth: 620)
+        .accessibilityElement(children: .contain)
     }
 }
