@@ -24,7 +24,10 @@ enum ShellEnvironment {
         var environment = Dictionary(uniqueKeysWithValues: allowedKeys.compactMap { key in
             login[key].map { (key, $0) }
         })
-        if let cliPath = await Task.detached(priority: .utility) { Self.ensureSensorCLIWrapper() }.value {
+        let wrapperTask = Task.detached(priority: .utility) {
+            Self.ensureSensorCLIWrapper()
+        }
+        if let cliPath = await wrapperTask.value {
             environment["BARTENDER_CLI"] = cliPath
         }
         return environment
@@ -35,11 +38,13 @@ enum ShellEnvironment {
     /// unknown invocations exit with an error instead of opening a full GUI.
     static func ensureSensorCLIWrapper(
         appExecutable: String? = Bundle.main.executableURL?.path,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        applicationSupportURL: URL? = nil
     ) -> String? {
         guard let appExecutable, !appExecutable.isEmpty else { return nil }
 
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        let appSupport = applicationSupportURL
+            ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? fileManager.temporaryDirectory
         let binDirectory = appSupport
             .appendingPathComponent("BarTender", isDirectory: true)
@@ -72,11 +77,13 @@ enum ShellEnvironment {
             let existing = try? String(contentsOf: wrapperURL, encoding: .utf8)
             if existing != wrapperScript {
                 try wrapperScript.write(to: wrapperURL, atomically: true, encoding: .utf8)
-                try fileManager.setAttributes(
-                    [.posixPermissions: NSNumber(value: Int16(0o755))],
-                    ofItemAtPath: wrapperURL.path
-                )
             }
+            // Repair permissions even when a restored or manually copied
+            // wrapper already has the current contents.
+            try fileManager.setAttributes(
+                [.posixPermissions: NSNumber(value: Int16(0o755))],
+                ofItemAtPath: wrapperURL.path
+            )
             return wrapperURL.path
         } catch {
             AppLog.app.error(
@@ -109,7 +116,11 @@ enum ShellEnvironment {
         do {
             let result = try await runner.run(
                 executable: shell,
-                arguments: ["-l", "-c", "printenv PATH"],
+                arguments: [
+                    "-l",
+                    "-c",
+                    "printf '__BARTENDER_PATH__=%s\\n' \"$PATH\""
+                ],
                 environment: [
                     "HOME": NSHomeDirectory(),
                     "USER": NSUserName(),
@@ -120,15 +131,26 @@ enum ShellEnvironment {
             guard !result.timedOut,
                   !result.cancelled,
                   result.exitCode == 0,
-                  let path = result.stdout
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .nonEmpty else {
+                  let path = extractLoginPATH(from: result.stdout) else {
                 return fallback
             }
             return mergePATH(path, with: fallback)
         } catch {
             return fallback
         }
+    }
+
+    static func extractLoginPATH(from output: String) -> String? {
+        let marker = "__BARTENDER_PATH__="
+        return output
+            .split(whereSeparator: \.isNewline)
+            .reversed()
+            .compactMap { line -> String? in
+                let value = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard value.hasPrefix(marker) else { return nil }
+                return String(value.dropFirst(marker.count)).nonEmpty
+            }
+            .first
     }
 
     static func fallbackPATH() -> String {

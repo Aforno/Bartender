@@ -11,7 +11,3 @@ enum AppLog {
     static let menuBar = Logger(subsystem: subsystem, category: "MenuBar")
     static let sidebar = Logger(subsystem: subsystem, category: "Sidebar")
 }
-
-extension Notification.Name {
-    static let barTenderOpenMainWindow = Notification.Name("BarTenderOpenMainWindow")
-}

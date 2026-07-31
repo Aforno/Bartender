@@ -6,73 +6,78 @@ struct SetupErrorView: View {
     let onRecheck: () -> Void
 
     var body: some View {
-        VStack(spacing: 22) {
-            Image(systemName: "wineglass")
-                .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 64, height: 64)
-                .background(
-                    PremiumStyle.brandGradient,
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                )
-                .shadow(color: PremiumStyle.brand.opacity(0.30), radius: 12, y: 3)
+        ScrollView {
+            VStack(spacing: 22) {
+                Image(systemName: "wineglass")
+                    .font(.system(size: 30, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 64, height: 64)
+                    .background(
+                        PremiumStyle.brandGradient,
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    )
+                    .shadow(color: PremiumStyle.brand.opacity(0.30), radius: 12, y: 3)
 
-            VStack(spacing: 8) {
-                Text("Bar Tender needs a local AI CLI")
-                    .font(.inter(.title, weight: .semibold))
+                VStack(spacing: 8) {
+                    Text("Local AI providers")
+                        .font(.inter(.title, weight: .semibold))
+                        .accessibilityAddTraits(.isHeader)
 
-                Text("Install and sign in to at least one provider: Codex, Claude, or Grok. Bar Tender never asks for API keys — it uses CLIs already on your Mac.")
-                    .font(.inter(.body))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 520)
-            }
-
-            VStack(spacing: 0) {
-                ForEach(Array(AIProvider.allCases.enumerated()), id: \.element) { index, provider in
-                    if index > 0 { Divider() }
-                    providerRow(provider)
+                    Text("Bar Tender uses local AI CLIs to create and revise tools. Review their status below; generation needs at least one installed, signed-in, enabled provider. Bar Tender never asks for API keys.")
+                        .font(.inter(.body))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 520)
                 }
-            }
-            .frame(maxWidth: 560, alignment: .leading)
-            .borderedContainer()
 
-            VStack(alignment: .leading, spacing: 8) {
-                Label("No OpenAI / Anthropic / xAI API key fields in this app.", systemImage: "key.slash")
-                Label("Generation uses documented CLI flags only, via Process.", systemImage: "terminal")
-                Label("Generated source is installed locally and shown for review before it can run.", systemImage: "checkmark.shield")
-            }
-            .font(.inter(.callout))
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: 560, alignment: .leading)
+                VStack(spacing: 0) {
+                    ForEach(Array(AIProvider.allCases.enumerated()), id: \.element) { index, provider in
+                        if index > 0 { Divider() }
+                        providerRow(provider)
+                    }
+                }
+                .frame(maxWidth: 560, alignment: .leading)
+                .borderedContainer()
 
-            GeneratedCodeTrustDisclosure(compact: true)
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("No OpenAI / Anthropic / xAI API key fields in this app.", systemImage: "key.slash")
+                    Label("Generation uses documented CLI flags only, via Process.", systemImage: "terminal")
+                    Label("Generated source is installed locally and shown for review before it can run.", systemImage: "checkmark.shield")
+                }
+                .font(.inter(.callout))
+                .foregroundStyle(.secondary)
                 .frame(maxWidth: 560, alignment: .leading)
 
-            HStack(spacing: 12) {
-                Button("Recheck providers") {
-                    onRecheck()
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .keyboardShortcut(.defaultAction)
+                GeneratedCodeTrustDisclosure(compact: true)
+                    .frame(maxWidth: 560, alignment: .leading)
 
-                Button("Copy setup tips") {
-                    let tip = AIProvider.allCases
-                        .map { "\($0.displayName): \($0.loginCommand)" }
-                        .joined(separator: "\n")
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(tip, forType: .string)
+                HStack(spacing: 12) {
+                    Button("Recheck providers") {
+                        onRecheck()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
+
+                    Button("Copy setup tips") {
+                        let tip = AIProvider.allCases
+                            .map { "\($0.displayName): \($0.loginCommand)" }
+                            .joined(separator: "\n")
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(tip, forType: .string)
+                    }
+                    .controlSize(.large)
                 }
-                .controlSize(.large)
             }
+            .padding(PremiumStyle.space40)
+            .frame(maxWidth: .infinity)
         }
-        .padding(PremiumStyle.space40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(PremiumStyle.canvas)
     }
 
     private func providerRow(_ provider: AIProvider) -> some View {
+        let enabled = providers.isProviderEnabled(provider)
         let status = providers.status(for: provider)
         return HStack(alignment: .center, spacing: 12) {
             ProviderIcon(provider: provider, size: 24)
@@ -82,30 +87,40 @@ struct SetupErrorView: View {
                     Text(provider.displayName)
                         .font(.inter(.headline, weight: .semibold))
                     Spacer()
-                    statusBadge(status)
+                    statusBadge(status, enabled: enabled)
                 }
-                switch status {
-                case .checking:
-                    Text("Checking…")
+                if !enabled {
+                    Text("Disabled in Settings")
                         .font(.inter(.caption))
                         .foregroundStyle(.secondary)
-                case .ready(let install):
-                    Text(install.version)
-                        .font(.inter(.caption))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    Text(install.authSummary)
-                        .font(.inter(.caption2))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                case .unavailable(let issue):
-                    Text(issue.title(for: provider))
-                        .font(.inter(.caption))
-                        .foregroundStyle(.secondary)
-                    Text(issue.recoverySuggestion(for: provider))
+                    Text("Enable this provider in Settings → Providers to use it for generation.")
                         .font(.inter(.caption2))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
+                } else {
+                    switch status {
+                    case .checking:
+                        Text("Checking…")
+                            .font(.inter(.caption))
+                            .foregroundStyle(.secondary)
+                    case .ready(let install):
+                        Text(install.version)
+                            .font(.inter(.caption))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Text(install.authSummary)
+                            .font(.inter(.caption2))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    case .unavailable(let issue):
+                        Text(issue.title(for: provider))
+                            .font(.inter(.caption))
+                            .foregroundStyle(.secondary)
+                        Text(issue.recoverySuggestion(for: provider))
+                            .font(.inter(.caption2))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
                 }
             }
         }
@@ -115,8 +130,9 @@ struct SetupErrorView: View {
         .padding(.vertical, PremiumStyle.space12)
     }
 
-    private func statusBadge(_ status: ProviderAvailability) -> some View {
+    private func statusBadge(_ status: ProviderAvailability, enabled: Bool) -> some View {
         let (text, color): (String, Color) = {
+            guard enabled else { return ("Off", .secondary) }
             switch status {
             case .checking: return ("Checking", .secondary)
             case .ready: return ("Ready", .green)

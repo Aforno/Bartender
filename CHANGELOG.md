@@ -4,6 +4,8 @@ All notable user-visible changes are recorded here. Bar Tender follows semantic 
 
 ## Unreleased
 
+- Added Gemini CLI (`gemini`) and Antigravity CLI (`agy`) as generation providers, with install/auth probing, model catalogs, and branded icons.
+
 ## 1.0.0-adhoc — 2026-07-24
 
 - Published the first downloadable universal ZIP/DMG as an **ad-hoc prerelease** (no Developer ID signature or notarization). Install requires a one-time Gatekeeper bypass (Control-click → Open).

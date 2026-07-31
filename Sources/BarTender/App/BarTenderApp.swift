@@ -20,6 +20,7 @@ struct BarTenderApp: App {
     var body: some Scene {
         WindowGroup("Bar Tender", id: "main") {
             ContentView()
+                .background(MainWindowActionsInstaller(model: model))
                 .tint(PremiumStyle.brand)
                 .font(.inter(.body))
                 .environmentObject(model)
@@ -28,32 +29,10 @@ struct BarTenderApp: App {
                 .environmentObject(model.runtime)
                 .environmentObject(model.preferences)
                 .task {
-                    await model.bootstrap()
+                    appDelegate.model = model
                     statusItems.attach(model: model)
                     AppActions.shared.model = model
-                    AppActions.shared.openWindowAction = {
-                        NSApp.activate(ignoringOtherApps: true)
-                        for window in NSApp.windows where window.canBecomeKey {
-                            window.makeKeyAndOrderFront(nil)
-                        }
-                    }
-                }
-                .onReceive(model.$enabledApplets) { enabled in
-                    statusItems.rebuild(enabled: enabled)
-                }
-                .onReceive(model.runtime.$snapshots) { snapshots in
-                    statusItems.refreshAll(snapshots: snapshots)
-                }
-                .onReceive(NotificationCenter.default.publisher(for: .barTenderOpenMainWindow)) { note in
-                    if let raw = note.object as? String, let id = UUID(uuidString: raw) {
-                        model.selection = id
-                    } else {
-                        model.selection = nil
-                    }
-                    NSApp.activate(ignoringOtherApps: true)
-                    for window in NSApp.windows where window.canBecomeKey {
-                        window.makeKeyAndOrderFront(nil)
-                    }
+                    await model.bootstrap()
                 }
         }
         .defaultSize(width: 1180, height: 760)
@@ -70,12 +49,17 @@ struct BarTenderApp: App {
                 Button(model.selectedApplet == nil ? "Build New Tool from Prompt" : "Update Selected Tool from Prompt") {
                     Task { await model.createFromPrompt() }
                 }
-                .keyboardShortcut(.return, modifiers: [.command])
+                .disabled(
+                    model.generation?.phase.isActive == true
+                        || model.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || !model.providers.availability.isReady
+                )
 
                 Button("Cancel Generation") {
                     model.cancelGeneration()
                 }
                 .keyboardShortcut(.escape, modifiers: [.command])
+                .disabled(model.generation?.phase.isActive != true)
 
                 Divider()
 
@@ -83,7 +67,7 @@ struct BarTenderApp: App {
                     model.deleteSelected()
                 }
                 .keyboardShortcut(.delete, modifiers: [.command])
-                .disabled(model.selectedApplet == nil)
+                .disabled(model.selectedApplet == nil || model.generation?.phase.isActive == true)
             }
         }
 
@@ -109,5 +93,45 @@ struct BarTenderApp: App {
                 .environmentObject(model.providers)
                 .environmentObject(model.preferences)
         }
+    }
+}
+
+@MainActor
+enum MainWindowRouter {
+    static func open(using openWindow: OpenWindowAction) {
+        if let window = NSApp.windows.first(where: isMainWindow) {
+            NSApp.activate(ignoringOtherApps: true)
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        openWindow(id: "main")
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    static func isMainWindow(_ window: NSWindow) -> Bool {
+        window.identifier?.rawValue.hasPrefix("main-AppWindow") == true
+            || (window.title == "Bar Tender"
+                && window.identifier?.rawValue != "com_apple_SwiftUI_Settings_window")
+    }
+}
+
+private struct MainWindowActionsInstaller: View {
+    @Environment(\.openWindow) private var openWindow
+    let model: AppModel
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .onAppear {
+                AppActions.shared.model = model
+                AppActions.shared.openWindowAction = {
+                    MainWindowRouter.open(using: openWindow)
+                }
+            }
     }
 }

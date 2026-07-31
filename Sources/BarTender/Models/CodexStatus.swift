@@ -27,6 +27,7 @@ enum GenerationPhase: String, Equatable, Sendable {
     case preparing
     case running
     case parsing
+    case cancelling
     case succeeded
     case failed
     case cancelled
@@ -41,6 +42,7 @@ enum GenerationPhase: String, Equatable, Sendable {
             }
             return "Writing generated tool"
         case .parsing: return "Installing in the menu bar"
+        case .cancelling: return "Cancelling"
         case .succeeded: return "Installed"
         case .failed: return "Failed"
         case .cancelled: return "Cancelled"
@@ -52,11 +54,15 @@ enum GenerationPhase: String, Equatable, Sendable {
 
     var isActive: Bool {
         switch self {
-        case .preparing, .running, .parsing:
+        case .preparing, .running, .parsing, .cancelling:
             return true
         default:
             return false
         }
+    }
+
+    var isCancellationRequested: Bool {
+        self == .cancelling || self == .cancelled
     }
 }
 
@@ -142,7 +148,7 @@ enum ProviderGenerationError: LocalizedError {
                 + "Install it (for example `brew install \(tool)`) and generate again, "
                 + "or rephrase your request to use tools that ship with macOS."
         case .noProvidersReady:
-            return "No AI provider CLI is ready. Install and sign in to Codex, Claude, or Grok."
+            return "No AI provider CLI is ready. Install and sign in to Codex, Claude, Grok, Gemini, or Antigravity."
         }
     }
 }

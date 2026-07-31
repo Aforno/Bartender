@@ -26,6 +26,7 @@ enum ShellCommandProbe {
         let shell = env["SHELL"] ?? "/bin/zsh"
         let runner = ProcessRunner()
         let cwd = workingDirectory.map { ($0 as NSString).expandingTildeInPath }
+        let timeoutSeconds = 30
 
         do {
             let result = try await runner.run(
@@ -33,19 +34,55 @@ enum ShellCommandProbe {
                 arguments: ["-lc", command],
                 environment: env,
                 currentDirectory: cwd,
-                timeout: 30
+                timeout: TimeInterval(timeoutSeconds)
             )
-            let output = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-            let firstLine = output.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
-            let display = firstLine.isEmpty ? (result.exitCode == 0 ? "OK" : "Exit \(result.exitCode)") : firstLine
-            return Result(
-                ok: result.exitCode == 0,
-                output: output,
-                exitCode: result.exitCode,
-                message: TitleRenderer.shortMenuTitle(display)
-            )
+            return interpret(result, timeoutSeconds: timeoutSeconds)
         } catch {
-            return Result(ok: false, output: "", exitCode: -1, message: error.localizedDescription)
+            return Result(
+                ok: false,
+                output: "",
+                exitCode: -1,
+                message: Task.isCancelled ? "Cancelled" : error.localizedDescription
+            )
         }
+    }
+
+    static func interpret(
+        _ process: ProcessResult,
+        timeoutSeconds: Int
+    ) -> Result {
+        let stdout = process.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stderr = process.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let message: String
+        let ok: Bool
+        if process.cancelled {
+            ok = false
+            message = "Cancelled"
+        } else if process.timedOut {
+            ok = false
+            message = "Timed out after \(timeoutSeconds)s"
+        } else if process.exitCode == 0 {
+            ok = true
+            message = firstLine(in: stdout) ?? "OK"
+        } else {
+            ok = false
+            message = firstLine(in: stderr)
+                ?? firstLine(in: stdout)
+                ?? "Exit \(process.exitCode)"
+        }
+
+        return Result(
+            ok: ok,
+            output: stdout,
+            exitCode: process.exitCode,
+            message: TitleRenderer.shortMenuTitle(message)
+        )
+    }
+
+    private static func firstLine(in text: String) -> String? {
+        text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty })
     }
 }

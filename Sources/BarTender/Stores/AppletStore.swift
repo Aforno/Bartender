@@ -4,6 +4,7 @@ import Foundation
 enum AppletStoreError: LocalizedError {
     case invalidLibraryFormat
     case unsupportedArchiveVersion(Int)
+    case duplicateAppletID(UUID)
     case persistenceFailed(String)
 
     var errorDescription: String? {
@@ -12,6 +13,8 @@ enum AppletStoreError: LocalizedError {
             return "The selected file is not a Bar Tender library archive."
         case .unsupportedArchiveVersion(let version):
             return "This library uses unsupported archive format \(version)."
+        case .duplicateAppletID(let id):
+            return "The library contains more than one applet with identifier \(id.uuidString)."
         case .persistenceFailed(let detail):
             return "Could not save the applet library: \(detail)"
         }
@@ -87,11 +90,12 @@ final class AppletStore: ObservableObject {
 
             var valid: [AppletManifest] = []
             var rejected: [Any] = []
+            var seenIDs = Set<UUID>()
             for object in objects {
                 do {
                     let entryData = try JSONSerialization.data(withJSONObject: object)
                     let decoded = try decoder.decode(AppletManifest.self, from: entryData)
-                    valid.append(try ManifestValidator.normalizedAndValidated(decoded))
+                    valid.append(try validatedManifest(decoded, uniqueWithin: &seenIDs))
                 } catch {
                     rejected.append(object)
                     AppLog.store.error("Rejected invalid applet: \(error.localizedDescription, privacy: .public)")
@@ -200,7 +204,13 @@ final class AppletStore: ObservableObject {
         guard archive.formatVersion == AppletLibraryArchive.currentFormatVersion else {
             throw AppletStoreError.unsupportedArchiveVersion(archive.formatVersion)
         }
-        return try archive.applets.map(ManifestValidator.normalizedAndValidated)
+
+        var imported: [AppletManifest] = []
+        var seenIDs = Set<UUID>()
+        for manifest in archive.applets {
+            imported.append(try validatedManifest(manifest, uniqueWithin: &seenIDs))
+        }
+        return imported
     }
 
     /// Imports only manifests. Approval fingerprints and executable artifacts
@@ -250,6 +260,17 @@ final class AppletStore: ObservableObject {
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
+    }
+
+    private func validatedManifest(
+        _ manifest: AppletManifest,
+        uniqueWithin seenIDs: inout Set<UUID>
+    ) throws -> AppletManifest {
+        let validated = try ManifestValidator.normalizedAndValidated(manifest)
+        guard seenIDs.insert(validated.id).inserted else {
+            throw AppletStoreError.duplicateAppletID(validated.id)
+        }
+        return validated
     }
 
     private func recoveryURL(named name: String) -> URL {

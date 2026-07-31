@@ -3,6 +3,9 @@ import SwiftUI
 
 /// Native macOS settings, grouped by the thing the person is trying to manage.
 struct SettingsView: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some View {
         TabView {
             GeneralSettingsPane()
@@ -30,6 +33,22 @@ struct SettingsView: View {
                 .tag(SettingsTab.support)
         }
         .frame(width: 560, height: 520)
+        .overlay(alignment: .top) {
+            if let banner = model.bannerMessage {
+                BannerView(text: banner) {
+                    model.bannerMessage = nil
+                }
+                .padding(.top, PremiumStyle.space8)
+            }
+        }
+        .onAppear {
+            model.launchAtLogin.refresh()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                model.launchAtLogin.refresh()
+            }
+        }
     }
 }
 
@@ -74,8 +93,7 @@ private struct ProviderSettingsPane: View {
             Section {
                 Button("Provider Setup…") {
                     model.showingProviderSetup = true
-                    NSApp.activate(ignoringOtherApps: true)
-                    NSApp.windows.first(where: \.canBecomeKey)?.makeKeyAndOrderFront(nil)
+                    AppActions.shared.openMainWindow()
                 }
 
                 Button {
@@ -105,7 +123,13 @@ private struct ProviderSettingsPane: View {
     private func binding(for provider: AIProvider) -> Binding<Bool> {
         Binding(
             get: { providers.isProviderEnabled(provider) },
-            set: { providers.setProviderEnabled(provider, enabled: $0) }
+            set: { enabled in
+                if !enabled, providers.enabledProviders.count == 1 {
+                    model.bannerMessage = "At least one model provider must stay enabled."
+                    return
+                }
+                providers.setProviderEnabled(provider, enabled: enabled)
+            }
         )
     }
 

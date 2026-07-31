@@ -1,6 +1,6 @@
 import Foundation
 
-/// Discovers and invokes local AI CLIs (Codex, Claude, Grok).
+/// Discovers and invokes local AI CLIs (Codex, Claude, Grok, Gemini, Antigravity).
 /// Uses only documented flags inspected from each CLI's `--help`.
 @MainActor
 final class AIProviderService: ObservableObject {
@@ -20,7 +20,9 @@ final class AIProviderService: ObservableObject {
     @Published private(set) var statuses: [AIProvider: ProviderAvailability] = [
         .codex: .checking,
         .claude: .checking,
-        .grok: .checking
+        .grok: .checking,
+        .gemini: .checking,
+        .agy: .checking
     ]
 
     /// User preference: which providers appear in the model selector and may be used for generation.
@@ -411,12 +413,25 @@ final class AIProviderService: ObservableObject {
         var summary: String
     }
 
+    private enum GeminiAuthType: String {
+        case oauth = "oauth-personal"
+        case apiKey = "gemini-api-key"
+        case vertexAI = "vertex-ai"
+        case computeADC = "compute-default-credentials"
+    }
+
+    private enum GeminiAuthSelection {
+        case none
+        case supported(GeminiAuthType)
+        case unsupported
+    }
+
     private func readVersion(provider: AIProvider, path: String, env: [String: String]) async throws -> String {
         // Documented version flags:
-        // codex --version | claude --version | grok --version / grok version
+        // codex/claude/grok/gemini/agy --version
         let args: [String]
         switch provider {
-        case .codex, .claude, .grok:
+        case .codex, .claude, .grok, .gemini, .agy:
             args = ["--version"]
         }
         let result = try await runner.run(executable: path, arguments: args, environment: env, timeout: 15)
@@ -514,6 +529,42 @@ final class AIProviderService: ObservableObject {
                 return AuthProbe(ok: false, summary: "Authentication expired or unavailable — run `grok login`.")
             }
             return AuthProbe(ok: true, summary: "Authenticated")
+
+        case .gemini:
+            // Gemini has no `login status` command. Match its documented configuration
+            // roots and non-interactive authentication environment without surfacing
+            // credential values in status text or logs.
+            return readGeminiAuth(environment: env)
+
+        case .agy:
+            // Antigravity CLI stores OAuth under ~/.gemini/antigravity-cli/.
+            // `agy models` is non-generative and fails closed when auth is missing/expired.
+            let tokenURL = homeDirectoryURL
+                .appendingPathComponent(".gemini/antigravity-cli/antigravity-oauth-token")
+            guard FileManager.default.fileExists(atPath: tokenURL.path) else {
+                return AuthProbe(ok: false, summary: "Missing Antigravity OAuth token — run `agy` and sign in.")
+            }
+            guard
+                let data = try? Data(contentsOf: tokenURL),
+                !data.isEmpty
+            else {
+                return AuthProbe(ok: false, summary: "Auth token present but empty — run `agy` and sign in.")
+            }
+            let result = try await runner.run(
+                executable: path,
+                arguments: ["models"],
+                environment: env,
+                timeout: 20
+            )
+            if result.timedOut {
+                throw ProbeError.auth("Model/auth check timed out.")
+            }
+            let output = (result.stdout + "\n" + result.stderr)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if result.exitCode != 0 || Self.looksUnauthenticated(output) {
+                return AuthProbe(ok: false, summary: "Authentication expired or unavailable — run `agy` and sign in.")
+            }
+            return AuthProbe(ok: true, summary: "Authenticated")
         }
     }
 
@@ -532,7 +583,7 @@ final class AIProviderService: ObservableObject {
         prompt: String,
         tempRoot: URL
     ) throws -> Invocation {
-        // All three CLIs document `-m` / `--model <MODEL>`.
+        // All supported CLIs document `-m` / `--model <MODEL>`.
         let modelArgs = modelFlag(for: provider, modelID: model.modelID)
 
         switch provider {
@@ -609,14 +660,59 @@ final class AIProviderService: ObservableObject {
                 currentDirectory: tempRoot.path,
                 outputFile: nil
             )
+
+        case .gemini:
+            // Documented: gemini -p/--prompt <prompt> -m/--model <model>
+            // --output-format json wraps the answer in {response, stats, error}.
+            // --approval-mode plan is read-only; --skip-trust avoids workspace prompts.
+            // No JSON-schema flag — the prompt requires a bare manifest object.
+            return Invocation(
+                arguments: [
+                    "--prompt", prompt
+                ] + modelArgs + [
+                    "--output-format", "json",
+                    "--approval-mode", "plan",
+                    "--skip-trust"
+                ],
+                currentDirectory: tempRoot.path,
+                outputFile: nil
+            )
+
+        case .agy:
+            // Documented: agy --print/--prompt/-p <prompt> --model <model>
+            // --mode plan keeps the run non-mutating; --sandbox enables terminal restrictions.
+            // A zero print timeout disables agy's built-in five-minute wait deadline;
+            // ProcessRunner cancellation still terminates the child process.
+            // No JSON-schema / output-format flags — stdout is the assistant text.
+            return Invocation(
+                arguments: Self.antigravityPrintArguments(
+                    prompt: prompt,
+                    modelArguments: modelArgs
+                ),
+                currentDirectory: tempRoot.path,
+                outputFile: nil
+            )
         }
+    }
+
+    static func antigravityPrintArguments(
+        prompt: String,
+        modelArguments: [String]
+    ) -> [String] {
+        [
+            "--print", prompt
+        ] + modelArguments + [
+            "--print-timeout=0s",
+            "--mode", "plan",
+            "--sandbox"
+        ]
     }
 
     private func modelFlag(for provider: AIProvider, modelID: String) -> [String] {
         let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != "default" else { return [] }
         switch provider {
-        case .codex, .claude, .grok:
+        case .codex, .claude, .grok, .gemini, .agy:
             return ["--model", trimmed]
         }
     }
@@ -692,7 +788,11 @@ final class AIProviderService: ObservableObject {
             "invalid_grant",
             "\"loggedin\": false",
             "\"loggedin\":false",
-            "loggedin=false"
+            "loggedin=false",
+            "ineligibletier",
+            "no longer supported for gemini",
+            "migrate to the antigravity",
+            "error authenticating"
         ]
         if negativeSignals.contains(where: { lower.contains($0) }) {
             return true
@@ -705,6 +805,160 @@ final class AIProviderService: ObservableObject {
             return false
         }
         return false
+    }
+
+    private func readGeminiAuth(environment: [String: String]) -> AuthProbe {
+        let configDirectory = geminiConfigDirectory(environment: environment)
+        let configuredSelection = Self.geminiConfiguredAuthSelection(in: configDirectory)
+        let oauthConfigured = Self.isNonEmptyJSONObject(
+            at: configDirectory.appendingPathComponent("oauth_creds.json")
+        )
+
+        let effectiveAuthType: GeminiAuthType?
+        switch configuredSelection {
+        case .supported(let authType):
+            effectiveAuthType = authType
+        case .unsupported:
+            return AuthProbe(
+                ok: false,
+                summary: "Gemini's selected authentication type is unsupported or invalid."
+            )
+        case .none:
+            // Mirrors Gemini CLI 0.42's getAuthTypeFromEnv precedence.
+            if Self.environmentFlag("GOOGLE_GENAI_USE_GCA", in: environment) {
+                effectiveAuthType = .oauth
+            } else if Self.environmentFlag("GOOGLE_GENAI_USE_VERTEXAI", in: environment) {
+                effectiveAuthType = .vertexAI
+            } else if Self.hasEnvironmentValue("GEMINI_API_KEY", in: environment) {
+                effectiveAuthType = .apiKey
+            } else if Self.environmentFlag("CLOUD_SHELL", in: environment)
+                        || Self.environmentFlag("GEMINI_CLI_USE_COMPUTE_ADC", in: environment) {
+                effectiveAuthType = .computeADC
+            } else {
+                effectiveAuthType = nil
+            }
+        }
+
+        switch effectiveAuthType {
+        case .oauth:
+            return oauthConfigured
+                ? AuthProbe(ok: true, summary: "Authenticated with Google OAuth")
+                : AuthProbe(ok: false, summary: "The selected Google OAuth session is missing — run `gemini` and sign in.")
+        case .apiKey:
+            return Self.hasEnvironmentValue("GEMINI_API_KEY", in: environment)
+                ? AuthProbe(ok: true, summary: "Gemini API key configured")
+                : AuthProbe(ok: false, summary: "The selected Gemini API key authentication is not configured.")
+        case .vertexAI:
+            return Self.geminiVertexEnvironmentIsConfigured(environment)
+                ? AuthProbe(ok: true, summary: "Vertex AI credentials configured")
+                : AuthProbe(ok: false, summary: "The selected Vertex AI authentication is incomplete.")
+        case .computeADC:
+            return AuthProbe(ok: true, summary: "Application Default Credentials configured")
+        case nil:
+            return AuthProbe(
+                ok: false,
+                summary: "Gemini authentication is not configured — sign in or configure a supported API, Vertex AI, or ADC credential."
+            )
+        }
+    }
+
+    private func geminiConfigDirectory(environment: [String: String]) -> URL {
+        let rootPath = Self.environmentValue("GEMINI_CLI_HOME", in: environment)
+            ?? Self.environmentValue("HOME", in: environment)
+        guard let rootPath else {
+            return homeDirectoryURL.appendingPathComponent(".gemini", isDirectory: true)
+        }
+
+        let expanded = (rootPath as NSString).expandingTildeInPath
+        let rootURL: URL
+        if (expanded as NSString).isAbsolutePath {
+            rootURL = URL(fileURLWithPath: expanded, isDirectory: true)
+        } else {
+            rootURL = homeDirectoryURL.appendingPathComponent(expanded, isDirectory: true)
+        }
+        return rootURL.appendingPathComponent(".gemini", isDirectory: true)
+    }
+
+    private static func geminiConfiguredAuthSelection(
+        in configDirectory: URL
+    ) -> GeminiAuthSelection {
+        let settingsURL = configDirectory.appendingPathComponent("settings.json")
+        guard
+            let data = try? Data(contentsOf: settingsURL),
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let security = root["security"] as? [String: Any],
+            let auth = security["auth"] as? [String: Any],
+            let selectedType = auth["selectedType"] as? String
+        else {
+            return .none
+        }
+        guard let authType = GeminiAuthType(rawValue: selectedType) else {
+            return .unsupported
+        }
+        return .supported(authType)
+    }
+
+    private static func geminiVertexEnvironmentIsConfigured(
+        _ environment: [String: String]
+    ) -> Bool {
+        if hasEnvironmentValue("GOOGLE_API_KEY", in: environment) {
+            return true
+        }
+        let hasProject = hasEnvironmentValue("GOOGLE_CLOUD_PROJECT", in: environment)
+        let hasLocation = hasEnvironmentValue("GOOGLE_CLOUD_LOCATION", in: environment)
+        if let credentialsPath = environmentValue(
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            in: environment
+        ) {
+            let expandedPath = (credentialsPath as NSString).expandingTildeInPath
+            var isDirectory: ObjCBool = false
+            guard (expandedPath as NSString).isAbsolutePath,
+                  FileManager.default.fileExists(
+                    atPath: expandedPath,
+                    isDirectory: &isDirectory
+                  ),
+                  !isDirectory.boolValue,
+                  FileManager.default.isReadableFile(atPath: expandedPath) else {
+                return false
+            }
+        }
+        return hasProject && hasLocation
+    }
+
+    private static func isNonEmptyJSONObject(at url: URL) -> Bool {
+        guard
+            let data = try? Data(contentsOf: url),
+            !data.isEmpty,
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return false
+        }
+        return !object.isEmpty
+    }
+
+    private static func environmentFlag(
+        _ key: String,
+        in environment: [String: String]
+    ) -> Bool {
+        environmentValue(key, in: environment)?.lowercased() == "true"
+    }
+
+    private static func hasEnvironmentValue(
+        _ key: String,
+        in environment: [String: String]
+    ) -> Bool {
+        environmentValue(key, in: environment) != nil
+    }
+
+    private static func environmentValue(
+        _ key: String,
+        in environment: [String: String]
+    ) -> String? {
+        guard let value = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
+        }
+        return value
     }
 }
 

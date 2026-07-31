@@ -23,7 +23,11 @@ enum HTTPProbe {
 
         let started = Date()
         do {
-            let (_, response) = try await URLSession.shared.data(for: request)
+            // We only need the final response headers. `bytes(for:)` exposes
+            // them without buffering an arbitrary or never-ending body; cancel
+            // the underlying task as soon as the status has been captured.
+            let (bytes, response) = try await URLSession.shared.bytes(for: request)
+            defer { bytes.task.cancel() }
             let latency = Int(Date().timeIntervalSince(started) * 1000)
             guard let http = response as? HTTPURLResponse else {
                 return Result(ok: false, statusCode: nil, message: "Non-HTTP response", latencyMS: latency)

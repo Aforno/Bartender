@@ -32,6 +32,7 @@ enum AppletRuntimeEvent: Equatable, Sendable {
 
 enum ToolRunState: Equatable, Sendable {
     case disabled
+    case validating
     case reviewRequired
     case running
     case needsAttention
@@ -40,10 +41,13 @@ enum ToolRunState: Equatable, Sendable {
     static func resolve(
         manifest: AppletManifest,
         snapshot: AppletSnapshot?,
-        executionApproved: Bool
+        executionApproved: Bool,
+        isValidating: Bool = false
     ) -> ToolRunState {
         guard manifest.enabled else { return .disabled }
-        if manifest.kind == .generatedTool && !executionApproved {
+        if isValidating { return .validating }
+        if (manifest.kind == .generatedTool || manifest.kind == .shellCommand)
+            && !executionApproved {
             return .reviewRequired
         }
         guard let snapshot else { return .idle }
@@ -54,6 +58,7 @@ enum ToolRunState: Equatable, Sendable {
     var title: String {
         switch self {
         case .disabled: return "Disabled"
+        case .validating: return "Testing"
         case .reviewRequired: return "Review required"
         case .running: return "Live"
         case .needsAttention: return "Needs attention"
@@ -64,6 +69,7 @@ enum ToolRunState: Equatable, Sendable {
     var systemImage: String {
         switch self {
         case .disabled: return "pause.circle"
+        case .validating: return "hourglass"
         case .reviewRequired: return "lock.fill"
         case .running: return "checkmark.circle.fill"
         case .needsAttention: return "exclamationmark.triangle.fill"

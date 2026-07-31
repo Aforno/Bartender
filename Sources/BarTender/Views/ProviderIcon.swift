@@ -9,7 +9,7 @@ struct ProviderIcon: View {
 
     @ViewBuilder
     var body: some View {
-        if provider == .claude {
+        if usesFullColorIcon {
             sourceImage
                 .resizable()
                 .interpolation(.high)
@@ -27,6 +27,16 @@ struct ProviderIcon: View {
                 .padding(size * (provider == .codex ? 0.10 : 0))
                 .frame(width: size, height: size)
                 .accessibilityHidden(true)
+        }
+    }
+
+    /// Claude, Gemini, and Antigravity ship multicolor product artwork; Codex/Grok are monochrome templates.
+    private var usesFullColorIcon: Bool {
+        switch provider {
+        case .claude, .gemini, .agy:
+            return true
+        case .codex, .grok:
+            return false
         }
     }
 
@@ -63,7 +73,12 @@ struct ProviderIcon: View {
         } else if let source = NSImage(contentsOf: url),
                   let copy = source.copy() as? NSImage {
             image = copy
-            image.isTemplate = provider == .codex
+            switch provider {
+            case .codex:
+                image.isTemplate = true
+            case .claude, .grok, .gemini, .agy:
+                image.isTemplate = false
+            }
         } else {
             preconditionFailure("Could not decode bundled provider icon: \(name).png")
         }

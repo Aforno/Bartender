@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 struct GeneratedToolOutput: Codable, Equatable, Sendable {
@@ -23,6 +24,19 @@ struct GeneratedToolOutput: Codable, Equatable, Sendable {
 }
 
 struct GeneratedToolArtifactStore: Sendable {
+    enum Error: LocalizedError {
+        case revisionChanged
+
+        var errorDescription: String? {
+            switch self {
+            case .revisionChanged:
+                return "Generated source changed before it could run. Review and allow the current version."
+            }
+        }
+    }
+
+    private static let fileLock = NSLock()
+
     let rootURL: URL
 
     init(rootURL: URL? = nil) {
@@ -38,37 +52,112 @@ struct GeneratedToolArtifactStore: Sendable {
     }
 
     func install(_ manifest: AppletManifest) throws -> URL {
+        try Self.withFileLock {
+            let source = try Self.normalizedSource(for: manifest)
+            let executable = executableURL(for: manifest)
+            try Self.writeExecutable(source, to: executable)
+            return executable
+        }
+    }
+
+    /// Resolves an immutable, content-addressed executable for an approved
+    /// revision. The canonical artifact for this UUID must already exist and
+    /// contain the exact approved source. This prevents an older approved task
+    /// from executing a newer, unapproved replacement at the shared path.
+    func prepareApprovedExecution(_ manifest: AppletManifest) throws -> URL {
+        try Self.withFileLock {
+            let source = try Self.normalizedSource(for: manifest)
+            let canonicalExecutable = executableURL(for: manifest)
+            guard (try? String(contentsOf: canonicalExecutable, encoding: .utf8)) == source else {
+                throw Error.revisionChanged
+            }
+
+            let digest = SHA256.hash(data: Data(source.utf8))
+                .map { String(format: "%02x", $0) }
+                .joined()
+            let revisionExecutable = canonicalExecutable
+                .deletingLastPathComponent()
+                .appendingPathComponent("Revisions", isDirectory: true)
+                .appendingPathComponent(digest, isDirectory: true)
+                .appendingPathComponent("tool.zsh", isDirectory: false)
+            try Self.writeExecutable(source, to: revisionExecutable)
+            return revisionExecutable
+        }
+    }
+
+    /// Rechecks the shared artifact after any suspension between preparation
+    /// and launch. The revision executable itself is content-addressed, so a
+    /// replacement after this check can never change what this invocation runs.
+    func validateApprovedExecution(_ manifest: AppletManifest, executable: URL) throws {
+        try Self.withFileLock {
+            let source = try Self.normalizedSource(for: manifest)
+            let canonicalExecutable = executableURL(for: manifest)
+            let digest = SHA256.hash(data: Data(source.utf8))
+                .map { String(format: "%02x", $0) }
+                .joined()
+            let expectedRevisionExecutable = canonicalExecutable
+                .deletingLastPathComponent()
+                .appendingPathComponent("Revisions", isDirectory: true)
+                .appendingPathComponent(digest, isDirectory: true)
+                .appendingPathComponent("tool.zsh", isDirectory: false)
+
+            guard executable.standardizedFileURL == expectedRevisionExecutable.standardizedFileURL,
+                  (try? String(contentsOf: canonicalExecutable, encoding: .utf8)) == source,
+                  (try? String(contentsOf: executable, encoding: .utf8)) == source else {
+                throw Error.revisionChanged
+            }
+        }
+    }
+
+    func remove(id: UUID) throws {
+        try Self.withFileLock {
+            let directory = rootURL.appendingPathComponent(id.uuidString, isDirectory: true)
+            guard FileManager.default.fileExists(atPath: directory.path) else { return }
+            try FileManager.default.removeItem(at: directory)
+        }
+    }
+
+    func removeAll() throws {
+        try Self.withFileLock {
+            guard FileManager.default.fileExists(atPath: rootURL.path) else { return }
+            try FileManager.default.removeItem(at: rootURL)
+        }
+    }
+
+    private func executableURL(for manifest: AppletManifest) -> URL {
+        rootURL
+            .appendingPathComponent(manifest.id.uuidString, isDirectory: true)
+            .appendingPathComponent("tool.zsh", isDirectory: false)
+    }
+
+    private static func normalizedSource(for manifest: AppletManifest) throws -> String {
         guard manifest.kind == .generatedTool,
               let source = manifest.config.generatedSource else {
             throw ManifestValidationError.missingGeneratedSource
         }
+        return source.hasSuffix("\n") ? source : source + "\n"
+    }
 
-        let directory = rootURL.appendingPathComponent(manifest.id.uuidString, isDirectory: true)
-        let executable = directory.appendingPathComponent("tool.zsh", isDirectory: false)
+    private static func writeExecutable(_ source: String, to executable: URL) throws {
         let fileManager = FileManager.default
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-
-        let normalizedSource = source.hasSuffix("\n") ? source : source + "\n"
+        try fileManager.createDirectory(
+            at: executable.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         let existing = try? String(contentsOf: executable, encoding: .utf8)
-        if existing != normalizedSource {
-            try normalizedSource.write(to: executable, atomically: true, encoding: .utf8)
+        if existing != source {
+            try source.write(to: executable, atomically: true, encoding: .utf8)
         }
         try fileManager.setAttributes(
             [.posixPermissions: NSNumber(value: Int16(0o700))],
             ofItemAtPath: executable.path
         )
-        return executable
     }
 
-    func remove(id: UUID) throws {
-        let directory = rootURL.appendingPathComponent(id.uuidString, isDirectory: true)
-        guard FileManager.default.fileExists(atPath: directory.path) else { return }
-        try FileManager.default.removeItem(at: directory)
-    }
-
-    func removeAll() throws {
-        guard FileManager.default.fileExists(atPath: rootURL.path) else { return }
-        try FileManager.default.removeItem(at: rootURL)
+    private static func withFileLock<T>(_ operation: () throws -> T) rethrows -> T {
+        fileLock.lock()
+        defer { fileLock.unlock() }
+        return try operation()
     }
 }
 
@@ -82,13 +171,15 @@ enum GeneratedToolRunner {
     static func run(
         manifest: AppletManifest,
         approved: Bool,
-        artifactStore: GeneratedToolArtifactStore = GeneratedToolArtifactStore()
+        artifactStore: GeneratedToolArtifactStore = GeneratedToolArtifactStore(),
+        beforeLaunch: (@Sendable () async -> Void)? = nil
     ) async -> Result {
-        let executable: URL
-        do {
-            executable = try artifactStore.install(manifest)
-        } catch {
-            return Result(output: nil, message: "Could not install generated tool: \(error.localizedDescription)", approved: approved)
+        guard !Task.isCancelled else {
+            return Result(
+                output: nil,
+                message: ProcessRunnerError.cancelled.localizedDescription,
+                approved: approved
+            )
         }
 
         guard approved else {
@@ -99,6 +190,13 @@ enum GeneratedToolRunner {
             )
         }
 
+        let executable: URL
+        do {
+            executable = try artifactStore.prepareApprovedExecution(manifest)
+        } catch {
+            return Result(output: nil, message: "Could not install generated tool: \(error.localizedDescription)", approved: approved)
+        }
+
         let environment = await ShellEnvironment.generatedToolEnvironment()
         let workingDirectory = manifest.config.workingDirectory.map {
             ($0 as NSString).expandingTildeInPath
@@ -106,6 +204,13 @@ enum GeneratedToolRunner {
         let timeout = min(30, max(1, manifest.config.timeoutSeconds ?? 15))
 
         do {
+            if let beforeLaunch {
+                await beforeLaunch()
+            }
+            guard !Task.isCancelled else {
+                throw ProcessRunnerError.cancelled
+            }
+            try artifactStore.validateApprovedExecution(manifest, executable: executable)
             let process = try await ProcessRunner().run(
                 executable: executable.path,
                 arguments: [],
@@ -153,9 +258,7 @@ enum GeneratedToolRunner {
         let cleanTitle = TitleRenderer.shortMenuTitle(output.title.isEmpty ? fallbackTitle : output.title)
         let cleanStatus = String((output.status.isEmpty ? cleanTitle : output.status).prefix(240))
         let cleanDetails = output.details.prefix(6).map { String($0.prefix(240)) }
-        let cleanValues = Dictionary(uniqueKeysWithValues: output.values.prefix(20).map {
-            (String($0.key.prefix(40)), String($0.value.prefix(240)))
-        })
+        let cleanValues = sanitizedValues(output.values)
         return GeneratedToolOutput(
             title: cleanTitle,
             status: cleanStatus,
@@ -163,6 +266,28 @@ enum GeneratedToolRunner {
             healthy: output.healthy,
             values: cleanValues
         )
+    }
+
+    /// Sort first so both the retained 20 entries and collision suffixes are
+    /// stable across launches. Distinct long keys can share the same 40-character
+    /// prefix, so uniquify them instead of using a trapping dictionary initializer.
+    private static func sanitizedValues(_ values: [String: String]) -> [String: String] {
+        let maximumKeyLength = 40
+        var result: [String: String] = [:]
+
+        for (rawKey, rawValue) in values.sorted(by: { $0.key < $1.key }).prefix(20) {
+            let base = String(rawKey.prefix(maximumKeyLength))
+            var candidate = base
+            var suffixIndex = 2
+            while result[candidate] != nil {
+                let suffix = "~\(suffixIndex)"
+                let prefixLength = max(0, maximumKeyLength - suffix.count)
+                candidate = String(base.prefix(prefixLength)) + suffix
+                suffixIndex += 1
+            }
+            result[candidate] = String(rawValue.prefix(240))
+        }
+        return result
     }
 
     private static func firstUsefulLine(_ text: String) -> String? {
@@ -193,21 +318,31 @@ enum GeneratedToolSourceValidator {
 
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("BarTender-Syntax-\(UUID().uuidString)", isDirectory: true)
-        let sourceURL = directory.appendingPathComponent("tool.zsh")
+        let interpreter = source.hasPrefix("#!/bin/bash") ? "/bin/bash" : "/bin/zsh"
+        let interpreterName = URL(fileURLWithPath: interpreter).lastPathComponent
+        let sourceURL = directory.appendingPathComponent("tool.\(interpreterName)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         try source.write(to: sourceURL, atomically: true, encoding: .utf8)
 
         let result = try await ProcessRunner().run(
-            executable: "/bin/zsh",
+            executable: interpreter,
             arguments: ["-n", sourceURL.path],
             timeout: 5
         )
-        guard result.exitCode == 0, !result.timedOut else {
+        if result.cancelled {
+            throw CancellationError()
+        }
+        guard !result.timedOut else {
+            throw ProviderGenerationError.invalidResponse(
+                "Generated source syntax validation timed out."
+            )
+        }
+        guard result.exitCode == 0 else {
             let detail = result.stderr
                 .split(whereSeparator: \.isNewline)
                 .first
-                .map(String.init) ?? "zsh could not parse the generated source."
+                .map(String.init) ?? "\(interpreterName) could not parse the generated source."
             throw ProviderGenerationError.invalidResponse(
                 "Generated source failed syntax validation: \(detail)"
             )

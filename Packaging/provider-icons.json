@@ -13,5 +13,15 @@
     "file": "Sources/BarTender/Resources/ProviderIcons/grok.png",
     "sha256": "3a462c3c2524733c173bb05c431de737812f8219db8fa115b0025d12a347e086",
     "source": "https://grok.com/images/android-chrome-512x512.png"
+  },
+  "gemini": {
+    "file": "Sources/BarTender/Resources/ProviderIcons/gemini.png",
+    "sha256": "981f2146ab6bec7124cad33c8ffaf6b7054819412d07fed4654d5b9f79583e5c",
+    "source": "https://www.gstatic.com/lamda/images/gemini_favicon_f069958c85030456e93de685481c559f160ea06b.png"
+  },
+  "agy": {
+    "file": "Sources/BarTender/Resources/ProviderIcons/agy.png",
+    "sha256": "b27f0e4a6f14f491ba31bb24533a1f43c677362b12a0744a53fdd09d7c785317",
+    "source": "Bundled from Antigravity.app application icon (icon.icns / ic09 512px)"
   }
 }

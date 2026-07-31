@@ -42,6 +42,49 @@ final class AppletStoreTests: XCTestCase {
         ))
     }
 
+    func testLoadKeepsFirstValidDuplicateIDAndQuarantinesLaterEntry() throws {
+        let directory = temporaryDirectory()
+        let fileURL = directory.appendingPathComponent("applets.json")
+        let duplicateID = UUID()
+        let first = AppletManifest(
+            id: duplicateID,
+            name: "First",
+            iconSystemName: "timer",
+            kind: .timer,
+            titleTemplate: "{{remaining}}",
+            config: AppletConfig(durationSeconds: 60)
+        )
+        let duplicate = AppletManifest(
+            id: duplicateID,
+            name: "Later Duplicate",
+            iconSystemName: "cpu",
+            kind: .systemMetrics,
+            titleTemplate: "{{cpu}}",
+            config: AppletConfig(metrics: [.cpu])
+        )
+        let unique = AppletManifest(
+            name: "Unique",
+            iconSystemName: "network",
+            kind: .portMonitor,
+            titleTemplate: "{{status}}",
+            refreshIntervalSeconds: 5,
+            config: AppletConfig(timeoutSeconds: 2, host: "localhost", port: 3000)
+        )
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try primaryLibraryData([first, duplicate, unique]).write(to: fileURL)
+
+        let store = AppletStore(fileURL: fileURL)
+
+        XCTAssertEqual(store.applets.map(\.id), [duplicateID, unique.id])
+        XCTAssertEqual(store.applets.map(\.name), ["First", "Unique"])
+        XCTAssertTrue(store.loadIssue?.contains("Ignored 1 invalid applet.") == true)
+
+        let recoveryURL = directory.appendingPathComponent("applets-rejected.json")
+        let recovery = try decodedPrimaryLibrary(at: recoveryURL)
+        XCTAssertEqual(recovery.map(\.name), ["Later Duplicate"])
+        XCTAssertEqual(recovery.map(\.id), [duplicateID])
+    }
+
     func testFailedWriteDoesNotPublishInMemoryMutation() throws {
         let directory = temporaryDirectory()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -174,6 +217,88 @@ final class AppletStoreTests: XCTestCase {
         XCTAssertEqual(store.applets.map(\.id), [existing.id])
     }
 
+    func testSameKindDuplicateIDsRejectArchiveWithoutMutatingLibrary() throws {
+        let fileURL = temporaryDirectory().appendingPathComponent("target.json")
+        let store = AppletStore(fileURL: fileURL)
+        let existing = AppletManifest(
+            name: "Existing",
+            iconSystemName: "cpu",
+            kind: .systemMetrics,
+            titleTemplate: "{{cpu}}",
+            config: AppletConfig(metrics: [.cpu])
+        )
+        try store.upsert(existing)
+        let persistedBeforeImport = try Data(contentsOf: fileURL)
+
+        let duplicateID = UUID()
+        let first = AppletManifest(
+            id: duplicateID,
+            name: "First Timer",
+            iconSystemName: "timer",
+            kind: .timer,
+            titleTemplate: "{{remaining}}",
+            config: AppletConfig(durationSeconds: 60)
+        )
+        let duplicate = AppletManifest(
+            id: duplicateID,
+            name: "Second Timer",
+            iconSystemName: "timer",
+            kind: .timer,
+            titleTemplate: "{{remaining}}",
+            config: AppletConfig(durationSeconds: 120)
+        )
+
+        assertDuplicateArchiveRejected(
+            try archiveData([first, duplicate]),
+            duplicateID: duplicateID,
+            by: store,
+            mode: .replace
+        )
+        XCTAssertEqual(store.applets.map(\.id), [existing.id])
+        XCTAssertEqual(try Data(contentsOf: fileURL), persistedBeforeImport)
+    }
+
+    func testMixedKindDuplicateIDsRejectArchiveWithoutMutatingLibrary() throws {
+        let fileURL = temporaryDirectory().appendingPathComponent("target.json")
+        let store = AppletStore(fileURL: fileURL)
+        let existing = AppletManifest(
+            name: "Existing",
+            iconSystemName: "cpu",
+            kind: .systemMetrics,
+            titleTemplate: "{{cpu}}",
+            config: AppletConfig(metrics: [.cpu])
+        )
+        try store.upsert(existing)
+        let persistedBeforeImport = try Data(contentsOf: fileURL)
+
+        let duplicateID = UUID()
+        let timer = AppletManifest(
+            id: duplicateID,
+            name: "Timer",
+            iconSystemName: "timer",
+            kind: .timer,
+            titleTemplate: "{{remaining}}",
+            config: AppletConfig(durationSeconds: 60)
+        )
+        let generated = AppletManifest(
+            id: duplicateID,
+            name: "Generated",
+            iconSystemName: "sparkles",
+            kind: .generatedTool,
+            titleTemplate: "{{value}}",
+            config: AppletConfig(generatedSource: "#!/bin/zsh\nprintf generated")
+        )
+
+        assertDuplicateArchiveRejected(
+            try archiveData([timer, generated]),
+            duplicateID: duplicateID,
+            by: store,
+            mode: .merge
+        )
+        XCTAssertEqual(store.applets.map(\.id), [existing.id])
+        XCTAssertEqual(try Data(contentsOf: fileURL), persistedBeforeImport)
+    }
+
     func testRelaunchRestoresEveryEnabledToolAndDeterministicOverflowPlan() throws {
         let fileURL = temporaryDirectory().appendingPathComponent("applets.json")
         let firstLaunch = AppletStore(fileURL: fileURL)
@@ -202,5 +327,49 @@ final class AppletStoreTests: XCTestCase {
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("BarTenderTests-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    private func archiveData(_ applets: [AppletManifest]) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return try encoder.encode(AppletLibraryArchive(applets: applets))
+    }
+
+    private func primaryLibraryData(_ applets: [AppletManifest]) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return try encoder.encode(applets)
+    }
+
+    private func decodedPrimaryLibrary(at url: URL) throws -> [AppletManifest] {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode([AppletManifest].self, from: Data(contentsOf: url))
+    }
+
+    private func assertDuplicateArchiveRejected(
+        _ data: Data,
+        duplicateID: UUID,
+        by store: AppletStore,
+        mode: AppletImportMode,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertThrowsError(
+            try store.importArchiveData(data, mode: mode),
+            file: file,
+            line: line
+        ) { error in
+            guard case AppletStoreError.duplicateAppletID(let actualID) = error else {
+                return XCTFail("Unexpected error: \(error)", file: file, line: line)
+            }
+            XCTAssertEqual(actualID, duplicateID, file: file, line: line)
+            XCTAssertEqual(
+                error.localizedDescription,
+                "The library contains more than one applet with identifier \(duplicateID.uuidString).",
+                file: file,
+                line: line
+            )
+        }
     }
 }

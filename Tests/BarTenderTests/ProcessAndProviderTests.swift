@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import XCTest
 @testable import BarTender
@@ -24,22 +25,139 @@ final class ProcessAndProviderTests: XCTestCase {
         XCTAssertFalse(secondResult.cancelled)
     }
 
+    func testProcessRunnerDoesNotSpawnForAlreadyCancelledTask() async {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BarTenderCancelledSpawn-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let marker = root.appendingPathComponent("spawned")
+        let startGate = ProcessRunnerStartGate()
+        let runner = ProcessRunner()
+        let task = Task {
+            await startGate.pause()
+            return try await runner.run(
+                executable: "/usr/bin/touch",
+                arguments: [marker.path],
+                timeout: 1
+            )
+        }
+
+        await startGate.waitUntilPaused()
+        task.cancel()
+        await startGate.resume()
+
+        do {
+            _ = try await task.value
+            XCTFail("An already-cancelled task should not launch a process.")
+        } catch let error as ProcessRunnerError {
+            guard case .cancelled = error else {
+                return XCTFail("Expected cancellation, got \(error.localizedDescription)")
+            }
+        } catch {
+            XCTFail("Expected ProcessRunnerError.cancelled, got \(error)")
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
+    }
+
     func testProcessRunnerTimeoutAndCancellation() async throws {
         let runner = ProcessRunner()
+        let timeoutStarted = Date()
         let timedOut = try await runner.run(
-            executable: "/bin/sleep",
-            arguments: ["5"],
+            executable: "/bin/sh",
+            arguments: ["-c", "trap '' TERM; while :; do :; done"],
             timeout: 0.05
         )
         XCTAssertTrue(timedOut.timedOut)
+        XCTAssertLessThan(
+            Date().timeIntervalSince(timeoutStarted),
+            2.5,
+            "Timeout escalation must not wait for the process's natural exit."
+        )
 
         let task = Task {
-            try await runner.run(executable: "/bin/sleep", arguments: ["5"], timeout: 10)
+            try await runner.run(
+                executable: "/bin/sh",
+                arguments: ["-c", "trap '' TERM; while :; do :; done"],
+                timeout: 10
+            )
         }
         try await Task.sleep(nanoseconds: 50_000_000)
+        let cancellationStarted = Date()
         await runner.cancel()
         let cancelled = try await task.value
         XCTAssertTrue(cancelled.cancelled)
+        XCTAssertLessThan(
+            Date().timeIntervalSince(cancellationStarted),
+            2.5,
+            "Cancellation escalation must return promptly."
+        )
+    }
+
+    func testProcessRunnerDoesNotWaitForInheritedPipeAfterParentExit() async throws {
+        let runner = ProcessRunner()
+        let started = Date()
+        let result = try await runner.run(
+            executable: "/bin/sh",
+            arguments: ["-c", "/bin/sleep 5 & child=$!; printf '%d' \"$child\""],
+            timeout: 1
+        )
+        let elapsed = Date().timeIntervalSince(started)
+        let childPID = try XCTUnwrap(pid_t(result.stdout))
+        defer { _ = Darwin.kill(childPID, SIGKILL) }
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertFalse(result.timedOut)
+        XCTAssertLessThan(
+            elapsed,
+            1.5,
+            "A background descendant holding stdout open must not extend the parent invocation."
+        )
+
+        var childWasReaped = false
+        for _ in 0..<50 {
+            if Darwin.kill(childPID, 0) == -1, errno == ESRCH {
+                childWasReaped = true
+                break
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertTrue(childWasReaped, "The isolated descendant process group should be cleaned up.")
+    }
+
+    func testProcessRunnerCapsRetainedStdoutAndStderr() async throws {
+        let runner = ProcessRunner()
+        let emittedBytes = ProcessRunner.maximumRetainedOutputBytes + 8_192
+        let streamedStdout = LockedByteCounter()
+        let streamedStderr = LockedByteCounter()
+        let script = """
+        /usr/bin/yes stdout | /usr/bin/head -c \(emittedBytes)
+        /usr/bin/yes stderr | /usr/bin/head -c \(emittedBytes) >&2
+        """
+
+        let result = try await runner.run(
+            executable: "/bin/sh",
+            arguments: ["-c", script],
+            timeout: 5,
+            onStdout: { streamedStdout.add($0) },
+            onStderr: { streamedStderr.add($0) }
+        )
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertTrue(result.stdoutTruncated)
+        XCTAssertTrue(result.stderrTruncated)
+        XCTAssertTrue(result.stdout.contains(ProcessRunner.outputTruncationMarker))
+        XCTAssertTrue(result.stderr.contains(ProcessRunner.outputTruncationMarker))
+        XCTAssertLessThanOrEqual(
+            result.stdout.utf8.count,
+            ProcessRunner.maximumRetainedOutputBytes
+                + ProcessRunner.outputTruncationMarker.utf8.count
+        )
+        XCTAssertLessThanOrEqual(
+            result.stderr.utf8.count,
+            ProcessRunner.maximumRetainedOutputBytes
+                + ProcessRunner.outputTruncationMarker.utf8.count
+        )
+        XCTAssertEqual(streamedStdout.value, emittedBytes)
+        XCTAssertEqual(streamedStderr.value, emittedBytes)
     }
 
     @MainActor
@@ -79,6 +197,17 @@ final class ProcessAndProviderTests: XCTestCase {
         XCTAssertNotNil(payload)
         XCTAssertTrue(payload?.contains("\"kind\":\"systemMetrics\"") == true)
         XCTAssertFalse(payload?.contains("structuredOutput") ?? true)
+        XCTAssertNoThrow(try ManifestGenerationSupport.makeManifest(from: payload ?? "", sourcePrompt: "test"))
+    }
+
+    func testExtractsManifestFromGeminiResponseEnvelope() throws {
+        // Gemini `--output-format json` puts the assistant text in `response`.
+        let envelope = #"{"response":"{\"name\":\"CPU & Memory\",\"iconSystemName\":\"cpu\",\"kind\":\"systemMetrics\",\"titleTemplate\":\"{{cpu}}\",\"config\":{\"metrics\":[\"cpu\"]}}","stats":{"models":{}}}"#
+        let payload = ManifestGenerationSupport.extractMessagePayload(from: envelope)
+
+        XCTAssertNotNil(payload)
+        XCTAssertTrue(payload?.contains("\"kind\":\"systemMetrics\"") == true)
+        XCTAssertFalse(payload?.contains("\"stats\"") ?? true)
         XCTAssertNoThrow(try ManifestGenerationSupport.makeManifest(from: payload ?? "", sourcePrompt: "test"))
     }
 
@@ -233,5 +362,51 @@ final class ProcessAndProviderTests: XCTestCase {
         XCTAssertNoThrow(
             try ManifestGenerationSupport.requireCommandAvailable(manifest, environment: ["PATH": "/usr/bin:/bin"])
         )
+    }
+}
+
+private final class LockedByteCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func add(_ text: String) {
+        lock.lock()
+        storage += text.utf8.count
+        lock.unlock()
+    }
+}
+
+private actor ProcessRunnerStartGate {
+    private var isPaused = false
+    private var pauseWaiters: [CheckedContinuation<Void, Never>] = []
+    private var resumeContinuation: CheckedContinuation<Void, Never>?
+
+    func pause() async {
+        isPaused = true
+        let waiters = pauseWaiters
+        pauseWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+        await withCheckedContinuation { continuation in
+            resumeContinuation = continuation
+        }
+    }
+
+    func waitUntilPaused() async {
+        guard !isPaused else { return }
+        await withCheckedContinuation { continuation in
+            pauseWaiters.append(continuation)
+        }
+    }
+
+    func resume() {
+        let continuation = resumeContinuation
+        resumeContinuation = nil
+        continuation?.resume()
     }
 }

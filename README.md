@@ -7,7 +7,7 @@ A native macOS app that turns natural-language descriptions into live menu bar a
 
 > **Project status:** This branch ships **ad-hoc (unsigned) binaries** so testers can download a DMG without a paid Apple Developer Program membership. Builds are universal, hardened-runtime sealed, and published as ZIP/DMG prereleases. They are **not** Developer ID signed or notarized—users must bypass Gatekeeper on first open (see the release notes). The `main` branch still targets the paid-account signed/notarized path.
 
-Bar Tender uses an already installed and authenticated **Codex, Claude, or Grok CLI** on your Mac. It does **not** ask for API keys. Each prompt produces a dedicated, reviewable zsh tool artifact that becomes its own live menu bar item.
+Bar Tender uses an already installed and authenticated **Codex, Claude, Grok, Gemini, or Antigravity (`agy`) CLI** on your Mac. It does **not** ask for API keys. Each prompt produces a dedicated, reviewable zsh tool artifact that becomes its own live menu bar item.
 
 ## What it does
 
@@ -47,6 +47,8 @@ New natural-language requests use `generatedTool` instead of selecting one of th
 | Codex | `codex` | `codex login` |
 | Claude | `claude` | `claude auth login` |
 | Grok | `grok` | `grok login` |
+| Gemini | `gemini` | Sign in via `gemini` |
+| Antigravity | `agy` | Sign in via `agy` |
 
 Bar Tender never asks for API keys. Pick a provider in the toolbar, composer, menu bar panel, or Settings.
 
@@ -105,6 +107,12 @@ Documented print mode: `claude -p --output-format json --json-schema … --tools
 
 ### Grok
 Documented single-turn mode: `grok --single … --json-schema … --output-format json --permission-mode dontAsk --tools "" --max-turns 2`
+
+### Gemini
+Documented headless mode: `gemini --prompt … --output-format json --approval-mode plan --skip-trust`
+
+### Antigravity (`agy`)
+Documented print mode: `agy --print … --mode plan --sandbox`
 
 All runs go through `Process` with stdout/stderr capture and cancellation. Generation has no time limit and continues until the provider finishes or the user cancels it. Auth is never requested as an API key inside the app.
 
