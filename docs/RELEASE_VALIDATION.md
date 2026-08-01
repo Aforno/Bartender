@@ -13,7 +13,7 @@ Host: macOS 26.5.1, Apple silicon, Xcode 26 toolchain
 - `script/install_smoke_test.sh`: mounts the DMG read-only, copies the app to a clean temporary Applications directory, launches it, verifies that it remains running, and cleans up.
 - The packaged executable is a universal Mach-O containing arm64 and x86_64 slices.
 
-Distribution verification is enforced in the tag workflow. A local Developer ID/Gatekeeper/notarization pass requires the maintainer's certificate and App Store Connect notarization credentials; the repository does not contain those secrets.
+Distribution verification is enforced in the release workflow on every push to `main`. A local Developer ID/Gatekeeper/notarization pass requires the maintainer's certificate and App Store Connect notarization credentials; the repository does not contain those secrets.
 
 ## Live provider compatibility
 
@@ -40,4 +40,4 @@ The assembled `.app` was launched and inspected through the macOS accessibility 
 
 ## CI matrix
 
-The committed CI matrix targets macOS 26 on both Apple silicon and Intel. The tag workflow additionally requires Developer ID signing, notarization, stapling, Gatekeeper assessment, clean DMG launch, and immutable release assets before publication.
+The committed CI matrix targets macOS 26 on both Apple silicon and Intel. The release workflow on `main` packages the ad-hoc universal app, verifies the sealed layout, smoke-tests the DMG, and publishes or updates the VERSION prerelease assets.

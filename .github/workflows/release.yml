@@ -1,19 +1,22 @@
 name: Release (ad-hoc)
 
-# Ad-hoc distribution path for this branch only. Does not require a paid Apple
-# Developer Program membership. Artifacts are not Developer ID signed or notarized.
-# Users must bypass Gatekeeper on first launch. See RELEASE_NOTES.md.
+# Ad-hoc distribution path. Does not require a paid Apple Developer Program
+# membership. Artifacts are not Developer ID signed or notarized. Users must
+# bypass Gatekeeper on first launch. See RELEASE_NOTES.md.
+#
+# Every push to main rebuilds the universal package and creates or updates the
+# GitHub prerelease for the tag matching VERSION (v<VERSION>).
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-adhoc-${{ github.ref }}
-  cancel-in-progress: false
+  group: release-adhoc-main
+  cancel-in-progress: true
 
 jobs:
   adhoc-release:
@@ -22,11 +25,8 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Check out tagged source
+      - name: Check out main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Require tag to match VERSION
-        run: test "$GITHUB_REF_NAME" = "v$(tr -d '[:space:]' < VERSION)"
 
       - name: Build ad-hoc universal release
         run: ./script/package_release.sh --adhoc --skip-notarization --arch universal
@@ -37,16 +37,30 @@ jobs:
       - name: Mount, copy, and launch the DMG
         run: ./script/install_smoke_test.sh "dist/release/BarTender-$(tr -d '[:space:]' < VERSION).dmg"
 
-      - name: Publish prerelease assets
+      - name: Publish or update prerelease assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           VERSION="$(tr -d '[:space:]' < VERSION)"
-          gh release create "$GITHUB_REF_NAME" \
-            "dist/release/BarTender-$VERSION.zip" \
-            "dist/release/BarTender-$VERSION.dmg" \
-            "dist/release/SHA256SUMS.txt" \
-            --verify-tag \
-            --prerelease \
-            --title "Bar Tender $VERSION (ad-hoc)" \
-            --notes-file RELEASE_NOTES.md
+          TAG="v${VERSION}"
+          ZIP="dist/release/BarTender-${VERSION}.zip"
+          DMG="dist/release/BarTender-${VERSION}.dmg"
+          SUMS="dist/release/SHA256SUMS.txt"
+
+          # Point the version tag at this commit so the release tracks main.
+          git tag -f "$TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/${TAG}" --force
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" "$DMG" "$SUMS" --clobber
+            gh release edit "$TAG" \
+              --title "Bar Tender ${VERSION} (ad-hoc)" \
+              --notes-file RELEASE_NOTES.md \
+              --prerelease
+          else
+            gh release create "$TAG" "$ZIP" "$DMG" "$SUMS" \
+              --prerelease \
+              --title "Bar Tender ${VERSION} (ad-hoc)" \
+              --notes-file RELEASE_NOTES.md
+          fi

@@ -71,7 +71,7 @@ The script creates a development app bundle at `dist/BarTender.app`. It is not a
 
 ## Install a release
 
-Ad-hoc prerelease DMGs are published on [GitHub Releases](https://github.com/Aforno/Bartender/releases). Download the DMG, verify it against `SHA256SUMS.txt`, open it, and drag **BarTender** to **Applications**.
+Ad-hoc prerelease DMGs are published on [GitHub Releases](https://github.com/Aforno/Bartender/releases) from every push to `main`. Download the DMG, verify it against `SHA256SUMS.txt`, open it, and drag **BarTender** to **Applications**.
 
 **First launch:** Control-click the app → **Open** → **Open** (or use **Privacy & Security → Open Anyway**). Ad-hoc builds are not notarized, so Gatekeeper blocks a normal double-click until you approve the app once. Artifacts are universal for Apple silicon and Intel and require macOS 26 or newer.
 
