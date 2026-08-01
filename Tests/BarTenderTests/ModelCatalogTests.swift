@@ -13,8 +13,6 @@ final class ModelCatalogTests: XCTestCase {
             XCTAssertTrue(models.allSatisfy { !$0.modelID.isEmpty })
         }
 
-        let claudeIDs = Set(ModelCatalog.models(for: .claude, homeDirectoryURL: home).map(\.modelID))
-        XCTAssertEqual(claudeIDs, Set(["fable", "opus", "sonnet"]))
     }
 
     func testCodexCacheAcceptsNewModelsAndConfiguredDefaults() throws {

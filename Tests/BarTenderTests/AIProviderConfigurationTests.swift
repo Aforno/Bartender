@@ -260,22 +260,3 @@ final class GeminiProviderAuthenticationTests: XCTestCase {
         case notReady
     }
 }
-
-@MainActor
-final class ProviderInvocationContractTests: XCTestCase {
-    func testAntigravityPrintArgumentsDisableItsInternalDeadline() {
-        XCTAssertEqual(
-            AIProviderService.antigravityPrintArguments(
-                prompt: "Build a focused tool",
-                modelArguments: ["--model", "gemini-3.1-pro-high"]
-            ),
-            [
-                "--print", "Build a focused tool",
-                "--model", "gemini-3.1-pro-high",
-                "--print-timeout=0s",
-                "--mode", "plan",
-                "--sandbox"
-            ]
-        )
-    }
-}

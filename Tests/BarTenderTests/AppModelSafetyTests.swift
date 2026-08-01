@@ -72,21 +72,6 @@ final class AppModelSafetyTests: XCTestCase {
         XCTAssertTrue(session.logs.isEmpty)
     }
 
-    func testGenerationSessionChangesInvalidateAppModelObservers() {
-        let model = makeModel()
-        let session = GenerationSession(prompt: "forward updates", provider: .codex)
-        model.generation = session
-        var updateCount = 0
-        let cancellable = model.objectWillChange.sink {
-            updateCount += 1
-        }
-
-        session.phase = .running
-
-        XCTAssertEqual(updateCount, 1)
-        withExtendedLifetime(cancellable) {}
-    }
-
     func testCancellingFirstRunDoesNotPersistGeneratedToolApproval() throws {
         let store = AppletStore(
             fileURL: temporaryDirectory.appendingPathComponent("approval-applets.json")

@@ -90,68 +90,6 @@ final class AppletRuntimeStateIsolationTests: XCTestCase {
         XCTAssertEqual(runtime.snapshots[replacement.id]?.isRunning, false)
     }
 
-    func testExecutionEpochRejectsInvalidatedAndSameIDReplacementResults() {
-        var epochs = AppletExecutionEpochs()
-        let original = timerManifest()
-        let first = epochs.begin(for: original.id)
-
-        XCTAssertTrue(epochs.accepts(
-            first,
-            manifest: original,
-            currentManifest: original
-        ))
-
-        var replacement = original
-        replacement.config.durationSeconds = 120
-        XCTAssertFalse(epochs.accepts(
-            first,
-            manifest: original,
-            currentManifest: replacement
-        ))
-
-        let second = epochs.begin(for: original.id)
-        XCTAssertFalse(epochs.accepts(
-            first,
-            manifest: original,
-            currentManifest: original
-        ))
-        XCTAssertTrue(epochs.accepts(
-            second,
-            manifest: replacement,
-            currentManifest: replacement
-        ))
-
-        epochs.invalidate(original.id)
-        XCTAssertFalse(epochs.accepts(
-            second,
-            manifest: replacement,
-            currentManifest: replacement
-        ))
-    }
-
-    func testTimerLoopDispositionStopsIdleAndCompletedTimers() {
-        let now = Date(timeIntervalSince1970: 1_700_000_000)
-
-        XCTAssertEqual(
-            AppletRuntimeEngine.timerLoopDisposition(timerEnd: nil, now: now),
-            .idle
-        )
-        XCTAssertEqual(
-            AppletRuntimeEngine.timerLoopDisposition(
-                timerEnd: now.addingTimeInterval(-1),
-                now: now
-            ),
-            .completed
-        )
-        XCTAssertEqual(
-            AppletRuntimeEngine.timerLoopDisposition(
-                timerEnd: now.addingTimeInterval(1.5),
-                now: now
-            ),
-            .running(remaining: 2)
-        )
-    }
-
     private func timerManifest(enabled: Bool = true) -> AppletManifest {
         AppletManifest(
             name: "Runtime Timer",

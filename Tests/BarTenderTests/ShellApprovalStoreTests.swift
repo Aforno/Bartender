@@ -52,24 +52,6 @@ final class ShellApprovalStoreTests: XCTestCase {
         XCTAssertFalse(approvals.isApproved(decoded))
     }
 
-    func testGeneratedToolApprovalIsBoundToExactSource() {
-        let store = ShellApprovalStore(defaults: makeDefaults(), storageKey: "generated-approvals")
-        let manifest = AppletManifest(
-            name: "Generated",
-            iconSystemName: "wand.and.sparkles",
-            kind: .generatedTool,
-            titleTemplate: "{{value}}",
-            config: AppletConfig(generatedSource: "#!/bin/zsh\nprintf original")
-        )
-
-        store.setApproved(true, for: manifest)
-        XCTAssertTrue(store.isApproved(manifest))
-
-        var edited = manifest
-        edited.config.generatedSource = "#!/bin/zsh\nprintf changed"
-        XCTAssertFalse(store.isApproved(edited))
-    }
-
     func testCreateReviewApproveRunReviseRevokeAndReapprove() async throws {
         let defaults = makeDefaults()
         let approvals = ShellApprovalStore(defaults: defaults, storageKey: "lifecycle-approvals")

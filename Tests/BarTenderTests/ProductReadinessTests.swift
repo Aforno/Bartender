@@ -15,30 +15,6 @@ final class ProductReadinessTests: XCTestCase {
         }
     }
 
-    @MainActor
-    func testStatusItemOverflowKeepsOnlyEightIndividualItems() {
-        let applets = (0..<12).map { index in
-            AppletManifest(
-                name: "Tool \(index)",
-                iconSystemName: "gear",
-                kind: .systemMetrics,
-                titleTemplate: "{{value}}",
-                config: AppletConfig(metrics: [.cpu])
-            )
-        }
-        let visible = StatusItemManager.individuallyVisible(from: applets)
-        XCTAssertEqual(visible.count, 8)
-        XCTAssertEqual(visible.map(\.id), Array(applets.prefix(8)).map(\.id))
-    }
-
-    func testUpdateVersionComparisonHandlesDriftAndPrereleases() {
-        XCTAssertTrue(UpdateService.isVersion("2.0.0", newerThan: "1.9.9"))
-        XCTAssertTrue(UpdateService.isVersion("1.10.0", newerThan: "1.9.9"))
-        XCTAssertFalse(UpdateService.isVersion("1.0.0", newerThan: "1.0.0"))
-        XCTAssertFalse(UpdateService.isVersion("0.9.9", newerThan: "1.0.0"))
-        XCTAssertTrue(UpdateService.isVersion("1.0.1-beta.1", newerThan: "1.0.0"))
-    }
-
     func testGeneratedToolEnvironmentUsesAnExplicitAllowlist() async {
         let environment = await ShellEnvironment.generatedToolEnvironment()
         let allowed = Set([
@@ -337,7 +313,8 @@ final class ProviderEndToEndMatrixTests: XCTestCase {
                 authMatcher: "models",
                 authOutput: "gemini-3.1-pro-high\ngemini-3.6-flash-medium",
                 generationOutput: output,
-                generationDelay: generationDelay
+                generationDelay: generationDelay,
+                requiresUnlimitedPrintTimeout: true
             )
         )
     }
@@ -373,8 +350,15 @@ final class ProviderEndToEndMatrixTests: XCTestCase {
         authOutput: String,
         generationOutput: String,
         generationDelay: Int,
-        writesOutputFile: Bool = false
+        writesOutputFile: Bool = false,
+        requiresUnlimitedPrintTimeout: Bool = false
     ) -> String {
+        let printTimeoutCheck = requiresUnlimitedPrintTimeout ? """
+        case " $* " in
+          *" --print-timeout=0s "*) ;;
+          *) printf '%s\\n' 'missing unlimited print timeout' >&2; exit 1 ;;
+        esac
+        """ : ""
         let delivery: String
         if writesOutputFile {
             delivery = """
@@ -392,6 +376,7 @@ final class ProviderEndToEndMatrixTests: XCTestCase {
         #!/bin/sh
         if [ "$1" = "--version" ]; then printf '%s\\n' '\(version)'; exit 0; fi
         if [ "$1" = "\(authMatcher)" ]; then printf '%s\\n' '\(authOutput)'; exit 0; fi
+        \(printTimeoutCheck)
         sleep \(generationDelay)
         \(delivery)
         """

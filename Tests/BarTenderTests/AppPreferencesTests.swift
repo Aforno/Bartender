@@ -19,55 +19,15 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertTrue(reloaded.autoApproveGeneratedToolEdits)
     }
 
-    func testAutoApprovalRequiresAChangedPreviouslyApprovedGeneratedTool() {
+    func testAutoApprovalRequiresAnExplicitManualRevisionOfAnApprovedGeneratedTool() {
         let original = generatedManifest(source: "#!/bin/zsh\nprintf original")
         var edited = original
         edited.config.generatedSource = "#!/bin/zsh\nprintf edited"
-
-        XCTAssertTrue(AppModel.shouldAutoApproveGeneratedToolEdit(
-            replacing: original,
-            with: edited,
-            preferenceEnabled: true,
-            previousVersionApproved: true,
-            isAutomaticRepair: false
-        ))
-        XCTAssertFalse(AppModel.shouldAutoApproveGeneratedToolEdit(
-            replacing: original,
-            with: edited,
-            preferenceEnabled: false,
-            previousVersionApproved: true,
-            isAutomaticRepair: false
-        ))
-        XCTAssertFalse(AppModel.shouldAutoApproveGeneratedToolEdit(
-            replacing: original,
-            with: edited,
-            preferenceEnabled: true,
-            previousVersionApproved: false,
-            isAutomaticRepair: false
-        ))
-        XCTAssertFalse(AppModel.shouldAutoApproveGeneratedToolEdit(
-            replacing: original,
-            with: edited,
-            preferenceEnabled: true,
-            previousVersionApproved: true,
-            isAutomaticRepair: true
-        ))
-        XCTAssertFalse(AppModel.shouldAutoApproveGeneratedToolEdit(
-            replacing: original,
-            with: original,
-            preferenceEnabled: true,
-            previousVersionApproved: true,
-            isAutomaticRepair: false
-        ))
-    }
-
-    func testAutoApprovalDoesNotApplyToNewImportedOrNonGeneratedTools() {
-        let generated = generatedManifest(source: "#!/bin/zsh\nprintf generated")
-        var unrelated = generated
+        var unrelated = edited
         unrelated.id = UUID()
         unrelated.config.generatedSource = "#!/bin/zsh\nprintf unrelated"
         let shell = AppletManifest(
-            id: generated.id,
+            id: original.id,
             name: "Shell",
             iconSystemName: "terminal",
             kind: .shellCommand,
@@ -75,27 +35,29 @@ final class AppPreferencesTests: XCTestCase {
             config: AppletConfig(command: "printf shell")
         )
 
-        XCTAssertFalse(AppModel.shouldAutoApproveGeneratedToolEdit(
-            replacing: nil,
-            with: generated,
-            preferenceEnabled: true,
-            previousVersionApproved: true,
-            isAutomaticRepair: false
-        ))
-        XCTAssertFalse(AppModel.shouldAutoApproveGeneratedToolEdit(
-            replacing: generated,
-            with: unrelated,
-            preferenceEnabled: true,
-            previousVersionApproved: true,
-            isAutomaticRepair: false
-        ))
-        XCTAssertFalse(AppModel.shouldAutoApproveGeneratedToolEdit(
-            replacing: shell,
-            with: shell,
-            preferenceEnabled: true,
-            previousVersionApproved: true,
-            isAutomaticRepair: false
-        ))
+        let cases: [(AppletManifest?, AppletManifest, Bool, Bool, Bool, Bool)] = [
+            (original, edited, true, true, false, true),
+            (original, edited, false, true, false, false),
+            (original, edited, true, false, false, false),
+            (original, edited, true, true, true, false),
+            (original, original, true, true, false, false),
+            (nil, edited, true, true, false, false),
+            (original, unrelated, true, true, false, false),
+            (shell, shell, true, true, false, false)
+        ]
+
+        for (existing, saved, preferenceEnabled, approved, automaticRepair, expected) in cases {
+            XCTAssertEqual(
+                AppModel.shouldAutoApproveGeneratedToolEdit(
+                    replacing: existing,
+                    with: saved,
+                    preferenceEnabled: preferenceEnabled,
+                    previousVersionApproved: approved,
+                    isAutomaticRepair: automaticRepair
+                ),
+                expected
+            )
+        }
     }
 
     private func generatedManifest(source: String) -> AppletManifest {
