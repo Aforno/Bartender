@@ -1,4 +1,5 @@
 import Darwin
+import Dispatch
 import Foundation
 
 struct ProcessResult: Sendable {
@@ -158,22 +159,25 @@ actor ProcessRunner {
         launchCancellation: SpawnCancellationState
     ) async throws -> ProcessResult {
         let parentTerminatedFlag = LockedFlag()
-        let stdoutTask = Task.detached(priority: .utility) {
-            collectProcessOutput(
+        // Cooperative tasks only: never block a concurrency-pool thread with
+        // waitpid/poll. On small CI runners those blocked workers starve the
+        // timeout/cancellation tasks and the suite hangs until job timeout.
+        let stdoutTask = Task {
+            await collectProcessOutput(
                 from: process.stdoutDescriptor,
                 parentTerminated: parentTerminatedFlag,
                 onChunk: onStdout
             )
         }
-        let stderrTask = Task.detached(priority: .utility) {
-            collectProcessOutput(
+        let stderrTask = Task {
+            await collectProcessOutput(
                 from: process.stderrDescriptor,
                 parentTerminated: parentTerminatedFlag,
                 onChunk: onStderr
             )
         }
-        let waitTask = Task.detached(priority: .utility) {
-            Self.waitForTermination(of: process.processIdentifier)
+        let waitTask = Task {
+            await Self.waitForTermination(of: process.processIdentifier)
         }
 
         let invocationID = UUID()
@@ -272,8 +276,9 @@ actor ProcessRunner {
             _ = Darwin.kill(processIdentifier, SIGTERM)
         }
 
-        Task.detached(priority: .utility) {
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        // Use GCD so escalation does not depend on the cooperative thread pool
+        // (which may already be busy with process I/O or wait loops).
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1) {
             signalProcessGroup(processIdentifier, signal: SIGKILL)
             if !parentTerminated.value {
                 _ = Darwin.kill(processIdentifier, SIGKILL)
@@ -285,8 +290,7 @@ actor ProcessRunner {
     /// Stop anything still in its isolated group without delaying the result.
     private static func scheduleDescendantCleanup(processIdentifier: pid_t) {
         signalProcessGroup(processIdentifier, signal: SIGTERM)
-        Task.detached(priority: .utility) {
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1) {
             signalProcessGroup(processIdentifier, signal: SIGKILL)
         }
     }
@@ -302,16 +306,21 @@ actor ProcessRunner {
         _ = Darwin.kill(processIdentifier, SIGKILL)
     }
 
-    private static func waitForTermination(of processIdentifier: pid_t) -> WaitResult {
+    /// Cooperative wait so timeout/cancellation tasks stay schedulable.
+    private static func waitForTermination(of processIdentifier: pid_t) async -> WaitResult {
         var status: Int32 = 0
         while true {
-            let result = Darwin.waitpid(processIdentifier, &status, 0)
+            let result = Darwin.waitpid(processIdentifier, &status, WNOHANG)
             if result == processIdentifier {
                 let terminationSignal = status & 0x7f
                 let exitCode = terminationSignal == 0
                     ? (status >> 8) & 0xff
                     : terminationSignal
                 return WaitResult(exitCode: exitCode)
+            }
+            if result == 0 {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+                continue
             }
             if result == -1, errno == EINTR {
                 continue
@@ -493,7 +502,7 @@ private func collectProcessOutput(
     from descriptor: Int32,
     parentTerminated: LockedFlag,
     onChunk: (@Sendable (String) -> Void)?
-) -> ProcessRunner.CollectedOutput {
+) async -> ProcessRunner.CollectedOutput {
     defer { _ = Darwin.close(descriptor) }
 
     let readSize = 64 * 1024
@@ -517,12 +526,14 @@ private func collectProcessOutput(
             events: Int16(POLLIN | POLLHUP | POLLERR),
             revents: 0
         )
-        let pollTimeout: Int32 = parentHasTerminated ? 0 : 50
-        let pollResult = Darwin.poll(&pollDescriptor, 1, pollTimeout)
+        // Non-blocking poll: sleep cooperatively when idle so other tasks
+        // (timeouts, cancellation, sibling process waits) can run.
+        let pollResult = Darwin.poll(&pollDescriptor, 1, 0)
         if pollResult == 0 {
             if parentHasTerminated {
                 break
             }
+            try? await Task.sleep(nanoseconds: 10_000_000)
             continue
         }
         if pollResult < 0 {

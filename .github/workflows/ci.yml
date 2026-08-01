@@ -46,6 +46,9 @@ jobs:
         run: swift --version
 
       - name: Run tests
+        env:
+          # Flush XCTest output promptly so hangs show the last started test.
+          NSUnbufferedIO: "YES"
         run: swift test
 
       - name: Build release configuration
