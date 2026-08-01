@@ -2,17 +2,20 @@ import XCTest
 @testable import BarTender
 
 final class UpdateServiceTests: XCTestCase {
-    func testSemanticPrereleaseOrdering() {
-        XCTAssertFalse(UpdateService.isVersion("1.0.0-beta.1", newerThan: "1.0.0"))
-        XCTAssertTrue(UpdateService.isVersion("1.0.0", newerThan: "1.0.0-beta.1"))
-        XCTAssertTrue(UpdateService.isVersion("1.0.0-beta.2", newerThan: "1.0.0-beta.1"))
-        XCTAssertTrue(UpdateService.isVersion("1.0.0-rc.1", newerThan: "1.0.0-beta.9"))
-        XCTAssertFalse(UpdateService.isVersion("1.0.0-adhoc", newerThan: "1.0.0"))
-    }
+    func testVersionComparisonOrdersPrereleasesAndFailsClosed() {
+        let cases = [
+            ("1.0.0-beta.1", "1.0.0", false),
+            ("1.0.0", "1.0.0-beta.1", true),
+            ("1.0.0-beta.2", "1.0.0-beta.1", true),
+            ("1.0.0-rc.1", "1.0.0-beta.9", true),
+            ("1.0.0-adhoc", "1.0.0", false),
+            ("1..0", "1.0.0", false),
+            ("release", "1.0.0", false),
+            ("1.0.1", "Development", false)
+        ]
 
-    func testMalformedVersionsFailClosed() {
-        XCTAssertFalse(UpdateService.isVersion("1..0", newerThan: "1.0.0"))
-        XCTAssertFalse(UpdateService.isVersion("release", newerThan: "1.0.0"))
-        XCTAssertFalse(UpdateService.isVersion("1.0.1", newerThan: "Development"))
+        for (candidate, current, expected) in cases {
+            XCTAssertEqual(UpdateService.isVersion(candidate, newerThan: current), expected, candidate)
+        }
     }
 }

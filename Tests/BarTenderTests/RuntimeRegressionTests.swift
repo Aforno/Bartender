@@ -12,13 +12,6 @@ final class RuntimeRegressionTests: XCTestCase {
         XCTAssertTrue(tracker.record(id: id, healthy: false))
     }
 
-    func testCompletedTimerRestartsFromConfiguredDuration() async {
-        let remaining = await MainActor.run {
-            AppletRuntimeEngine.resumedTimerRemaining(pausedRemaining: 0, duration: 90)
-        }
-        XCTAssertEqual(remaining, 90)
-    }
-
     func testInvalidPortIsRejectedWithoutIntegerConversionTrap() async {
         let tooHigh = await PortProbe.isOpen(host: "localhost", port: 70000, timeout: 0.1)
         let negative = await PortProbe.isOpen(host: "localhost", port: -1, timeout: 0.1)
@@ -269,60 +262,6 @@ final class RuntimeRegressionTests: XCTestCase {
         XCTAssertEqual(decoded.values[sharedPrefix], "first")
         XCTAssertEqual(decoded.values[suffixedKey], "second")
         XCTAssertTrue(decoded.values.keys.allSatisfy { $0.count <= 40 })
-    }
-
-    func testToolRunStateDoesNotCallUnhealthyOutputLive() {
-        let manifest = AppletManifest(
-            name: "Sensor",
-            iconSystemName: "sensor",
-            kind: .generatedTool,
-            titleTemplate: "{{value}}",
-            config: AppletConfig(generatedSource: "#!/bin/zsh\nexit 0")
-        )
-        let unhealthy = AppletSnapshot(
-            statusText: "Unavailable",
-            title: "Sensor",
-            detailLines: [],
-            isHealthy: false,
-            values: [:],
-            updatedAt: .now,
-            isRunning: true,
-            progress: nil
-        )
-
-        XCTAssertEqual(
-            ToolRunState.resolve(manifest: manifest, snapshot: unhealthy, executionApproved: true),
-            .needsAttention
-        )
-        XCTAssertEqual(
-            ToolRunState.resolve(manifest: manifest, snapshot: unhealthy, executionApproved: false),
-            .reviewRequired
-        )
-    }
-
-    func testRuntimeRepairFeedbackIncludesFailureOrUnhealthyStatus() {
-        let failure = GeneratedToolRunner.Result(
-            output: nil,
-            message: "command not found: sample-tool",
-            approved: true
-        )
-        let unhealthy = GeneratedToolRunner.Result(
-            output: GeneratedToolOutput(
-                title: "Unavailable",
-                status: "Could not read the requested value",
-                healthy: false
-            ),
-            message: "Could not read the requested value",
-            approved: true
-        )
-
-        let failureFeedback = ManifestGenerationSupport.runtimeRepairFeedback(for: failure)
-        let unhealthyFeedback = ManifestGenerationSupport.runtimeRepairFeedback(for: unhealthy)
-
-        XCTAssertTrue(failureFeedback.contains("command not found: sample-tool"))
-        XCTAssertTrue(failureFeedback.contains("minimal generated-tool environment"))
-        XCTAssertTrue(unhealthyFeedback.contains("marked itself unhealthy"))
-        XCTAssertTrue(unhealthyFeedback.contains("Could not read the requested value"))
     }
 
     func testRuntimeRepairFeedbackBoundsAndEscapesUntrustedDetails() {

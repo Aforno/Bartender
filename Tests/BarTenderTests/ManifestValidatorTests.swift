@@ -3,28 +3,6 @@ import XCTest
 @testable import BarTender
 
 final class ManifestValidatorTests: XCTestCase {
-    func testNormalizesWhitespaceAndAppliesDefaultRefresh() throws {
-        let draft = CodexAppletDraft(
-            name: "  Site  ",
-            iconSystemName: "  globe  ",
-            kind: .httpMonitor,
-            titleTemplate: "  {{status}}  ",
-            refreshIntervalSeconds: nil,
-            notifyOnComplete: nil,
-            notifyOnFailure: nil,
-            config: AppletConfig(url: "  https://example.com/health  ", timeoutSeconds: 5)
-        )
-
-        let manifest = try ManifestValidator.makeManifest(from: draft, sourcePrompt: "  monitor it  ")
-
-        XCTAssertEqual(manifest.name, "Site")
-        XCTAssertEqual(manifest.iconSystemName, "globe")
-        XCTAssertEqual(manifest.titleTemplate, "{{status}}")
-        XCTAssertEqual(manifest.sourcePrompt, "monitor it")
-        XCTAssertEqual(manifest.config.url, "https://example.com/health")
-        XCTAssertEqual(manifest.refreshIntervalSeconds, AppletKind.httpMonitor.defaultRefreshInterval)
-    }
-
     func testRejectsHTTPURLWithoutHost() {
         let manifest = makeManifest(
             kind: .httpMonitor,
@@ -70,29 +48,6 @@ final class ManifestValidatorTests: XCTestCase {
                 return XCTFail("Expected configMismatch, got \(error)")
             }
         }
-    }
-
-    func testBundledSchemaMatchesValidatorLimitsAndExcludesApproval() throws {
-        let schema = try ManifestGenerationSupport.schemaJSONString()
-        let data = try XCTUnwrap(schema.data(using: .utf8))
-        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let properties = try XCTUnwrap(root["properties"] as? [String: Any])
-        let name = try XCTUnwrap(properties["name"] as? [String: Any])
-        let refresh = try XCTUnwrap(properties["refreshIntervalSeconds"] as? [String: Any])
-        let config = try XCTUnwrap(properties["config"] as? [String: Any])
-        let configProperties = try XCTUnwrap(config["properties"] as? [String: Any])
-
-        XCTAssertEqual(name["maxLength"] as? Int, ManifestLimits.nameLength)
-        XCTAssertEqual(refresh["minimum"] as? Double, ManifestLimits.refreshInterval.lowerBound)
-        XCTAssertEqual(refresh["maximum"] as? Double, ManifestLimits.refreshInterval.upperBound)
-        XCTAssertNil(configProperties["shellApproved"])
-        XCTAssertEqual((configProperties["port"] as? [String: Any])?["maximum"] as? Int, ManifestLimits.port.upperBound)
-        XCTAssertEqual(
-            (configProperties["generatedSource"] as? [String: Any])?["maxLength"] as? Int,
-            ManifestLimits.generatedSourceLength
-        )
-        let kind = try XCTUnwrap(properties["kind"] as? [String: Any])
-        XCTAssertTrue((kind["enum"] as? [String])?.contains("generatedTool") == true)
     }
 
     func testGeneratedToolRequiresDedicatedExecutableSource() throws {

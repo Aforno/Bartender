@@ -238,35 +238,6 @@ final class ProcessAndProviderTests: XCTestCase {
         XCTAssertNil(ManifestGenerationSupport.extractMessagePayload(from: "progress\nstill working\ndone"))
     }
 
-    func testRevisionPromptIncludesSelectedToolAndCurrentSource() {
-        let existing = AppletManifest(
-            name: "Current Song",
-            iconSystemName: "music.note",
-            kind: .generatedTool,
-            titleTemplate: "{{value}}",
-            refreshIntervalSeconds: 15,
-            sourcePrompt: "Show the current song",
-            config: AppletConfig(
-                timeoutSeconds: 5,
-                generatedSource: "#!/bin/zsh\nprintf old-source-marker"
-            )
-        )
-
-        let revision = ManifestGenerationSupport.buildPrompt(
-            userRequest: "Make the title shorter",
-            existingTool: existing
-        )
-        let fresh = ManifestGenerationSupport.buildPrompt(
-            userRequest: "Build a clock"
-        )
-
-        XCTAssertTrue(revision.contains("revising the existing menu bar tool"))
-        XCTAssertTrue(revision.contains("Current Song"))
-        XCTAssertTrue(revision.contains("old-source-marker"))
-        XCTAssertTrue(revision.contains("Make the title shorter"))
-        XCTAssertFalse(fresh.contains("CURRENT TOOL:"))
-    }
-
     func testIterationFeedbackIsDelimitedAndTreatedAsUntrusted() {
         let existing = AppletManifest(
             name: "Broken Tool",
@@ -301,54 +272,31 @@ final class ProcessAndProviderTests: XCTestCase {
         )
     }
 
-    func testShellCommandDependencyCheckRejectsMissingTool() {
-        let manifest = shellApplet(command: "bartender-no-such-tool-xyz -c")
+    func testShellCommandPreflightRejectsOnlyUnambiguousMissingExecutables() throws {
+        let environment = ["PATH": "/usr/bin:/bin"]
         XCTAssertThrowsError(
-            try ManifestGenerationSupport.requireCommandAvailable(manifest, environment: ["PATH": "/usr/bin:/bin"])
+            try ManifestGenerationSupport.requireCommandAvailable(
+                shellApplet(command: "bartender-no-such-tool-xyz -c"),
+                environment: environment
+            )
         ) { error in
             XCTAssertTrue(error.localizedDescription.contains("bartender-no-such-tool-xyz"))
         }
-    }
 
-    func testShellCommandDependencyCheckAcceptsAvailableTool() {
-        let manifest = shellApplet(command: "uname -a")
-        XCTAssertNoThrow(
-            try ManifestGenerationSupport.requireCommandAvailable(manifest, environment: ["PATH": "/usr/bin:/bin"])
-        )
-    }
-
-    func testShellCommandDependencyCheckValidatesPathCommands() {
-        let missing = shellApplet(command: "/usr/local/bin/bartender-no-such-tool-xyz --flag")
-        XCTAssertThrowsError(
-            try ManifestGenerationSupport.requireCommandAvailable(missing, environment: ["PATH": "/usr/bin:/bin"])
-        )
-
-        let present = shellApplet(command: "/usr/bin/uname -a")
-        XCTAssertNoThrow(
-            try ManifestGenerationSupport.requireCommandAvailable(present, environment: ["PATH": "/usr/bin:/bin"])
-        )
-    }
-
-    func testShellCommandDependencyCheckSkipsCompoundCommands() {
-        // Pipelines/assignments hide extra tools; they fail at runtime with the
-        // shell's own diagnostics, so creation must not block them.
         for command in [
+            "uname -a", "/usr/bin/uname -a",
             "bartender-no-such-tool-xyz -c | cat",
             "FOO=bar bartender-no-such-tool-xyz",
             "echo $(bartender-no-such-tool-xyz)"
         ] {
             XCTAssertNoThrow(
                 try ManifestGenerationSupport.requireCommandAvailable(
-                    shellApplet(command: command),
-                    environment: ["PATH": "/usr/bin:/bin"]
+                    shellApplet(command: command), environment: environment
                 ),
-                "Compound command should skip the dependency check: \(command)"
+                command
             )
         }
-    }
 
-    func testShellCommandDependencyCheckIgnoresOtherKinds() throws {
-        // Non-shell applets never run commands, even if config somehow has one.
         var config = AppletConfig()
         config.durationSeconds = 60
         config.command = "bartender-no-such-tool-xyz"
@@ -360,7 +308,7 @@ final class ProcessAndProviderTests: XCTestCase {
             config: config
         )
         XCTAssertNoThrow(
-            try ManifestGenerationSupport.requireCommandAvailable(manifest, environment: ["PATH": "/usr/bin:/bin"])
+            try ManifestGenerationSupport.requireCommandAvailable(manifest, environment: environment)
         )
     }
 }

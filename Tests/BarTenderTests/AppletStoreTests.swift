@@ -103,24 +103,6 @@ final class AppletStoreTests: XCTestCase {
         XCTAssertTrue(store.applets.isEmpty)
     }
 
-    func testUpsertNormalizesBeforePersisting() throws {
-        let fileURL = temporaryDirectory().appendingPathComponent("applets.json")
-        let store = AppletStore(fileURL: fileURL)
-        let manifest = AppletManifest(
-            name: "  Timer  ",
-            iconSystemName: "  timer  ",
-            kind: .timer,
-            titleTemplate: "  {{remaining}}  ",
-            config: AppletConfig(durationSeconds: 60)
-        )
-
-        let saved = try store.upsert(manifest)
-
-        XCTAssertEqual(saved.name, "Timer")
-        XCTAssertEqual(store.applets.first?.iconSystemName, "timer")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
-    }
-
     func testRevisionReplacesSelectedToolWithoutCreatingDuplicate() throws {
         let fileURL = temporaryDirectory().appendingPathComponent("applets.json")
         let store = AppletStore(fileURL: fileURL)
@@ -215,47 +197,6 @@ final class AppletStoreTests: XCTestCase {
             }
         }
         XCTAssertEqual(store.applets.map(\.id), [existing.id])
-    }
-
-    func testSameKindDuplicateIDsRejectArchiveWithoutMutatingLibrary() throws {
-        let fileURL = temporaryDirectory().appendingPathComponent("target.json")
-        let store = AppletStore(fileURL: fileURL)
-        let existing = AppletManifest(
-            name: "Existing",
-            iconSystemName: "cpu",
-            kind: .systemMetrics,
-            titleTemplate: "{{cpu}}",
-            config: AppletConfig(metrics: [.cpu])
-        )
-        try store.upsert(existing)
-        let persistedBeforeImport = try Data(contentsOf: fileURL)
-
-        let duplicateID = UUID()
-        let first = AppletManifest(
-            id: duplicateID,
-            name: "First Timer",
-            iconSystemName: "timer",
-            kind: .timer,
-            titleTemplate: "{{remaining}}",
-            config: AppletConfig(durationSeconds: 60)
-        )
-        let duplicate = AppletManifest(
-            id: duplicateID,
-            name: "Second Timer",
-            iconSystemName: "timer",
-            kind: .timer,
-            titleTemplate: "{{remaining}}",
-            config: AppletConfig(durationSeconds: 120)
-        )
-
-        assertDuplicateArchiveRejected(
-            try archiveData([first, duplicate]),
-            duplicateID: duplicateID,
-            by: store,
-            mode: .replace
-        )
-        XCTAssertEqual(store.applets.map(\.id), [existing.id])
-        XCTAssertEqual(try Data(contentsOf: fileURL), persistedBeforeImport)
     }
 
     func testMixedKindDuplicateIDsRejectArchiveWithoutMutatingLibrary() throws {

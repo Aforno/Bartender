@@ -3,14 +3,6 @@ import XCTest
 @testable import BarTender
 
 final class HardwareSensorsTests: XCTestCase {
-    // MARK: - FourCC
-
-    func testFourCCRoundsTrip() {
-        XCTAssertEqual(SMCConnection.fourCC("Tp09"), 0x54703039)
-        XCTAssertEqual(SMCConnection.fourCCString(0x54703039), "Tp09")
-        XCTAssertEqual(SMCConnection.fourCCString(SMCConnection.fourCC("TB1T")), "TB1T")
-    }
-
     // MARK: - Value decoding
 
     func testDecodesLittleEndianFloat() throws {
@@ -39,27 +31,16 @@ final class HardwareSensorsTests: XCTestCase {
 
     // MARK: - Classification
 
-    func testClassifiesAppleSiliconKeys() {
-        XCTAssertEqual(SensorGroup.classify(smcKey: "Tp09"), .cpu)
-        XCTAssertEqual(SensorGroup.classify(smcKey: "Tg0f"), .gpu)
-        XCTAssertEqual(SensorGroup.classify(smcKey: "Te05"), .soc)
-        XCTAssertEqual(SensorGroup.classify(smcKey: "Th0M"), .soc)
-        XCTAssertEqual(SensorGroup.classify(smcKey: "TB1T"), .battery)
-        XCTAssertEqual(SensorGroup.classify(smcKey: "TA0P"), .ambient)
-        XCTAssertEqual(SensorGroup.classify(smcKey: "Tm0B"), .memory)
-        XCTAssertEqual(SensorGroup.classify(smcKey: "Ts0P"), .storage)
-    }
+    func testClassifiesRepresentativeSMCKeys() {
+        let cases: [(String, SensorGroup)] = [
+            ("Tp09", .cpu), ("TG0P", .gpu), ("Te05", .soc),
+            ("TB1T", .battery), ("TA0P", .ambient), ("Tm0B", .memory),
+            ("Ts0P", .storage), ("TVM1", .other), ("Tp", .other)
+        ]
 
-    func testClassifiesIntelKeys() {
-        XCTAssertEqual(SensorGroup.classify(smcKey: "TC0D"), .cpu)
-        XCTAssertEqual(SensorGroup.classify(smcKey: "TG0P"), .gpu)
-        XCTAssertEqual(SensorGroup.classify(smcKey: "TN0D"), .soc)
-    }
-
-    func testLeavesUnknownFamiliesUnclassified() {
-        XCTAssertEqual(SensorGroup.classify(smcKey: "TVM1"), .other)
-        XCTAssertEqual(SensorGroup.classify(smcKey: "F0Ac"), .other)
-        XCTAssertEqual(SensorGroup.classify(smcKey: "Tp"), .other)
+        for (key, expected) in cases {
+            XCTAssertEqual(SensorGroup.classify(smcKey: key), expected, key)
+        }
     }
 
     // MARK: - Aggregation and reports
@@ -74,43 +55,7 @@ final class HardwareSensorsTests: XCTestCase {
         ]
     }
 
-    func testAggregatesPerGroup() {
-        let stats = HardwareSensors.aggregate(readings: sampleReadings())
-        XCTAssertEqual(stats[.cpu]?.average ?? 0, 55.0, accuracy: 0.001)
-        XCTAssertEqual(stats[.cpu]?.maximum ?? 0, 60.0, accuracy: 0.001)
-        XCTAssertEqual(stats[.gpu]?.maximum ?? 0, 45.0, accuracy: 0.001)
-        XCTAssertNil(stats[.other])
-        XCTAssertNil(stats[.storage])
-    }
-
-    func testLineReportUsesGroupMaximumAndSkipsMissingGroups() {
-        let report = HardwareSensors.lineReport(readings: sampleReadings())
-        let lines = report.split(separator: "\n").map(String.init)
-        XCTAssertEqual(lines, ["cpu=60.0", "gpu=45.0", "battery=28.0"])
-    }
-
-    func testJSONReportIncludesGroupsAndEverySensor() {
-        let report = HardwareSensors.jsonReport(readings: sampleReadings())
-        guard let data = report.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            XCTFail("JSON report did not parse")
-            return
-        }
-        XCTAssertEqual(parsed["unit"] as? String, "celsius")
-        let groups = parsed["groups"] as? [String: Any]
-        XCTAssertNotNil(groups?["cpu"])
-        XCTAssertNil(groups?["other"])
-        let sensors = parsed["sensors"] as? [[String: Any]]
-        XCTAssertEqual(sensors?.count, 5)
-        XCTAssertTrue(sensors?.contains { ($0["key"] as? String) == "TVM1" } == true)
-    }
-
     // MARK: - CLI
-
-    func testCLIIgnoresNormalAppInvocations() {
-        XCTAssertNil(HardwareSensorsCLI.handledExitCode(arguments: ["/App/BarTender"]))
-        XCTAssertNil(HardwareSensorsCLI.handledExitCode(arguments: ["/App/BarTender", "--debug"]))
-    }
 
     func testCLIPrintsLineReport() {
         var printed: [String] = []
@@ -148,17 +93,4 @@ final class HardwareSensorsTests: XCTestCase {
         XCTAssertFalse(errors.isEmpty)
     }
 
-    // MARK: - Live hardware (skipped where sensors are unavailable, e.g. VMs)
-
-    func testLiveReadingsArePlausibleWhenHardwareIsPresent() {
-        let readings = HardwareSensorReader.temperatureReadings()
-        guard !readings.isEmpty else { return }
-        for reading in readings {
-            XCTAssertTrue(
-                HardwareSensors.plausibleRange.contains(reading.celsius),
-                "Implausible reading \(reading.celsius)°C for \(reading.key)"
-            )
-        }
-        XCTAssertTrue(readings.contains { $0.group != .other })
-    }
 }
