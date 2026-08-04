@@ -67,6 +67,28 @@ final class UpdateServiceTests: XCTestCase {
         XCTAssertEqual(url.absoluteString, "https://example.com/1.0.1-adhoc")
     }
 
+    func testAdhocChannelRequiresPrereleaseFlag() {
+        let releases = [
+            UpdateService.Release(
+                tagName: "v1.0.9-adhoc",
+                htmlURL: "https://example.com/not-prerelease",
+                draft: false,
+                prerelease: false,
+                publishedBuildNumber: 99
+            )
+        ]
+
+        XCTAssertEqual(
+            UpdateService.selectRelease(
+                from: releases,
+                currentVersion: "1.0.1-adhoc",
+                currentBuild: "2",
+                channel: .adhoc
+            ),
+            .noneCompatible
+        )
+    }
+
     func testSelectsNewestAdhocWhenMultipleExist() {
         let releases = [
             UpdateService.Release(
@@ -100,7 +122,7 @@ final class UpdateServiceTests: XCTestCase {
     func testSameVersionNewerBuildIsOffered() {
         let releases = [
             UpdateService.Release(
-                tagName: "v1.0.1-adhoc",
+                tagName: "v1.0.1-adhoc+build.3",
                 htmlURL: "https://example.com/build3",
                 draft: false,
                 prerelease: true,
@@ -121,7 +143,7 @@ final class UpdateServiceTests: XCTestCase {
     func testSameVersionSameOrOlderBuildIsCurrent() {
         let releases = [
             UpdateService.Release(
-                tagName: "v1.0.1-adhoc",
+                tagName: "v1.0.1-adhoc+build.2",
                 htmlURL: "https://example.com/build2",
                 draft: false,
                 prerelease: true,
@@ -135,6 +157,66 @@ final class UpdateServiceTests: XCTestCase {
             channel: .adhoc
         )
         XCTAssertEqual(selection, .upToDate)
+    }
+
+    func testMalformedHighBuildReleaseCannotHideValidUpdate() {
+        let releases = [
+            UpdateService.Release(
+                tagName: "broken-adhoc",
+                htmlURL: "https://example.com/broken",
+                draft: false,
+                prerelease: true,
+                publishedBuildNumber: 999
+            ),
+            UpdateService.Release(
+                tagName: "v1.0.2-adhoc+build.4",
+                htmlURL: "https://example.com/valid",
+                draft: false,
+                prerelease: true,
+                publishedBuildNumber: 4
+            )
+        ]
+
+        let selection = UpdateService.selectRelease(
+            from: releases,
+            currentVersion: "1.0.1-adhoc",
+            currentBuild: "2",
+            channel: .adhoc
+        )
+        guard case let .update(version, url) = selection else {
+            return XCTFail("Expected the valid update, got \(selection)")
+        }
+        XCTAssertEqual(version, "1.0.2-adhoc+build.4")
+        XCTAssertEqual(url.absoluteString, "https://example.com/valid")
+    }
+
+    func testInvalidReleaseURLIsSkipped() {
+        let releases = [
+            UpdateService.Release(
+                tagName: "v9.0.0-adhoc",
+                htmlURL: "not a web URL",
+                draft: false,
+                prerelease: true,
+                publishedBuildNumber: 99
+            ),
+            UpdateService.Release(
+                tagName: "v1.0.2-adhoc",
+                htmlURL: "https://example.com/valid",
+                draft: false,
+                prerelease: true,
+                publishedBuildNumber: 4
+            )
+        ]
+
+        guard case let .update(version, _) = UpdateService.selectRelease(
+            from: releases,
+            currentVersion: "1.0.1-adhoc",
+            currentBuild: "2",
+            channel: .adhoc
+        ) else {
+            return XCTFail("Expected valid URL release to be selected")
+        }
+        XCTAssertEqual(version, "1.0.2-adhoc")
     }
 
     func testNoCompatibleRelease() {
