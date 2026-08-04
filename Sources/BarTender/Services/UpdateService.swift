@@ -184,10 +184,6 @@ final class UpdateService: ObservableObject {
     /// Decodes a GitHub releases list, skipping individual malformed entries.
     nonisolated static func decodeReleases(from data: Data) throws -> [Release] {
         guard let root = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            // Single-object payloads are invalid for the list endpoint.
-            if (try? JSONSerialization.jsonObject(with: data)) != nil {
-                throw UpdateError.invalidResponse
-            }
             throw UpdateError.invalidResponse
         }
 
@@ -219,7 +215,14 @@ final class UpdateService: ObservableObject {
         currentBuild: String,
         channel: Channel
     ) -> Selection {
-        let compatible = releases.filter { isCompatible($0, channel: channel) }
+        // Invalid semantic versions and non-web URLs never enter the ranking.
+        // Otherwise a malformed entry with an artificially high build number
+        // could sort above a valid release and hide the real update.
+        let compatible = releases.filter { release in
+            isCompatible(release, channel: channel)
+                && SemanticVersion(normalizeTag(release.tagName)) != nil
+                && validatedReleaseURL(release.htmlURL) != nil
+        }
         guard !compatible.isEmpty else {
             return .noneCompatible
         }
@@ -234,10 +237,8 @@ final class UpdateService: ObservableObject {
         let newestVersion = normalizeTag(newest.tagName)
         let currentBuildInt = Int(currentBuild.trimmingCharacters(in: .whitespacesAndNewlines))
 
-        if isRelease(newest, newerThanVersion: currentVersion, currentBuild: currentBuildInt) {
-            guard let url = URL(string: newest.htmlURL) else {
-                return .noneCompatible
-            }
+        if isRelease(newest, newerThanVersion: currentVersion, currentBuild: currentBuildInt),
+           let url = validatedReleaseURL(newest.htmlURL) {
             return .update(version: newestVersion, url: url)
         }
         return .upToDate
@@ -248,8 +249,8 @@ final class UpdateService: ObservableObject {
         let version = normalizeTag(release.tagName).lowercased()
         switch channel {
         case .adhoc:
-            // Ad-hoc app builds track the ad-hoc prerelease channel only.
-            return version.contains("adhoc")
+            // Ad-hoc app builds track explicitly marked ad-hoc prereleases only.
+            return release.prerelease && version.contains("adhoc")
         case .stable:
             return !release.prerelease && !version.contains("adhoc")
         }
@@ -293,6 +294,16 @@ final class UpdateService: ObservableObject {
             value.removeFirst()
         }
         return value
+    }
+
+    nonisolated static func validatedReleaseURL(_ rawValue: String) -> URL? {
+        guard let url = URL(string: rawValue),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "https" || scheme == "http",
+              url.host != nil else {
+            return nil
+        }
+        return url
     }
 
     nonisolated static func parseBuildNumber(from text: String?) -> Int? {
