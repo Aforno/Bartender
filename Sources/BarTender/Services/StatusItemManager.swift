@@ -169,12 +169,9 @@ final class StatusItemManager: ObservableObject {
     }
 
     private func makeStatusItem(for appletID: UUID) -> NSStatusItem {
-        // Diagnostic first-reliable path: square, icon-only. `variableLength`
-        // plus multi-character titles was clipping items off crowded menu bars;
-        // `isVisible` still reported true. Square length allocates only the
-        // menu-bar thickness (Apple docs). Live titles can return once one item
-        // paints reliably and users pin at most a few.
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        // The default cap is one item, so a compact icon + live value fits
+        // without returning to the previous eight-item clipping problem.
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.autosaveName = Self.autosaveName(for: appletID)
         if let button = item.button {
             button.image = NSImage(
@@ -182,8 +179,8 @@ final class StatusItemManager: ObservableObject {
                 accessibilityDescription: "Bar Tender applet"
             )
             button.image?.isTemplate = true
-            button.title = ""
-            button.imagePosition = .imageOnly
+            button.imagePosition = .imageLeading
+            button.imageHugsTitle = true
         }
         forceVisible(item)
         let menu = NSMenu()
@@ -195,15 +192,15 @@ final class StatusItemManager: ObservableObject {
     private func forceVisible(_ item: NSStatusItem?) {
         guard let item else { return }
         item.isVisible = true
-        // Keep the diagnostic square footprint; do not expand to variableLength.
         if item.length == 0 {
-            item.length = NSStatusItem.squareLength
+            item.length = NSStatusItem.variableLength
         }
         if let button = item.button {
             button.isHidden = false
             button.alphaValue = 1
             button.isEnabled = true
             button.appearsDisabled = false
+            button.needsLayout = true
             button.needsDisplay = true
         }
     }
@@ -235,9 +232,6 @@ final class StatusItemManager: ObservableObject {
                 executionApproved: model.isExecutionApproved(applet),
                 isValidating: model.isValidatingExecution(applet)
             )
-            // Icon-only diagnostic layout: keep squareLength and no title so
-            // the item cannot be clipped by content width. Accessibility still
-            // carries the live label for VoiceOver / automation.
             let title = TitleRenderer.statusItemTitle(snapshot.title, runState: runState)
             let label = title.isEmpty ? applet.name : title
             var image = NSImage(systemSymbolName: applet.iconSystemName, accessibilityDescription: applet.name)
@@ -252,14 +246,18 @@ final class StatusItemManager: ObservableObject {
                 fallback.isTemplate = true
                 image = fallback
             }
+            button.font = NSFont.menuBarFont(ofSize: 0)
             button.image = image
-            button.title = ""
-            button.imagePosition = .imageOnly
+            button.title = label
+            button.imagePosition = .imageLeading
+            button.imageHugsTitle = true
             button.toolTip = "\(applet.name): \(snapshot.statusText)"
             button.setAccessibilityLabel(applet.name)
             button.setAccessibilityValue(label)
             button.setAccessibilityHelp(snapshot.statusText)
-            item.length = NSStatusItem.squareLength
+            item.length = NSStatusItem.variableLength
+            button.needsLayout = true
+            button.needsDisplay = true
             forceVisible(item)
         } else {
             AppLog.menuBar.error(
