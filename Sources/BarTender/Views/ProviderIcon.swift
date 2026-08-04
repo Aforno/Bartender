@@ -89,9 +89,13 @@ struct ProviderIcon: View {
     /// a bitmap template is reliably tinted with the current label color.
     private static func grokTemplateImage(from source: CIImage) -> NSImage? {
         let mask = source.applyingFilter("CIMaskToAlpha")
+        // The source PNG includes generous canvas whitespace. Cropping 20% on
+        // each edge gives Grok the same apparent scale as the other provider
+        // marks while retaining enough breathing room around the glyph.
+        let cropInsetFraction: CGFloat = 0.20
         let crop = mask.extent.insetBy(
-            dx: mask.extent.width * 0.15,
-            dy: mask.extent.height * 0.15
+            dx: mask.extent.width * cropInsetFraction,
+            dy: mask.extent.height * cropInsetFraction
         )
         guard !crop.isEmpty else { return nil }
 
