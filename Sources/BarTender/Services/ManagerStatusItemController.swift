@@ -111,6 +111,11 @@ final class ManagerStatusItemController: NSObject {
         return hasImage || hasTitle
     }
 
+    /// Live window geometry used by packaged-app diagnostics.
+    var frameDiagnostic: MenuBarDiagnosticsSnapshot.StatusItemFrameDiagnostic {
+        .capture(button: statusItem?.button)
+    }
+
     init(model: AppModel) {
         self.model = model
         super.init()
