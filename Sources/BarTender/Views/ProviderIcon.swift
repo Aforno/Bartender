@@ -82,11 +82,11 @@ struct ProviderIcon: View {
         return image
     }
 
-    /// The bundled Grok artwork is white. A plain `CIMaskToAlpha` keeps those
-    /// white RGB values, and AppKit menu controls can display them literally
-    /// instead of applying the SwiftUI template tint in light appearance.
-    /// Build a genuinely monochrome black-alpha image first, then mark it as a
-    /// template so AppKit can tint it correctly in both light and dark modes.
+    /// The bundled Grok artwork is white. Build a black alpha-mask and then
+    /// rasterize it into a bitmap-backed NSImage before marking it as a template.
+    /// Native AppKit Menu controls can bypass SwiftUI's rendering modifiers and
+    /// display an NSCIImageRep's original white pixels literally in light mode;
+    /// a bitmap template is reliably tinted with the current label color.
     private static func grokTemplateImage(from source: CIImage) -> NSImage? {
         let mask = source.applyingFilter("CIMaskToAlpha")
         let crop = mask.extent.insetBy(
@@ -96,8 +96,8 @@ struct ProviderIcon: View {
         guard !crop.isEmpty else { return nil }
 
         let croppedMask = mask.cropped(to: crop)
-        let blackColor = CIColor(red: 0, green: 0, blue: 0, alpha: 1)
-        let black = CIImage(color: blackColor).cropped(to: crop)
+        let black = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 1))
+            .cropped(to: crop)
         let blackGlyph = black.applyingFilter(
             "CISourceInCompositing",
             parameters: [kCIInputBackgroundImageKey: croppedMask]
@@ -105,10 +105,17 @@ struct ProviderIcon: View {
         let normalized = blackGlyph
             .cropped(to: crop)
             .transformed(by: CGAffineTransform(translationX: -crop.minX, y: -crop.minY))
+        let extent = normalized.extent.integral
+        let context = CIContext(options: [.cacheIntermediates: false])
 
-        let representation = NSCIImageRep(ciImage: normalized)
-        let image = NSImage(size: representation.size)
-        image.addRepresentation(representation)
+        guard let cgImage = context.createCGImage(normalized, from: extent) else {
+            return nil
+        }
+
+        let image = NSImage(
+            cgImage: cgImage,
+            size: NSSize(width: extent.width, height: extent.height)
+        )
         image.isTemplate = true
         return image
     }
