@@ -61,27 +61,29 @@ struct ProviderIcon: View {
 
         private let lock = NSLock()
         private var images: [AIProvider: NSImage] = [:]
-        /// Test-only counter of base image processing runs.
-        private(set) var processingCount = 0
+        private var processingRuns = 0
+
+        /// Test-only count of base image processing runs.
+        var processingCount: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return processingRuns
+        }
 
         func baseImage(for provider: AIProvider) -> NSImage {
+            // Keep cache population inside one critical section. Icon processing
+            // happens once per provider and is small enough that avoiding duplicate
+            // Core Image work is more valuable than parallel first-load decoding.
             lock.lock()
+            defer { lock.unlock() }
+
             if let cached = images[provider] {
-                lock.unlock()
                 return cached
             }
-            lock.unlock()
 
             let processed = processBaseImage(for: provider)
-
-            lock.lock()
-            if let existing = images[provider] {
-                lock.unlock()
-                return existing
-            }
             images[provider] = processed
-            processingCount += 1
-            lock.unlock()
+            processingRuns += 1
             return processed
         }
 
@@ -89,7 +91,7 @@ struct ProviderIcon: View {
         func resetForTesting() {
             lock.lock()
             images.removeAll()
-            processingCount = 0
+            processingRuns = 0
             lock.unlock()
         }
 
