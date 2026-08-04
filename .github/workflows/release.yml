@@ -4,9 +4,9 @@ name: Release (ad-hoc)
 # membership. Artifacts are not Developer ID signed or notarized. Users must
 # bypass Gatekeeper on first launch. See RELEASE_NOTES.md.
 #
-# Every push to main packages a universal build and creates a GitHub prerelease
-# for tag v<VERSION> when that tag does not already exist. Published assets are
-# immutable: reusing a tag/version requires bumping VERSION or BUILD_NUMBER.
+# Every push to main packages a universal build and creates one immutable GitHub
+# prerelease for tag v<VERSION>+build.<BUILD_NUMBER>. Either VERSION or
+# BUILD_NUMBER must change before another binary can be published.
 
 on:
   push:
@@ -38,7 +38,7 @@ jobs:
           set -euo pipefail
           VERSION="$(tr -d '[:space:]' < VERSION)"
           BUILD_NUMBER="$(tr -d '[:space:]' < BUILD_NUMBER)"
-          TAG="v${VERSION}"
+          TAG="v${VERSION}+build.${BUILD_NUMBER}"
 
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || {
             printf 'Invalid VERSION %s (expected semantic version).\n' "$VERSION" >&2
@@ -51,18 +51,13 @@ jobs:
 
           if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
             EXISTING_SHA="$(git rev-list -n 1 "refs/tags/${TAG}")"
-            if [[ "$EXISTING_SHA" != "$GITHUB_SHA" ]]; then
-              printf 'Release tag %s already exists for commit %s; this push is %s.\n' \
-                "$TAG" "$EXISTING_SHA" "$GITHUB_SHA" >&2
-              printf 'Bump VERSION or BUILD_NUMBER (and the tag) before publishing another release.\n' >&2
-              exit 1
-            fi
-            printf 'Tag %s already points at this commit; refusing to replace published assets.\n' "$TAG" >&2
+            printf 'Release tag %s already exists for commit %s. Bump VERSION or BUILD_NUMBER before publishing.\n' \
+              "$TAG" "$EXISTING_SHA" >&2
             exit 1
           fi
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            printf 'GitHub release %s already exists. Bump VERSION before publishing.\n' "$TAG" >&2
+            printf 'GitHub release %s already exists. Bump VERSION or BUILD_NUMBER before publishing.\n' "$TAG" >&2
             exit 1
           fi
 
@@ -84,17 +79,16 @@ jobs:
           set -euo pipefail
           VERSION="$(tr -d '[:space:]' < VERSION)"
           BUILD_NUMBER="$(tr -d '[:space:]' < BUILD_NUMBER)"
-          TAG="v${VERSION}"
+          TAG="v${VERSION}+build.${BUILD_NUMBER}"
           ZIP="dist/release/BarTender-${VERSION}.zip"
           DMG="dist/release/BarTender-${VERSION}.dmg"
           SUMS="dist/release/SHA256SUMS.txt"
           TITLE="Bar Tender ${VERSION} (build ${BUILD_NUMBER}, ad-hoc)"
 
-          # Create the tag only for this commit — never force-move an existing tag.
-          git tag "$TAG" "$GITHUB_SHA"
-          git push origin "refs/tags/${TAG}"
-
+          # Let GitHub create the tag as part of release creation. If asset upload
+          # fails, a retry is not blocked by a separately pushed orphan tag.
           gh release create "$TAG" "$ZIP" "$DMG" "$SUMS" \
+            --target "$GITHUB_SHA" \
             --prerelease \
             --title "$TITLE" \
             --notes-file RELEASE_NOTES.md
