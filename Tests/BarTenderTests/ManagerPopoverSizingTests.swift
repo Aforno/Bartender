@@ -45,15 +45,24 @@ final class ManagerPopoverSizingTests: XCTestCase {
             enabledAppletCount: 1,
             managedAppletItemCount: 0,
             appletItems: [
-                .init(appletID: "x", name: "Clock", titleNonEmpty: false, titlePreview: "")
+                .init(
+                    appletID: "x",
+                    name: "Clock",
+                    titleNonEmpty: false,
+                    titlePreview: "",
+                    frame: .synthetic(paintable: false)
+                )
             ],
-            managerHasVisibleTitleOrImage: false
+            managerHasVisibleTitleOrImage: false,
+            managerFrame: .synthetic(paintable: false)
         )
         let failures = snapshot.validationFailures(requireEnabledApplet: true)
         XCTAssertTrue(failures.contains(where: { $0.contains("bootstrap") }))
         XCTAssertTrue(failures.contains(where: { $0.contains("manager status item") }))
+        XCTAssertTrue(failures.contains(where: { $0.contains("manager status item frame") }))
         XCTAssertTrue(failures.contains(where: { $0.contains("no managed status item") }))
         XCTAssertTrue(failures.contains(where: { $0.contains("title unexpectedly empty") }))
+        XCTAssertTrue(failures.contains(where: { $0.contains("applet item frame") }))
     }
 
     func testHealthyDiagnosticsPass() {
@@ -65,10 +74,43 @@ final class ManagerPopoverSizingTests: XCTestCase {
             enabledAppletCount: 1,
             managedAppletItemCount: 1,
             appletItems: [
-                .init(appletID: "x", name: "Clock", titleNonEmpty: true, titlePreview: "12:00")
+                .init(
+                    appletID: "x",
+                    name: "Clock",
+                    titleNonEmpty: true,
+                    titlePreview: "12:00",
+                    frame: .synthetic(paintable: true)
+                )
             ],
-            managerHasVisibleTitleOrImage: true
+            managerHasVisibleTitleOrImage: true,
+            managerFrame: .synthetic(paintable: true)
         )
         XCTAssertTrue(snapshot.validationFailures(requireEnabledApplet: true).isEmpty)
+    }
+
+    func testNonPaintableFrameFailsEvenWhenStatusItemExists() {
+        let snapshot = MenuBarDiagnosticsSnapshot(
+            bootstrapCompleted: true,
+            managerStatusItemInstalled: true,
+            managerItemCount: 1,
+            appletStatusItemManagerAttached: true,
+            enabledAppletCount: 1,
+            managedAppletItemCount: 1,
+            appletItems: [
+                .init(
+                    appletID: "x",
+                    name: "Clock",
+                    titleNonEmpty: true,
+                    titlePreview: "12:00",
+                    frame: .synthetic(paintable: false)
+                )
+            ],
+            managerHasVisibleTitleOrImage: true,
+            managerFrame: .synthetic(paintable: true)
+        )
+
+        let failures = snapshot.validationFailures(requireEnabledApplet: true)
+        XCTAssertEqual(failures.count, 1)
+        XCTAssertTrue(failures[0].contains("applet item frame"))
     }
 }
