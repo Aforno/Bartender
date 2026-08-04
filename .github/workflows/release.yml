@@ -85,10 +85,15 @@ jobs:
           SUMS="dist/release/SHA256SUMS.txt"
           TITLE="Bar Tender ${VERSION} (build ${BUILD_NUMBER}, ad-hoc)"
 
-          # Let GitHub create the tag as part of release creation. If asset upload
-          # fails, a retry is not blocked by a separately pushed orphan tag.
-          gh release create "$TAG" "$ZIP" "$DMG" "$SUMS" \
+          # Let GitHub create the tag as part of release creation. Clean up a
+          # partially-created release/tag when asset upload fails so rerunning the
+          # same immutable build is possible without manual tag surgery.
+          if ! gh release create "$TAG" "$ZIP" "$DMG" "$SUMS" \
             --target "$GITHUB_SHA" \
             --prerelease \
             --title "$TITLE" \
-            --notes-file RELEASE_NOTES.md
+            --notes-file RELEASE_NOTES.md; then
+            printf 'Release creation failed; cleaning partial release/tag %s.\n' "$TAG" >&2
+            gh release delete "$TAG" --yes --cleanup-tag >/dev/null 2>&1 || true
+            exit 1
+          fi
