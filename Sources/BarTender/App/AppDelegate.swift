@@ -7,6 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     let model = AppModel()
     /// Per-tool `NSStatusItem`s; attached at launch, not only when WindowGroup mounts.
     let statusItems = StatusItemManager()
+    /// Wine-glass manager item: left-click composer popover, right-click menu.
+    private(set) lazy var managerStatusItem = ManagerStatusItemController(model: model)
 
     /// Set when the user chooses Quit so automatic terminate attempts are ignored.
     private(set) var userRequestedTerminate = false
@@ -33,8 +35,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
 
         AppActions.shared.model = model
-        // Sole attach site. Delayed first registration lives inside
-        // StatusItemManager; do not re-attach from the main window `.task`.
+        // Manager item first (compact permanent anchor), then per-applet items
+        // with their delayed registration. Sole attach sites — do not re-attach
+        // from the main window `.task`.
+        managerStatusItem.install()
         statusItems.attach(model: model)
         Task { await model.bootstrap() }
         AppLog.app.info("Application did finish launching (activationPolicy=regular)")
@@ -52,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        managerStatusItem.uninstall()
         model.shutdown()
         AppLog.app.info("Application will terminate; runtime tasks cancelled")
     }

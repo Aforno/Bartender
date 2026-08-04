@@ -1,13 +1,11 @@
-import AppKit
 import SwiftUI
 
-/// Window-style menu bar panel with a single message bar for generating new tools.
-struct MenuBarManagerMenu: View {
+/// Compact left-click popover content for the manager status item:
+/// prompt, model selector, send/cancel, and generation feedback only.
+struct ManagerComposerView: View {
     @EnvironmentObject private var model: AppModel
-    @EnvironmentObject private var store: AppletStore
     @EnvironmentObject private var providers: AIProviderService
     @EnvironmentObject private var preferences: AppPreferences
-    @Environment(\.openWindow) private var openWindow
 
     @State private var promptText = ""
 
@@ -49,73 +47,14 @@ struct MenuBarManagerMenu: View {
             if let generation = model.generation {
                 generationFeedback(generation)
             }
-
-            if !store.enabledApplets.isEmpty {
-                Divider()
-                Text("Running tools")
-                    .font(.inter(.caption, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .accessibilityAddTraits(.isHeader)
-
-                ScrollView {
-                    LazyVStack(spacing: 2) {
-                        ForEach(store.enabledApplets) { applet in
-                            Button {
-                                open(applet)
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: applet.iconSystemName)
-                                        .frame(width: 16)
-                                    Text(applet.name)
-                                        .lineLimit(1)
-                                    Spacer()
-                                    Text(model.runtime.snapshots[applet.id]?.title ?? "Waiting")
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("manager-tool.\(applet.id.uuidString)")
-                        }
-                    }
-                }
-                .frame(maxHeight: 210)
-            }
-
-            Divider()
-            HStack {
-                Button("Open Bar Tender", action: openMainWindow)
-                Button("Provider Setup…") {
-                    model.showingProviderSetup = true
-                    openMainWindow()
-                }
-                Spacer()
-                Button("Quit and Stop Tools") {
-                    AppDelegate.requestQuit()
-                }
-            }
-            .font(.inter(.caption))
-
-            Text("Closing the window keeps tools running; quitting stops them.")
-                .font(.inter(.caption2))
-                .foregroundStyle(.tertiary)
         }
         .padding(.horizontal, PremiumStyle.space12)
         .padding(.vertical, PremiumStyle.space8)
         .frame(width: 360)
+        .fixedSize(horizontal: true, vertical: true)
         .onAppear {
-            AppLog.menuBar.info("Opened Bar Tender menu bar panel")
+            AppLog.menuBar.info("Opened Bar Tender manager composer")
         }
-    }
-
-    private func open(_ applet: AppletManifest) {
-        model.selection = applet.id
-        openMainWindow()
-    }
-
-    private func openMainWindow() {
-        MainWindowRouter.open(using: openWindow)
     }
 
     // MARK: - Actions
@@ -129,7 +68,7 @@ struct MenuBarManagerMenu: View {
     private func createFromMenuBar() async {
         let prompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }
-        AppLog.menuBar.info("Submitting menu bar prompt")
+        AppLog.menuBar.info("Submitting manager composer prompt")
         await model.createNewToolFromPrompt(prompt)
         if model.generation?.phase == .succeeded {
             promptText = ""

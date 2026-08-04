@@ -84,18 +84,9 @@ struct BarTenderApp: App {
             }
         }
 
-        // Manager status item: prompt + library without opening the main window.
-        MenuBarExtra("Bar Tender", systemImage: "wineglass") {
-            MenuBarManagerMenu()
-                .tint(PremiumStyle.brand)
-                .font(.inter(.body))
-                .environmentObject(appDelegate.model)
-                .environmentObject(appDelegate.model.store)
-                .environmentObject(appDelegate.model.runtime)
-                .environmentObject(appDelegate.model.providers)
-                .environmentObject(appDelegate.model.preferences)
-        }
-        .menuBarExtraStyle(.window)
+        // Manager status item is an AppKit `NSStatusItem` owned by
+        // `ManagerStatusItemController` (installed from AppDelegate), not a
+        // SwiftUI `MenuBarExtra`.
 
         Settings {
             SettingsView()
@@ -111,18 +102,43 @@ struct BarTenderApp: App {
 
 @MainActor
 enum MainWindowRouter {
+    /// Opens or focuses the main window using a stored `OpenWindowAction` when
+    /// recreation is needed (window fully closed).
     static func open(using openWindow: OpenWindowAction) {
-        AppDelegate.prepareForMainWindow()
-
-        if let window = NSApp.windows.first(where: isMainWindow) {
-            if window.isMiniaturized {
-                window.deminiaturize(nil)
-            }
-            window.makeKeyAndOrderFront(nil)
+        if focusExistingMainWindow() {
             return
         }
-
+        AppDelegate.prepareForMainWindow()
         openWindow(id: "main")
+    }
+
+    /// AppKit-safe path: focus an existing main window, otherwise invoke the
+    /// stored `OpenWindowAction` from `AppActions` (set when the window first mounts).
+    @discardableResult
+    static func openMainWindow() -> Bool {
+        if focusExistingMainWindow() {
+            return true
+        }
+        AppDelegate.prepareForMainWindow()
+        if let open = AppActions.shared.openWindowAction {
+            open()
+            return true
+        }
+        AppLog.app.error("Cannot open main window: no existing window and no OpenWindowAction")
+        return false
+    }
+
+    @discardableResult
+    private static func focusExistingMainWindow() -> Bool {
+        AppDelegate.prepareForMainWindow()
+        guard let window = NSApp.windows.first(where: isMainWindow) else {
+            return false
+        }
+        if window.isMiniaturized {
+            window.deminiaturize(nil)
+        }
+        window.makeKeyAndOrderFront(nil)
+        return true
     }
 
     static func isMainWindow(_ window: NSWindow) -> Bool {
@@ -142,6 +158,8 @@ private struct MainWindowActionsInstaller: View {
             .accessibilityHidden(true)
             .onAppear {
                 AppActions.shared.model = model
+                // Capture OpenWindowAction so the AppKit manager menu can
+                // recreate the main window after it has been closed.
                 AppActions.shared.openWindowAction = {
                     MainWindowRouter.open(using: openWindow)
                 }

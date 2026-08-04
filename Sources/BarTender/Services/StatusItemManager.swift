@@ -1,7 +1,8 @@
 import AppKit
 import Combine
 
-/// Creates one `NSStatusItem` per enabled applet (SwiftUI SceneBuilder cannot ForEach MenuBarExtra).
+/// Creates one `NSStatusItem` per enabled applet. The wine-glass manager item
+/// is owned separately by `ManagerStatusItemController`.
 @MainActor
 final class StatusItemManager: ObservableObject {
     static let maximumIndividualItems = 8
@@ -350,6 +351,7 @@ final class StatusItemManager: ObservableObject {
 final class AppActions: NSObject {
     static let shared = AppActions()
     weak var model: AppModel?
+    /// Set by the main window when it mounts so a closed window can be recreated.
     var openWindowAction: (() -> Void)?
 
     @objc func toggleTimer(_ sender: NSMenuItem) {
@@ -375,7 +377,25 @@ final class AppActions: NSObject {
         if let id {
             model?.selection = id
         }
+        // Prefer the canonical router (focus existing, else stored OpenWindowAction).
+        if MainWindowRouter.openMainWindow() {
+            return
+        }
+        // Fallback when router could not open (should be rare after first launch).
         openWindowAction?()
+    }
+
+    /// Opens the SwiftUI `Settings` scene via the standard AppKit selector.
+    func openSettings() {
+        NSApp.activate(ignoringOtherApps: true)
+        // SwiftUI Settings scene responds to showSettingsWindow: (macOS 13+).
+        let settingsSelector = Selector(("showSettingsWindow:"))
+        if NSApp.sendAction(settingsSelector, to: nil, from: nil) {
+            return
+        }
+        // Older spelling used by some system builds.
+        let prefsSelector = Selector(("showPreferencesWindow:"))
+        _ = NSApp.sendAction(prefsSelector, to: nil, from: nil)
     }
 
     @objc func toggleEnabled(_ sender: NSMenuItem) {
