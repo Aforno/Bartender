@@ -67,8 +67,11 @@ final class AppPreferences: ObservableObject {
             autoApproveGeneratedToolEdits = defaults.bool(forKey: Keys.autoApproveGeneratedToolEdits)
         }
 
+        // Default to one individual item so the first reliable build is not
+        // clipped by eight variable-length icon+title entries. Users can raise
+        // the cap in Settings once a single square item paints reliably.
         if defaults.object(forKey: Keys.maximumMenuBarItems) == nil {
-            maximumMenuBarItems = StatusItemManager.maximumIndividualItems
+            maximumMenuBarItems = 1
         } else {
             maximumMenuBarItems = min(
                 max(defaults.integer(forKey: Keys.maximumMenuBarItems), 1),

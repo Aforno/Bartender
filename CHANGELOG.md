@@ -6,6 +6,13 @@ All notable user-visible changes are recorded here. Bar Tender follows semantic 
 
 - Added Gemini CLI (`gemini`) and Antigravity CLI (`agy`) as generation providers, with install/auth probing, model catalogs, and branded icons.
 
+## 1.0.1-adhoc — 2026-08-04
+
+- Diagnostic menu-bar release: only `AppDelegate` attaches status items; reattach is ignored while the delayed first registration is pending (avoids racing Control Center).
+- Default to one square, icon-only individual applet status item so clipping is less likely; raise the cap in Settings when needed.
+- Migrated bundle identifier to `io.github.aforno.bartender.v2` (build 2) so macOS 26 Control Center host tracking starts clean. Applet library under Application Support is unchanged; preferences and Launch at Login reset.
+- Removed unsupported `NSStatusItem Visible*` / `VisibleCC*` UserDefaults resets and `orderFrontRegardless()` workarounds.
+
 ## 1.0.0-adhoc — 2026-07-24
 
 - Published the first downloadable universal ZIP/DMG as an **ad-hoc prerelease** (no Developer ID signature or notarization). Install requires a one-time Gatekeeper bypass (Control-click → Open).

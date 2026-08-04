@@ -28,10 +28,10 @@ struct BarTenderApp: App {
                 .environmentObject(appDelegate.model.preferences)
                 .task {
                     // Main window is open: use a regular app activation policy (Dock + menus).
+                    // Status items attach only from AppDelegate — a second attach here
+                    // used to force an immediate rebuild and defeat the delayed first
+                    // registration that avoids the macOS 26 Control Center race.
                     AppDelegate.prepareForMainWindow()
-                    // Re-attach/rebuild when the main window appears (idempotent).
-                    // Primary attach + bootstrap happen in applicationDidFinishLaunching.
-                    appDelegate.statusItems.attach(model: appDelegate.model)
                     AppActions.shared.model = appDelegate.model
                     await appDelegate.model.bootstrap()
                 }

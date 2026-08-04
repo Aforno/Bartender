@@ -33,6 +33,8 @@ final class StatusItemManagerTests: XCTestCase {
         _ = try store.upsert(makeManifest(name: "Disabled", enabled: false))
 
         let model = makeModel(store: store)
+        // Default cap is 1; raise so both enabled tools get individual items.
+        model.preferences.maximumMenuBarItems = 2
         let manager = StatusItemManager()
 
         XCTAssertFalse(manager.isAttached)
@@ -43,6 +45,22 @@ final class StatusItemManagerTests: XCTestCase {
         XCTAssertTrue(manager.isAttached)
         XCTAssertEqual(manager.managedItemCount, 2)
         XCTAssertEqual(manager.managedAppletIDs, [first.id, second.id])
+    }
+
+    func testDefaultPreferenceCreatesOnlyOneIndividualItem() throws {
+        let store = AppletStore(fileURL: temporaryDirectory.appendingPathComponent("default-one.json"))
+        _ = try store.upsert(makeManifest(name: "One"))
+        _ = try store.upsert(makeManifest(name: "Two"))
+        _ = try store.upsert(makeManifest(name: "Three"))
+
+        let model = makeModel(store: store)
+        XCTAssertEqual(model.preferences.maximumMenuBarItems, 1)
+
+        let manager = StatusItemManager()
+        manager.attach(model: model)
+
+        XCTAssertEqual(manager.managedItemCount, 1)
+        XCTAssertEqual(manager.managedAppletIDs, Set([store.enabledApplets[0].id]))
     }
 
     func testReattachIsIdempotentAndRebuildsFromStore() throws {
@@ -57,6 +75,22 @@ final class StatusItemManagerTests: XCTestCase {
         XCTAssertTrue(manager.isAttached)
         XCTAssertEqual(manager.managedItemCount, 1)
         XCTAssertEqual(manager.managedAppletIDs, [tool.id])
+    }
+
+    func testReattachWhileInitialRegistrationPendingIsIgnored() throws {
+        StatusItemManager.initialRegistrationDelay = 10
+
+        let store = AppletStore(fileURL: temporaryDirectory.appendingPathComponent("pending.json"))
+        _ = try store.upsert(makeManifest(name: "Pending"))
+        let model = makeModel(store: store)
+        let manager = StatusItemManager()
+
+        manager.attach(model: model)
+        XCTAssertTrue(manager.isAttached)
+        XCTAssertEqual(manager.managedItemCount, 0, "items must not register before the delay")
+
+        manager.attach(model: model)
+        XCTAssertEqual(manager.managedItemCount, 0, "reattach must not force an early rebuild")
     }
 
     func testRebuildRemovesStatusItemWhenToolDisabled() throws {
@@ -82,10 +116,14 @@ final class StatusItemManagerTests: XCTestCase {
             _ = try store.upsert(makeManifest(name: "Cap \(index)"))
         }
         let model = makeModel(store: store)
+        model.preferences.maximumMenuBarItems = StatusItemManager.maximumIndividualItems
         let manager = StatusItemManager()
         manager.attach(model: model)
 
-        let visible = StatusItemManager.individuallyVisible(from: store.enabledApplets)
+        let visible = StatusItemManager.individuallyVisible(
+            from: store.enabledApplets,
+            limit: StatusItemManager.maximumIndividualItems
+        )
         XCTAssertEqual(store.enabledApplets.count, StatusItemManager.maximumIndividualItems + 3)
         XCTAssertEqual(visible.count, StatusItemManager.maximumIndividualItems)
         XCTAssertEqual(manager.managedItemCount, StatusItemManager.maximumIndividualItems)
@@ -113,6 +151,7 @@ final class StatusItemManagerTests: XCTestCase {
             _ = try store.upsert(makeManifest(name: "Pref \(index)"))
         }
         let model = makeModel(store: store)
+        model.preferences.maximumMenuBarItems = 3
         let manager = StatusItemManager()
         manager.attach(model: model)
         XCTAssertEqual(manager.managedItemCount, 3)
@@ -146,6 +185,7 @@ final class StatusItemManagerTests: XCTestCase {
         XCTAssertEqual(firstName, StatusItemManager.autosaveName(for: firstID))
         XCTAssertNotEqual(firstName, secondName)
         XCTAssertTrue(firstName.contains(firstID.uuidString.lowercased()))
+        XCTAssertTrue(firstName.hasPrefix("io.github.aforno.bartender.v2.applet."))
     }
 
     private func makeModel(store: AppletStore) -> AppModel {

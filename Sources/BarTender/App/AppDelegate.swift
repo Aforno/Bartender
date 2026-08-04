@@ -32,15 +32,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
 
-        // macOS can persist `NSStatusItem Visible*` / `VisibleCC*` = false for
-        // this bundle (e.g. after a menu-bar manager hid extras, or after an
-        // earlier autosave identity was removed). That leaves items registered
-        // and clickable via Accessibility while never painting on the menu bar.
-        StatusItemManager.clearPoisonedVisibilityDefaults()
-
         AppActions.shared.model = model
-        // Create status items on this turn — same pattern as a pure AppKit
-        // menu-bar agent (deferred creation was still ending up undrawn).
+        // Sole attach site. Delayed first registration lives inside
+        // StatusItemManager; do not re-attach from the main window `.task`.
         statusItems.attach(model: model)
         Task { await model.bootstrap() }
         AppLog.app.info("Application did finish launching (activationPolicy=regular)")
