@@ -180,7 +180,7 @@ final class StatusItemManager: ObservableObject {
             )
             button.image?.isTemplate = true
             button.imagePosition = .imageLeading
-            button.imageHugsTitle = true
+            button.imageHugsTitle = false
         }
         forceVisible(item)
         let menu = NSMenu()
@@ -246,11 +246,23 @@ final class StatusItemManager: ObservableObject {
                 fallback.isTemplate = true
                 image = fallback
             }
-            button.font = NSFont.menuBarFont(ofSize: 0)
+
+            let fontSize = NSFont.systemFontSize
+            let symbolConfiguration = NSImage.SymbolConfiguration(
+                pointSize: fontSize,
+                weight: .medium
+            )
+            image = image?.withSymbolConfiguration(symbolConfiguration) ?? image
+            image?.isTemplate = true
+
+            button.font = NSFont.monospacedDigitSystemFont(
+                ofSize: fontSize,
+                weight: .medium
+            )
             button.image = image
-            button.title = label
+            button.title = "\u{00A0}\(label)"
             button.imagePosition = .imageLeading
-            button.imageHugsTitle = true
+            button.imageHugsTitle = false
             button.toolTip = "\(applet.name): \(snapshot.statusText)"
             button.setAccessibilityLabel(applet.name)
             button.setAccessibilityValue(label)
