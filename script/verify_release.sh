@@ -94,7 +94,17 @@ fi
 
 if [[ -n "$DMG_PATH" ]]; then
   [[ -f "$DMG_PATH" ]] || { printf 'DMG not found: %s\n' "$DMG_PATH" >&2; exit 1; }
-  /usr/bin/hdiutil verify "$DMG_PATH"
+  # hdiutil create can leave diskimages-helper briefly busy; retry transient
+  # "Resource temporarily unavailable" failures common on CI runners.
+  verify_attempts=0
+  until /usr/bin/hdiutil verify "$DMG_PATH"; do
+    verify_attempts=$((verify_attempts + 1))
+    if (( verify_attempts >= 5 )); then
+      printf 'hdiutil verify failed for %s after %d attempts\n' "$DMG_PATH" "$verify_attempts" >&2
+      exit 1
+    fi
+    sleep $((verify_attempts * 2))
+  done
   if $DISTRIBUTION; then
     /usr/sbin/spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG_PATH"
     xcrun stapler validate "$DMG_PATH"
