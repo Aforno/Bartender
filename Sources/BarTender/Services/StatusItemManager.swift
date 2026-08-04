@@ -1,7 +1,8 @@
 import AppKit
 import Combine
 
-/// Creates one `NSStatusItem` per enabled applet (SwiftUI SceneBuilder cannot ForEach MenuBarExtra).
+/// Creates one `NSStatusItem` per enabled applet. The wine-glass manager item
+/// is owned separately by `ManagerStatusItemController`.
 @MainActor
 final class StatusItemManager: ObservableObject {
     static let maximumIndividualItems = 8
@@ -9,11 +10,18 @@ final class StatusItemManager: ObservableObject {
     /// Initial attach defers the first registration to avoid racing Control
     /// Center's teardown of the previous instance (macOS 26). Tests set this
     /// to zero so creation stays synchronous.
-    static var initialRegistrationDelay: TimeInterval = 0.75
+    /// Backed by `StatusItemRegistrationTiming.appletInitialDelay`.
+    static var initialRegistrationDelay: TimeInterval {
+        get { StatusItemRegistrationTiming.appletInitialDelay }
+        set { StatusItemRegistrationTiming.appletInitialDelay = newValue }
+    }
 
     private weak var model: AppModel?
     private var items: [UUID: NSStatusItem] = [:]
     private var cancellables = Set<AnyCancellable>()
+    /// Prevents a second `attach` (e.g. main-window `.task`) from forcing an
+    /// immediate rebuild before the delayed first registration completes.
+    private var didCompleteInitialRegistration = false
 
     /// Whether `attach(model:)` has installed store/runtime subscriptions.
     var isAttached: Bool { model != nil && !cancellables.isEmpty }
@@ -24,16 +32,46 @@ final class StatusItemManager: ObservableObject {
     /// Applet IDs that currently have an individual status item.
     var managedAppletIDs: Set<UUID> { Set(items.keys) }
 
+    /// Whether the delayed first registration has finished.
+    var hasCompletedInitialRegistration: Bool { didCompleteInitialRegistration }
+
+    /// Diagnostic rows for each managed status item (titles and geometry for smoke tests).
+    func appletItemDiagnostics() -> [MenuBarDiagnosticsSnapshot.AppletItemDiagnostic] {
+        guard let model else { return [] }
+        return items.keys.sorted { $0.uuidString < $1.uuidString }.compactMap { id in
+            guard let applet = model.store.applet(id: id),
+                  let item = items[id] else { return nil }
+            let rawTitle = item.button?.title ?? ""
+            // Status titles include a leading non-breaking space before the label.
+            let trimmed = rawTitle
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "\u{00A0}", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let preview = String(trimmed.prefix(48))
+            return MenuBarDiagnosticsSnapshot.AppletItemDiagnostic(
+                appletID: id.uuidString,
+                name: applet.name,
+                titleNonEmpty: !trimmed.isEmpty,
+                titlePreview: preview,
+                frame: .capture(button: item.button)
+            )
+        }
+    }
+
     func attach(model: AppModel) {
         if self.model === model, !cancellables.isEmpty {
-            // Already attached: reconcile in place. Destroying and recreating
-            // the AppKit items here strands them without a menu-bar slot.
+            // Already attached: ignore until the delayed first registration
+            // finishes, then reconcile in place. Destroying/recreating items
+            // here strands them without a menu-bar slot.
+            guard didCompleteInitialRegistration else { return }
+
             rebuild(enabled: model.store.enabledApplets)
             refreshAll(snapshots: model.runtime.snapshots)
             return
         }
 
         self.model = model
+        didCompleteInitialRegistration = false
         cancellables.removeAll()
 
         // A lower cap frees menu-bar space; rebuilding here keeps the live
@@ -42,8 +80,8 @@ final class StatusItemManager: ObservableObject {
             .dropFirst()
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                guard let model = self?.model else { return }
-                self?.rebuild(enabled: model.store.enabledApplets)
+                guard let self, self.didCompleteInitialRegistration, let model = self.model else { return }
+                self.rebuild(enabled: model.store.enabledApplets)
             }
             .store(in: &cancellables)
 
@@ -53,7 +91,8 @@ final class StatusItemManager: ObservableObject {
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] enabled in
-                self?.rebuild(enabled: enabled)
+                guard let self, self.didCompleteInitialRegistration else { return }
+                self.rebuild(enabled: enabled)
             }
             .store(in: &cancellables)
 
@@ -61,7 +100,8 @@ final class StatusItemManager: ObservableObject {
             .dropFirst()
             .receive(on: RunLoop.main)
             .sink { [weak self] snapshots in
-                self?.refreshAll(snapshots: snapshots)
+                guard let self, self.didCompleteInitialRegistration else { return }
+                self.refreshAll(snapshots: snapshots)
             }
             .store(in: &cancellables)
 
@@ -70,28 +110,28 @@ final class StatusItemManager: ObservableObject {
         // immediately races that teardown and often lands the item in CC's
         // blocked/offscreen state for the whole session; a short delay lets
         // the system finish before the new host is registered.
-        let initialBuild = { [weak self] in
-            guard let self, let model = self.model else { return }
-            self.rebuild(enabled: model.store.enabledApplets)
-            self.refreshAll(snapshots: model.runtime.snapshots)
-        }
         let delay = Self.initialRegistrationDelay
         if delay > 0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                initialBuild()
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, let model = self.model else { return }
+                self.didCompleteInitialRegistration = true
+                self.rebuild(enabled: model.store.enabledApplets)
+                self.refreshAll(snapshots: model.runtime.snapshots)
             }
         } else {
-            initialBuild()
+            didCompleteInitialRegistration = true
+            rebuild(enabled: model.store.enabledApplets)
+            refreshAll(snapshots: model.runtime.snapshots)
         }
         let enabled = model.store.enabledApplets
         AppLog.menuBar.info(
-            "Attached status item manager; \(enabled.count, privacy: .public) of \(model.store.applets.count, privacy: .public) applets enabled, cap \(Self.maximumIndividualItems, privacy: .public)"
+            "Attached status item manager; \(enabled.count, privacy: .public) of \(model.store.applets.count, privacy: .public) applets enabled, cap \(model.preferences.maximumMenuBarItems, privacy: .public)"
         )
     }
 
     /// Effective per-applet cap, derived from the user preference (clamped).
     private var individualItemLimit: Int {
-        guard let model else { return Self.maximumIndividualItems }
+        guard let model else { return 1 }
         return min(max(model.preferences.maximumMenuBarItems, 1), Self.maximumIndividualItems)
     }
 
@@ -123,6 +163,13 @@ final class StatusItemManager: ObservableObject {
         for applet in enabled {
             if items[applet.id] == nil {
                 items[applet.id] = makeStatusItem(for: applet.id)
+                let frame = items[applet.id]?.button?.window?.frame
+                StatusItemRegistrationTiming.logAppletInstall(
+                    appletName: applet.name,
+                    createdAt: Date(),
+                    autosaveName: Self.autosaveName(for: applet.id),
+                    frame: frame
+                )
                 AppLog.menuBar.info("Created status item for \(applet.name, privacy: .public)")
             }
             // Enabled means present in the menu bar. Reassert after AppKit may
@@ -137,13 +184,15 @@ final class StatusItemManager: ObservableObject {
             )
         }
 
-        let visibleCount = items.values.lazy.filter(\.isVisible).count
+        // Note: `isVisible` is true even when Control Center has clipped the
+        // item for lack of menu-bar space — it is not proof the item is painted.
+        let reportedVisible = items.values.lazy.filter(\.isVisible).count
         let zeroSized = items.values.filter { item in
             guard let frame = item.button?.window?.frame else { return true }
             return frame.width < 1 || frame.height < 1
         }.count
         AppLog.menuBar.info(
-            "Reconciled \(self.items.count, privacy: .public) status items; \(visibleCount, privacy: .public) visible; \(zeroSized, privacy: .public) zero-sized windows"
+            "Reconciled \(self.items.count, privacy: .public) status items; \(reportedVisible, privacy: .public) isVisible=true (not space-proof); \(zeroSized, privacy: .public) zero-sized windows"
         )
     }
 
@@ -152,41 +201,25 @@ final class StatusItemManager: ObservableObject {
     }
 
     static func autosaveName(for appletID: UUID) -> String {
-        // v2: unique per-applet identity. macOS 26 Control Center persists
-        // hidden/blocked state keyed by this name; a fresh name dodges that.
+        // Unique per-applet identity. Bundle id v2 + name prefix keep Control
+        // Center from reusing a previously blocked host tracking state.
         "io.github.aforno.bartender.v2.applet.\(appletID.uuidString.lowercased())"
     }
 
-    /// Resets persisted “hidden from menu bar” flags for this process’s
-    /// status items. Called at launch before creating any `NSStatusItem`s.
-    static func clearPoisonedVisibilityDefaults() {
-        let defaults = UserDefaults.standard
-        let persistent = defaults.dictionaryRepresentation()
-        var cleared = 0
-        for key in persistent.keys where key.hasPrefix("NSStatusItem Visible") {
-            // Only reset entries that hide an item.
-            if (persistent[key] as? NSNumber)?.boolValue == false {
-                defaults.set(true, forKey: key)
-                cleared += 1
-            }
-        }
-        if cleared > 0 {
-            AppLog.menuBar.info(
-                "Reset \(cleared, privacy: .public) hidden NSStatusItem visibility defaults"
-            )
-        }
-    }
-
     private func makeStatusItem(for appletID: UUID) -> NSStatusItem {
-        // Unique autosave name when owning multiple items. Persisted visibility
-        // must be written BEFORE assigning `autosaveName`: AppKit restores the
-        // stored state at assignment time, so a stale `false` (user drag-off,
-        // menu-bar manager, VisibleCC=0) would otherwise hide the new item.
-        let name = Self.autosaveName(for: appletID)
-        UserDefaults.standard.set(true, forKey: "NSStatusItem Visible \(name)")
-        UserDefaults.standard.set(true, forKey: "NSStatusItem VisibleCC \(name)")
+        // The default cap is one item, so a compact icon + live value fits
+        // without returning to the previous eight-item clipping problem.
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.autosaveName = name
+        item.autosaveName = Self.autosaveName(for: appletID)
+        if let button = item.button {
+            button.image = NSImage(
+                systemSymbolName: "circle.fill",
+                accessibilityDescription: "Bar Tender applet"
+            )
+            button.image?.isTemplate = true
+            button.imagePosition = .imageLeading
+            button.imageHugsTitle = false
+        }
         forceVisible(item)
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -197,7 +230,6 @@ final class StatusItemManager: ObservableObject {
     private func forceVisible(_ item: NSStatusItem?) {
         guard let item else { return }
         item.isVisible = true
-        // Re-assert variable length in case AppKit collapsed a restored item to 0.
         if item.length == 0 {
             item.length = NSStatusItem.variableLength
         }
@@ -206,12 +238,8 @@ final class StatusItemManager: ObservableObject {
             button.alphaValue = 1
             button.isEnabled = true
             button.appearsDisabled = false
+            button.needsLayout = true
             button.needsDisplay = true
-            if let window = button.window {
-                window.alphaValue = 1
-                window.isOpaque = false
-                window.orderFrontRegardless()
-            }
         }
     }
 
@@ -243,12 +271,10 @@ final class StatusItemManager: ObservableObject {
                 isValidating: model.isValidatingExecution(applet)
             )
             let title = TitleRenderer.statusItemTitle(snapshot.title, runState: runState)
-            let symbolName = applet.iconSystemName
-            var image = NSImage(systemSymbolName: symbolName, accessibilityDescription: applet.name)
+            let label = title.isEmpty ? applet.name : title
+            var image = NSImage(systemSymbolName: applet.iconSystemName, accessibilityDescription: applet.name)
                 ?? NSImage(systemSymbolName: "circle.fill", accessibilityDescription: applet.name)
             image?.isTemplate = true
-            // If AppKit fails to produce a symbol, paint a solid disc so the
-            // item never collapses to an empty, undrawable control.
             if image == nil {
                 let fallback = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { rect in
                     NSColor.labelColor.setFill()
@@ -258,10 +284,20 @@ final class StatusItemManager: ObservableObject {
                 fallback.isTemplate = true
                 image = fallback
             }
-            button.font = NSFont.menuBarFont(ofSize: 0)
+
+            let fontSize = NSFont.systemFontSize
+            let symbolConfiguration = NSImage.SymbolConfiguration(
+                pointSize: fontSize,
+                weight: .medium
+            )
+            image = image?.withSymbolConfiguration(symbolConfiguration) ?? image
+            image?.isTemplate = true
+
+            button.font = NSFont.monospacedDigitSystemFont(
+                ofSize: fontSize,
+                weight: .medium
+            )
             button.image = image
-            let label = title.isEmpty ? applet.name : title
-            // Leading non-breaking space keeps title from being clipped by the icon.
             button.title = "\u{00A0}\(label)"
             button.imagePosition = .imageLeading
             button.imageHugsTitle = false
@@ -269,8 +305,9 @@ final class StatusItemManager: ObservableObject {
             button.setAccessibilityLabel(applet.name)
             button.setAccessibilityValue(label)
             button.setAccessibilityHelp(snapshot.statusText)
-            // Ensure AppKit allocates a non-zero status-item width after content change.
             item.length = NSStatusItem.variableLength
+            button.needsLayout = true
+            button.needsDisplay = true
             forceVisible(item)
         } else {
             AppLog.menuBar.error(
@@ -351,7 +388,19 @@ final class StatusItemManager: ObservableObject {
 final class AppActions: NSObject {
     static let shared = AppActions()
     weak var model: AppModel?
+    /// Set by the main window when it mounts so a closed window can be recreated.
     var openWindowAction: (() -> Void)?
+
+    /// Installs the SwiftUI `openWindow` recreation path (main window, commands).
+    func installOpenWindowAction(_ action: @escaping () -> Void) {
+        openWindowAction = action
+    }
+
+    /// Clears process-wide action state between tests.
+    func resetForTesting() {
+        model = nil
+        openWindowAction = nil
+    }
 
     @objc func toggleTimer(_ sender: NSMenuItem) {
         guard let id = uuid(from: sender),
@@ -376,7 +425,31 @@ final class AppActions: NSObject {
         if let id {
             model?.selection = id
         }
-        openWindowAction?()
+        AppDelegate.prepareForMainWindow()
+        // Prefer the canonical router (focus existing, else stored OpenWindowAction).
+        if MainWindowRouter.openMainWindow() {
+            return
+        }
+        // Fallback when router could not open (first open after a silent launch).
+        if let openWindowAction {
+            openWindowAction()
+            return
+        }
+        // Last resort: ask any mounted SwiftUI host to open the main window.
+        NotificationCenter.default.post(name: .bartenderOpenMainWindow, object: nil)
+    }
+
+    /// Opens the SwiftUI `Settings` scene via the standard AppKit selector.
+    func openSettings() {
+        NSApp.activate(ignoringOtherApps: true)
+        // SwiftUI Settings scene responds to showSettingsWindow: (macOS 13+).
+        let settingsSelector = Selector(("showSettingsWindow:"))
+        if NSApp.sendAction(settingsSelector, to: nil, from: nil) {
+            return
+        }
+        // Older spelling used by some system builds.
+        let prefsSelector = Selector(("showPreferencesWindow:"))
+        _ = NSApp.sendAction(prefsSelector, to: nil, from: nil)
     }
 
     @objc func toggleEnabled(_ sender: NSMenuItem) {

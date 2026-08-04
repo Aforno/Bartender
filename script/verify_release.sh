@@ -32,7 +32,7 @@ RESOURCE_BUNDLE="$APP_BUNDLE/Contents/Resources/BarTender_BarTender.bundle"
 BUNDLE_ID="$(plutil -extract CFBundleIdentifier raw "$INFO_PLIST")"
 VERSION="$(plutil -extract CFBundleShortVersionString raw "$INFO_PLIST")"
 BUILD_NUMBER="$(plutil -extract CFBundleVersion raw "$INFO_PLIST")"
-[[ "$BUNDLE_ID" == "io.github.aforno.bartender" ]] || { printf 'Unexpected bundle identifier: %s\n' "$BUNDLE_ID" >&2; exit 1; }
+[[ "$BUNDLE_ID" == "io.github.aforno.bartender.v2" ]] || { printf 'Unexpected bundle identifier: %s\n' "$BUNDLE_ID" >&2; exit 1; }
 [[ "$VERSION" == "$(tr -d '[:space:]' < "$ROOT_DIR/VERSION")" ]] || { printf 'Version mismatch: %s\n' "$VERSION" >&2; exit 1; }
 [[ "$BUILD_NUMBER" == "$(tr -d '[:space:]' < "$ROOT_DIR/BUILD_NUMBER")" ]] || { printf 'Build mismatch: %s\n' "$BUILD_NUMBER" >&2; exit 1; }
 [[ -f "$APP_BUNDLE/Contents/Resources/Assets.car" ]] || { printf '%s\n' 'Compiled asset catalog is missing.' >&2; exit 1; }
@@ -94,7 +94,17 @@ fi
 
 if [[ -n "$DMG_PATH" ]]; then
   [[ -f "$DMG_PATH" ]] || { printf 'DMG not found: %s\n' "$DMG_PATH" >&2; exit 1; }
-  /usr/bin/hdiutil verify "$DMG_PATH"
+  # hdiutil create can leave diskimages-helper briefly busy; retry transient
+  # "Resource temporarily unavailable" failures common on CI runners.
+  verify_attempts=0
+  until /usr/bin/hdiutil verify "$DMG_PATH"; do
+    verify_attempts=$((verify_attempts + 1))
+    if (( verify_attempts >= 5 )); then
+      printf 'hdiutil verify failed for %s after %d attempts\n' "$DMG_PATH" "$verify_attempts" >&2
+      exit 1
+    fi
+    sleep $((verify_attempts * 2))
+  done
   if $DISTRIBUTION; then
     /usr/sbin/spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG_PATH"
     xcrun stapler validate "$DMG_PATH"

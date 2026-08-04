@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP_NAME="BarTender"
-BUNDLE_ID="io.github.aforno.bartender"
+BUNDLE_ID="io.github.aforno.bartender.v2"
 MIN_SYSTEM_VERSION="26.0"
 SIGNING_IDENTITY="${BARTENDER_SIGNING_IDENTITY:-}"
 NOTARY_PROFILE="${BARTENDER_NOTARY_PROFILE:-}"

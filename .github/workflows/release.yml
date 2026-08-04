@@ -4,8 +4,9 @@ name: Release (ad-hoc)
 # membership. Artifacts are not Developer ID signed or notarized. Users must
 # bypass Gatekeeper on first launch. See RELEASE_NOTES.md.
 #
-# Every push to main rebuilds the universal package and creates or updates the
-# GitHub prerelease for the tag matching VERSION (v<VERSION>).
+# Every push to main packages a universal build and creates one immutable GitHub
+# prerelease for tag v<VERSION>+build.<BUILD_NUMBER>. Either VERSION or
+# BUILD_NUMBER must change before another binary can be published.
 
 on:
   push:
@@ -27,6 +28,40 @@ jobs:
     steps:
       - name: Check out main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Validate release identity is unique
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          BUILD_NUMBER="$(tr -d '[:space:]' < BUILD_NUMBER)"
+          TAG="v${VERSION}+build.${BUILD_NUMBER}"
+
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || {
+            printf 'Invalid VERSION %s (expected semantic version).\n' "$VERSION" >&2
+            exit 1
+          }
+          [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
+            printf 'Invalid BUILD_NUMBER %s (expected positive integer).\n' "$BUILD_NUMBER" >&2
+            exit 1
+          }
+
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            EXISTING_SHA="$(git rev-list -n 1 "refs/tags/${TAG}")"
+            printf 'Release tag %s already exists for commit %s. Bump VERSION or BUILD_NUMBER before publishing.\n' \
+              "$TAG" "$EXISTING_SHA" >&2
+            exit 1
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            printf 'GitHub release %s already exists. Bump VERSION or BUILD_NUMBER before publishing.\n' "$TAG" >&2
+            exit 1
+          fi
+
+          printf 'Release identity OK: tag=%s version=%s build=%s\n' "$TAG" "$VERSION" "$BUILD_NUMBER"
 
       - name: Build ad-hoc universal release
         run: ./script/package_release.sh --adhoc --skip-notarization --arch universal
@@ -37,30 +72,28 @@ jobs:
       - name: Mount, copy, and launch the DMG
         run: ./script/install_smoke_test.sh "dist/release/BarTender-$(tr -d '[:space:]' < VERSION).dmg"
 
-      - name: Publish or update prerelease assets
+      - name: Publish immutable prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           VERSION="$(tr -d '[:space:]' < VERSION)"
-          TAG="v${VERSION}"
+          BUILD_NUMBER="$(tr -d '[:space:]' < BUILD_NUMBER)"
+          TAG="v${VERSION}+build.${BUILD_NUMBER}"
           ZIP="dist/release/BarTender-${VERSION}.zip"
           DMG="dist/release/BarTender-${VERSION}.dmg"
           SUMS="dist/release/SHA256SUMS.txt"
+          TITLE="Bar Tender ${VERSION} (build ${BUILD_NUMBER}, ad-hoc)"
 
-          # Point the version tag at this commit so the release tracks main.
-          git tag -f "$TAG" "$GITHUB_SHA"
-          git push origin "refs/tags/${TAG}" --force
-
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$ZIP" "$DMG" "$SUMS" --clobber
-            gh release edit "$TAG" \
-              --title "Bar Tender ${VERSION} (ad-hoc)" \
-              --notes-file RELEASE_NOTES.md \
-              --prerelease
-          else
-            gh release create "$TAG" "$ZIP" "$DMG" "$SUMS" \
-              --prerelease \
-              --title "Bar Tender ${VERSION} (ad-hoc)" \
-              --notes-file RELEASE_NOTES.md
+          # Let GitHub create the tag as part of release creation. Clean up a
+          # partially-created release/tag when asset upload fails so rerunning the
+          # same immutable build is possible without manual tag surgery.
+          if ! gh release create "$TAG" "$ZIP" "$DMG" "$SUMS" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "$TITLE" \
+            --notes-file RELEASE_NOTES.md; then
+            printf 'Release creation failed; cleaning partial release/tag %s.\n' "$TAG" >&2
+            gh release delete "$TAG" --yes --cleanup-tag >/dev/null 2>&1 || true
+            exit 1
           fi

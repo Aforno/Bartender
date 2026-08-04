@@ -1,6 +1,14 @@
-# Bar Tender 1.0.0-adhoc
+# Bar Tender 1.0.1-adhoc
 
 Bar Tender turns a plain-language request into a dedicated macOS menu bar tool using an already installed Codex, Claude, Grok, Gemini, or Antigravity (`agy`) CLI.
+
+## Diagnostic focus (this build)
+
+This prerelease isolates menu-bar visibility:
+
+- Bundle identifier is `io.github.aforno.bartender.v2` (fresh Control Center host state).
+- At most one individual applet status item by default, rendered as a compact square icon.
+- Status items attach once from launch; the main window no longer forces an immediate re-registration.
 
 ## Distribution notice (read this)
 

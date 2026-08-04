@@ -177,7 +177,10 @@ final class AppletRuntimeEngine: ObservableObject {
         }
 
         if let end = timerEnds[id] {
-            let remaining = max(0, Int(end.timeIntervalSinceNow))
+            // Use ceil so a positive sub-second remainder pauses as at least 1s
+            // (matches the running loop). Truncating with Int() used to drop
+            // e.g. 0.8s to 0 and treat the timer as finished on pause.
+            let remaining = Self.remainingSeconds(until: end, now: Date())
             timerPausedRemaining[id] = remaining
             timerEnds[id] = nil
             suspendExecutionTask(id: id)
@@ -210,18 +213,27 @@ final class AppletRuntimeEngine: ObservableObject {
         scheduleTimerLoop(manifest)
     }
 
-    static func resumedTimerRemaining(pausedRemaining: Int?, duration: Int) -> Int {
+    nonisolated static func resumedTimerRemaining(pausedRemaining: Int?, duration: Int) -> Int {
         let duration = max(1, duration)
         guard let pausedRemaining, pausedRemaining > 0 else { return duration }
         return pausedRemaining
     }
 
-    static func timerLoopDisposition(
+    /// Whole seconds remaining until `end`, using ceil for any positive fraction
+    /// so sub-second remainders do not collapse to zero on pause/display.
+    /// Already-expired deadlines return 0.
+    nonisolated static func remainingSeconds(until end: Date, now: Date) -> Int {
+        let interval = end.timeIntervalSince(now)
+        if interval <= 0 { return 0 }
+        return max(0, Int(ceil(interval)))
+    }
+
+    nonisolated static func timerLoopDisposition(
         timerEnd: Date?,
         now: Date
     ) -> AppletTimerLoopDisposition {
         guard let timerEnd else { return .idle }
-        let remaining = max(0, Int(ceil(timerEnd.timeIntervalSince(now))))
+        let remaining = remainingSeconds(until: timerEnd, now: now)
         return remaining == 0 ? .completed : .running(remaining: remaining)
     }
 

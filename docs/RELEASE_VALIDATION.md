@@ -1,16 +1,16 @@
 # Release Validation Record
 
 Validation baseline: 2026-07-20
-Automated-gate refresh: 2026-07-30
+Automated-gate refresh: 2026-08-04
 Host: macOS 26.5.1, Apple silicon, Xcode 26 toolchain
 
 ## Automated gates
 
-- `swift test`: 116 tests pass, including provider subprocesses, malformed output, bounded cancellation, revoked authentication downgrade, exact-source approval lifecycle, archive migration and duplicate-ID rejection, runtime-state isolation, process-tree cleanup, 12-tool relaunch, overflow planning, long logs/titles, and model cache/config drift.
-- `swift build -c release`: passes.
+- `swift test`: the suite covers provider subprocesses, malformed output, bounded cancellation, revoked authentication downgrade, exact-source approval lifecycle, archive migration and duplicate-ID rejection, runtime-state isolation, process-tree cleanup, multi-tool relaunch, overflow planning, long logs/titles, model cache/config drift, update-channel selection, timer edge cases, launch mode, provider icon caching, and menu-bar diagnostics.
+- `swift build -c release`: runs in CI for both Apple silicon and Intel.
 - `script/package_release.sh --adhoc --skip-notarization --arch universal`: produces a sealed hardened-runtime app, ZIP, DMG, and SHA-256 list from release binaries.
 - `script/verify_release.sh`: confirms stable bundle identity/version, compiled icon catalog, provider assets, resource schema, strict code seal, runtime flag, and DMG checksum.
-- `script/install_smoke_test.sh`: mounts the DMG read-only, copies the app to a clean temporary Applications directory, launches it, verifies that it remains running, and cleans up.
+- `script/install_smoke_test.sh`: mounts the DMG read-only, copies the app to a clean temporary Applications directory, launches the packaged binary with `--menu-bar-diagnostics` and an isolated smoke library, and fails within a bounded timeout if bootstrap, manager/applet status items, titles, or paintable menu-bar frames do not initialise.
 - The packaged executable is a universal Mach-O containing arm64 and x86_64 slices.
 
 Distribution verification is enforced in the release workflow on every push to `main`. A local Developer ID/Gatekeeper/notarization pass requires the maintainer's certificate and App Store Connect notarization credentials; the repository does not contain those secrets.
@@ -40,4 +40,4 @@ The assembled `.app` was launched and inspected through the macOS accessibility 
 
 ## CI matrix
 
-The committed CI matrix targets macOS 26 on both Apple silicon and Intel. The release workflow on `main` packages the ad-hoc universal app, verifies the sealed layout, smoke-tests the DMG, and publishes or updates the VERSION prerelease assets.
+The committed CI matrix targets macOS 26 on both Apple silicon and Intel, and runs on pushes to `main` and `develop` plus pull requests. The release workflow on `main` only packages the ad-hoc universal app, verifies the sealed layout, smoke-tests the DMG, and publishes an immutable `v<VERSION>+build.<BUILD_NUMBER>` prerelease. Partial release failures are cleaned up so the same build can be retried; existing completed release identities are never replaced.

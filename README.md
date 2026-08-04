@@ -125,7 +125,7 @@ Saved applets are normalized and validated again before startup. Invalid entries
 - Live menu bar preview
 - Inspector for settings (including shell approval)
 - Library of saved applets
-- One live AppKit status item per enabled tool, created as soon as generation succeeds, plus a SwiftUI manager `MenuBarExtra`
+- One live AppKit status item per enabled tool, created as soon as generation succeeds, plus an AppKit wine-glass manager status item (left-click composer, right-click menu)
 - Launch at login, library export/import, provider setup, sanitized diagnostics export, and user-initiated update checks in Settings
 - Explicit close-versus-quit wording: closing the window leaves enabled menu bar tools running; **Quit and Stop Tools** ends them
 
