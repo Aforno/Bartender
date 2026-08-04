@@ -35,7 +35,7 @@ final class StatusItemManager: ObservableObject {
     /// Whether the delayed first registration has finished.
     var hasCompletedInitialRegistration: Bool { didCompleteInitialRegistration }
 
-    /// Diagnostic rows for each managed status item (titles for smoke tests).
+    /// Diagnostic rows for each managed status item (titles and geometry for smoke tests).
     func appletItemDiagnostics() -> [MenuBarDiagnosticsSnapshot.AppletItemDiagnostic] {
         guard let model else { return [] }
         return items.keys.sorted { $0.uuidString < $1.uuidString }.compactMap { id in
@@ -52,7 +52,8 @@ final class StatusItemManager: ObservableObject {
                 appletID: id.uuidString,
                 name: applet.name,
                 titleNonEmpty: !trimmed.isEmpty,
-                titlePreview: preview
+                titlePreview: preview,
+                frame: .capture(button: item.button)
             )
         }
     }
