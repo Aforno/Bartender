@@ -78,17 +78,17 @@ struct MenuBarDiagnosticsSnapshot: Equatable, Sendable, Codable {
             let paintable = nonZero && centerOnScreen && nearScreenTop
             let description = String(
                 format: "x=%.1f y=%.1f w=%.1f h=%.1f centerOnScreen=%@ nearTop=%@",
-                frame.origin.x,
-                frame.origin.y,
-                frame.width,
-                frame.height,
+                Double(frame.origin.x),
+                Double(frame.origin.y),
+                Double(frame.width),
+                Double(frame.height),
                 centerOnScreen ? "true" : "false",
                 nearScreenTop ? "true" : "false"
             )
             return StatusItemFrameDiagnostic(
                 windowPresent: true,
-                width: frame.width,
-                height: frame.height,
+                width: Double(frame.width),
+                height: Double(frame.height),
                 centerOnScreen: centerOnScreen,
                 nearScreenTop: nearScreenTop,
                 appearsPaintable: paintable,
