@@ -8,17 +8,17 @@ Gatekeeper will warn users on first launch. Keep the Control-click → Open flow
 
 Every push to `main` runs the `Release (ad-hoc)` workflow. It:
 
-1. Validates that `VERSION` / `BUILD_NUMBER` are well-formed and that tag `v<VERSION>` does not already exist
+1. Validates that `VERSION` / `BUILD_NUMBER` are well-formed and that tag `v<VERSION>+build.<BUILD_NUMBER>` does not already exist
 2. Packages a universal app with an ad-hoc signature
-3. Verifies the bundle and smoke-tests the DMG (including menu-bar diagnostics)
-4. Creates an **immutable** git tag `v<VERSION>` for that commit (never force-moved)
-5. Creates a matching **prerelease** titled with version and build number, attaching ZIP, DMG, and `SHA256SUMS.txt`
+3. Verifies the bundle and smoke-tests the DMG, including bounded menu-bar diagnostics and status-item frame validation
+4. Creates an **immutable** GitHub prerelease and tag `v<VERSION>+build.<BUILD_NUMBER>` for that commit; the tag is created by the release operation rather than pushed separately
+5. Attaches ZIP, DMG, and `SHA256SUMS.txt`; a failed partial publication is cleaned up so the same build can be retried
 
-Bump `VERSION` and/or `BUILD_NUMBER` before every publish. Reusing a tag or silently replacing assets is rejected.
+Bump `VERSION` and/or `BUILD_NUMBER` before every new publish. Reusing a release identity or silently replacing assets is rejected.
 
 ## Checklist before merging to main
 
-1. Update `VERSION` when the release identity should change (include an `-adhoc` or similar suffix so tags never collide with future signed releases). Increment `BUILD_NUMBER` if needed, and refresh `CHANGELOG.md` / `RELEASE_NOTES.md`.
+1. Update `VERSION` when the release identity should change (include an `-adhoc` or similar suffix so tags never collide with future signed releases). Increment `BUILD_NUMBER` for each new binary, and refresh `CHANGELOG.md` / `RELEASE_NOTES.md`.
 2. Run `swift test` and `swift build -c release` locally if you want a pre-push check.
 3. Optionally run the local universal packaging path:
 
