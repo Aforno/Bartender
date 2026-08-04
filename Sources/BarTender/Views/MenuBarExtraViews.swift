@@ -82,11 +82,15 @@ struct ManagerComposerView: View {
                 .font(.inter(.caption))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         } else if session.phase == .failed {
-            Label(session.errorMessage ?? "Generation failed.", systemImage: "exclamationmark.triangle.fill")
+            // Long errors wrap within the popover; height is capped by sizing policy.
+            Text(session.errorMessage ?? "Generation failed.")
                 .font(.inter(.caption))
                 .foregroundStyle(.red)
-                .lineLimit(3)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .help(session.errorMessage ?? "Generation failed.")
         } else if session.phase == .cancelled {
             Label("Generation cancelled", systemImage: "xmark.circle")
@@ -97,6 +101,7 @@ struct ManagerComposerView: View {
                 .font(.inter(.caption))
                 .foregroundStyle(.green)
                 .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

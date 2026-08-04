@@ -31,15 +31,21 @@ struct BarTenderApp: App {
                     // Status items attach only from AppDelegate — a second attach here
                     // used to force an immediate rebuild and defeat the delayed first
                     // registration that avoids the macOS 26 Control Center race.
-                    AppDelegate.prepareForMainWindow()
+                    // Skip focus-stealing activation when this window is only being
+                    // measured during a silent login launch that is about to close.
+                    if AppLaunchMode.current.activatesAppAtLaunch {
+                        AppDelegate.prepareForMainWindow()
+                    } else {
+                        NSApp.setActivationPolicy(.regular)
+                    }
                     AppActions.shared.model = appDelegate.model
                     await appDelegate.model.bootstrap()
                 }
         }
         // Menu-bar tools are created in applicationDidFinishLaunching and are
-        // independent of the main window. The window opens at launch so the
-        // user always sees the app; the tools stay in the menu bar regardless.
-        // .defaultLaunchBehavior(.suppressed)
+        // independent of the main window. Silent login-item launches suppress
+        // automatic main-window creation; interactive launches show it.
+        .defaultLaunchBehavior(AppLaunchMode.current.showsMainWindowAtLaunch ? .automatic : .suppressed)
         .defaultSize(width: 1180, height: 760)
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
@@ -82,6 +88,10 @@ struct BarTenderApp: App {
                 }
                 .keyboardShortcut("q", modifiers: [.command])
             }
+
+            // Capture OpenWindowAction at menu-build time so "Open Bar Tender"
+            // works after a silent login launch that never mounted the main window.
+            RegisterOpenWindowCommands()
         }
 
         // Manager status item is an AppKit `NSStatusItem` owned by
@@ -159,10 +169,43 @@ private struct MainWindowActionsInstaller: View {
             .onAppear {
                 AppActions.shared.model = model
                 // Capture OpenWindowAction so the AppKit manager menu can
-                // recreate the main window after it has been closed.
+                // recreate the main window after it has been closed, including
+                // after a silent login-item launch that never showed a window.
                 AppActions.shared.openWindowAction = {
                     MainWindowRouter.open(using: openWindow)
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .bartenderOpenMainWindow)) { _ in
+                MainWindowRouter.open(using: openWindow)
+            }
+    }
+}
+
+extension Notification.Name {
+    /// Posted when AppKit needs the main window but `OpenWindowAction` may not
+    /// yet be installed (first open after a silent launch). A live main-window
+    /// view handles it; otherwise `AppActions` falls back to the stored action.
+    static let bartenderOpenMainWindow = Notification.Name("io.github.aforno.bartender.v2.openMainWindow")
+}
+
+/// Registers `OpenWindowAction` when SwiftUI builds the command menu (at launch),
+/// so status-item actions can recreate the main window without it having been shown.
+private struct RegisterOpenWindowCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        // `Commands` body is evaluated when the main menu is built at launch.
+        let captured = openWindow
+        AppActions.shared.installOpenWindowAction {
+            AppDelegate.prepareForMainWindow()
+            captured(id: "main")
+        }
+        return CommandGroup(after: .windowArrangement) {
+            Button("Open Bar Tender Window") {
+                AppDelegate.prepareForMainWindow()
+                openWindow(id: "main")
+            }
+            .keyboardShortcut("o", modifiers: [.command, .option, .shift])
+        }
     }
 }

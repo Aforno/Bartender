@@ -90,6 +90,8 @@ final class ManagerStatusItemController: NSObject {
     private var popover: NSPopover?
     private var hostingController: NSHostingController<ManagerComposerRoot>?
     private var cancellables = Set<AnyCancellable>()
+    private var generationCancellables = Set<AnyCancellable>()
+    private var resizeWorkItem: DispatchWorkItem?
     private var didInstall = false
 
     /// Snapshot of the last menu blueprint used for refresh bookkeeping / tests.
@@ -100,6 +102,14 @@ final class ManagerStatusItemController: NSObject {
 
     /// Number of manager status items owned (0 or 1).
     var managedStatusItemCount: Int { statusItem == nil ? 0 : 1 }
+
+    /// Whether the manager button has a non-empty title or a template image.
+    var hasVisibleTitleOrImage: Bool {
+        guard let button = statusItem?.button else { return false }
+        let hasImage = button.image != nil
+        let hasTitle = !(button.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        return hasImage || hasTitle
+    }
 
     init(model: AppModel) {
         self.model = model
@@ -113,6 +123,20 @@ final class ManagerStatusItemController: NSObject {
             return
         }
         didInstall = true
+
+        let delay = StatusItemRegistrationTiming.managerInitialDelay
+        if delay > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.performInstall()
+            }
+        } else {
+            performInstall()
+        }
+    }
+
+    private func performInstall() {
+        // Re-check in case uninstall raced a delayed install.
+        guard didInstall, statusItem == nil else { return }
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.autosaveName = Self.autosaveName
@@ -144,17 +168,32 @@ final class ManagerStatusItemController: NSObject {
         pop.animates = true
         pop.contentViewController = hosting
         pop.delegate = self
+        // Compact default before first layout.
+        pop.contentSize = CGSize(
+            width: ManagerPopoverSizing.minimumWidth,
+            height: ManagerPopoverSizing.defaultCompactHeight
+        )
         popover = pop
 
         installSubscriptions()
+        observeGenerationSession(model.generation)
         refreshMenuBlueprint()
 
+        let frame = item.button?.window?.frame
+        StatusItemRegistrationTiming.logManagerInstall(
+            createdAt: Date(),
+            autosaveName: Self.autosaveName,
+            frame: frame
+        )
         AppLog.menuBar.info("Installed manager status item (wineglass)")
     }
 
     /// Removes the manager item and tears down popover/subscriptions (tests / shutdown).
     func uninstall() {
+        resizeWorkItem?.cancel()
+        resizeWorkItem = nil
         cancellables.removeAll()
+        generationCancellables.removeAll()
         popover?.performClose(nil)
         popover?.delegate = nil
         popover = nil
@@ -192,12 +231,11 @@ final class ManagerStatusItemController: NSObject {
             return
         }
         syncPopoverSize()
+        // Composer interaction needs activation even after a silent login launch.
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        // Nudge size after first layout pass (generation feedback may add height).
-        DispatchQueue.main.async { [weak self] in
-            self?.syncPopoverSize()
-        }
+        // Size after SwiftUI completes the first layout pass.
+        schedulePopoverResize(immediate: true)
         AppLog.menuBar.info("Opened manager composer popover")
     }
 
@@ -220,11 +258,35 @@ final class ManagerStatusItemController: NSObject {
     private func syncPopoverSize() {
         guard let hosting = hostingController, let popover else { return }
         hosting.view.layoutSubtreeIfNeeded()
-        var size = hosting.view.fittingSize
-        // Hug content; keep a sensible minimum width for the composer.
-        size.width = max(size.width, 340)
-        size.height = max(size.height, 48)
-        popover.contentSize = size
+        let fitting = hosting.view.fittingSize
+        let screenHeight = statusItem?.button?.window?.screen?.visibleFrame.height
+            ?? NSScreen.main?.visibleFrame.height
+        let size = ManagerPopoverSizing.contentSize(
+            fitting: fitting,
+            screenVisibleHeight: screenHeight
+        )
+        // Apply only when the size actually changes to avoid layout thrash.
+        if abs(popover.contentSize.width - size.width) > 0.5
+            || abs(popover.contentSize.height - size.height) > 0.5 {
+            popover.contentSize = size
+        }
+    }
+
+    /// Debounces rapid streaming updates; uses an immediate async hop so layout
+    /// has finished before measuring.
+    private func schedulePopoverResize(immediate: Bool = false) {
+        guard popover?.isShown == true else { return }
+        resizeWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.syncPopoverSize()
+        }
+        resizeWorkItem = work
+        if immediate {
+            DispatchQueue.main.async(execute: work)
+        } else {
+            let delay = DispatchTimeInterval.nanoseconds(Int(ManagerPopoverSizing.resizeDebounceNanoseconds))
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        }
     }
 
     // MARK: - Menu construction
@@ -247,14 +309,43 @@ final class ManagerStatusItemController: NSObject {
             .sink { [weak self] _ in self?.refreshMenuBlueprint() }
             .store(in: &cancellables)
 
-        // Keep the popover height in sync when generation feedback appears/clears.
+        // Replace generation child subscriptions when the session object changes.
         model.$generation
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                guard let self, self.popover?.isShown == true else { return }
-                self.syncPopoverSize()
+            .sink { [weak self] session in
+                guard let self else { return }
+                self.observeGenerationSession(session)
+                self.schedulePopoverResize()
             }
             .store(in: &cancellables)
+
+        // Model selector visibility changes composer height.
+        model.preferences.$showProviderInComposer
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.schedulePopoverResize() }
+            .store(in: &cancellables)
+    }
+
+    /// Observe phase / error / result / completion on the current session.
+    /// Replaces any previous session subscriptions to avoid duplicates and leaks.
+    private func observeGenerationSession(_ session: GenerationSession?) {
+        generationCancellables.removeAll()
+        guard let session else {
+            schedulePopoverResize()
+            return
+        }
+
+        Publishers.Merge4(
+            session.$phase.map { _ in () },
+            session.$errorMessage.map { _ in () },
+            session.$resultManifest.map { _ in () },
+            session.$finishedAt.map { _ in () }
+        )
+        .receive(on: RunLoop.main)
+        .sink { [weak self] _ in
+            self?.schedulePopoverResize()
+        }
+        .store(in: &generationCancellables)
     }
 
     private func refreshMenuBlueprint() {

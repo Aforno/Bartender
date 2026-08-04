@@ -8,12 +8,13 @@ Gatekeeper will warn users on first launch. Keep the Control-click → Open flow
 
 Every push to `main` runs the `Release (ad-hoc)` workflow. It:
 
-1. Packages a universal app with an ad-hoc signature
-2. Verifies the bundle and smoke-tests the DMG
-3. Force-updates the `v<contents-of-VERSION>` tag to that commit
-4. Creates or updates the matching **prerelease** with ZIP, DMG, and `SHA256SUMS.txt`
+1. Validates that `VERSION` / `BUILD_NUMBER` are well-formed and that tag `v<VERSION>` does not already exist
+2. Packages a universal app with an ad-hoc signature
+3. Verifies the bundle and smoke-tests the DMG (including menu-bar diagnostics)
+4. Creates an **immutable** git tag `v<VERSION>` for that commit (never force-moved)
+5. Creates a matching **prerelease** titled with version and build number, attaching ZIP, DMG, and `SHA256SUMS.txt`
 
-Bumping `VERSION` (and usually `BUILD_NUMBER`) starts a new tag/release; leaving them unchanged refreshes assets on the existing prerelease.
+Bump `VERSION` and/or `BUILD_NUMBER` before every publish. Reusing a tag or silently replacing assets is rejected.
 
 ## Checklist before merging to main
 

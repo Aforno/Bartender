@@ -216,7 +216,7 @@ private struct GeneralSettingsPane: View {
             } header: {
                 Text("Updates")
             } footer: {
-                Text("Updates are checked only when you ask. Downloads come from the signed GitHub Releases page.")
+                Text("Updates are checked only when you ask. Updates are downloaded from the project’s GitHub Releases page. Ad-hoc builds are not notarized and may require Gatekeeper approval.")
             }
         }
         .settingsPaneLayout()

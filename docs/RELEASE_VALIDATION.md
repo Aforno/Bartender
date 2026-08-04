@@ -10,7 +10,7 @@ Host: macOS 26.5.1, Apple silicon, Xcode 26 toolchain
 - `swift build -c release`: passes.
 - `script/package_release.sh --adhoc --skip-notarization --arch universal`: produces a sealed hardened-runtime app, ZIP, DMG, and SHA-256 list from release binaries.
 - `script/verify_release.sh`: confirms stable bundle identity/version, compiled icon catalog, provider assets, resource schema, strict code seal, runtime flag, and DMG checksum.
-- `script/install_smoke_test.sh`: mounts the DMG read-only, copies the app to a clean temporary Applications directory, launches it, verifies that it remains running, and cleans up.
+- `script/install_smoke_test.sh`: mounts the DMG read-only, copies the app to a clean temporary Applications directory, launches the packaged binary with `--menu-bar-diagnostics` and an isolated smoke library, and fails if manager/applet status items or bootstrap did not initialise.
 - The packaged executable is a universal Mach-O containing arm64 and x86_64 slices.
 
 Distribution verification is enforced in the release workflow on every push to `main`. A local Developer ID/Gatekeeper/notarization pass requires the maintainer's certificate and App Store Connect notarization credentials; the repository does not contain those secrets.
@@ -40,4 +40,4 @@ The assembled `.app` was launched and inspected through the macOS accessibility 
 
 ## CI matrix
 
-The committed CI matrix targets macOS 26 on both Apple silicon and Intel. The release workflow on `main` packages the ad-hoc universal app, verifies the sealed layout, smoke-tests the DMG, and publishes or updates the VERSION prerelease assets.
+The committed CI matrix targets macOS 26 on both Apple silicon and Intel, and runs on pushes to `main` and `develop` plus pull requests. The release workflow on `main` only packages the ad-hoc universal app, verifies the sealed layout, smoke-tests the DMG, and publishes an immutable VERSION prerelease (fails if the tag already exists).

@@ -61,6 +61,12 @@ final class AppletStore: ObservableObject {
     init(fileURL: URL? = nil) {
         if let fileURL {
             self.fileURL = fileURL
+        } else if let smokePath = MenuBarDiagnosticsCLI.smokeLibraryPath {
+            // Isolated library for packaged smoke tests — never the user's real
+            // Application Support directory.
+            let directory = URL(fileURLWithPath: smokePath, isDirectory: true)
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            self.fileURL = directory.appendingPathComponent("applets.json")
         } else {
             let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
                 ?? FileManager.default.temporaryDirectory

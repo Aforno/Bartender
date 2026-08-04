@@ -10,7 +10,11 @@ final class StatusItemManager: ObservableObject {
     /// Initial attach defers the first registration to avoid racing Control
     /// Center's teardown of the previous instance (macOS 26). Tests set this
     /// to zero so creation stays synchronous.
-    static var initialRegistrationDelay: TimeInterval = 0.75
+    /// Backed by `StatusItemRegistrationTiming.appletInitialDelay`.
+    static var initialRegistrationDelay: TimeInterval {
+        get { StatusItemRegistrationTiming.appletInitialDelay }
+        set { StatusItemRegistrationTiming.appletInitialDelay = newValue }
+    }
 
     private weak var model: AppModel?
     private var items: [UUID: NSStatusItem] = [:]
@@ -27,6 +31,31 @@ final class StatusItemManager: ObservableObject {
 
     /// Applet IDs that currently have an individual status item.
     var managedAppletIDs: Set<UUID> { Set(items.keys) }
+
+    /// Whether the delayed first registration has finished.
+    var hasCompletedInitialRegistration: Bool { didCompleteInitialRegistration }
+
+    /// Diagnostic rows for each managed status item (titles for smoke tests).
+    func appletItemDiagnostics() -> [MenuBarDiagnosticsSnapshot.AppletItemDiagnostic] {
+        guard let model else { return [] }
+        return items.keys.sorted { $0.uuidString < $1.uuidString }.compactMap { id in
+            guard let applet = model.store.applet(id: id),
+                  let item = items[id] else { return nil }
+            let rawTitle = item.button?.title ?? ""
+            // Status titles include a leading non-breaking space before the label.
+            let trimmed = rawTitle
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "\u{00A0}", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let preview = String(trimmed.prefix(48))
+            return MenuBarDiagnosticsSnapshot.AppletItemDiagnostic(
+                appletID: id.uuidString,
+                name: applet.name,
+                titleNonEmpty: !trimmed.isEmpty,
+                titlePreview: preview
+            )
+        }
+    }
 
     func attach(model: AppModel) {
         if self.model === model, !cancellables.isEmpty {
@@ -133,6 +162,13 @@ final class StatusItemManager: ObservableObject {
         for applet in enabled {
             if items[applet.id] == nil {
                 items[applet.id] = makeStatusItem(for: applet.id)
+                let frame = items[applet.id]?.button?.window?.frame
+                StatusItemRegistrationTiming.logAppletInstall(
+                    appletName: applet.name,
+                    createdAt: Date(),
+                    autosaveName: Self.autosaveName(for: applet.id),
+                    frame: frame
+                )
                 AppLog.menuBar.info("Created status item for \(applet.name, privacy: .public)")
             }
             // Enabled means present in the menu bar. Reassert after AppKit may
@@ -354,6 +390,17 @@ final class AppActions: NSObject {
     /// Set by the main window when it mounts so a closed window can be recreated.
     var openWindowAction: (() -> Void)?
 
+    /// Installs the SwiftUI `openWindow` recreation path (main window, commands).
+    func installOpenWindowAction(_ action: @escaping () -> Void) {
+        openWindowAction = action
+    }
+
+    /// Clears process-wide action state between tests.
+    func resetForTesting() {
+        model = nil
+        openWindowAction = nil
+    }
+
     @objc func toggleTimer(_ sender: NSMenuItem) {
         guard let id = uuid(from: sender),
               let model,
@@ -377,12 +424,18 @@ final class AppActions: NSObject {
         if let id {
             model?.selection = id
         }
+        AppDelegate.prepareForMainWindow()
         // Prefer the canonical router (focus existing, else stored OpenWindowAction).
         if MainWindowRouter.openMainWindow() {
             return
         }
-        // Fallback when router could not open (should be rare after first launch).
-        openWindowAction?()
+        // Fallback when router could not open (first open after a silent launch).
+        if let openWindowAction {
+            openWindowAction()
+            return
+        }
+        // Last resort: ask any mounted SwiftUI host to open the main window.
+        NotificationCenter.default.post(name: .bartenderOpenMainWindow, object: nil)
     }
 
     /// Opens the SwiftUI `Settings` scene via the standard AppKit selector.

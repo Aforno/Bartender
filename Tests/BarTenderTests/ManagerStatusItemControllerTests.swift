@@ -22,12 +22,32 @@ final class ManagerStatusItemControllerTests: XCTestCase {
     override func tearDownWithError() throws {
         controller?.uninstall()
         controller = nil
+        AppActions.shared.resetForTesting()
         StatusItemManager.initialRegistrationDelay = 0.75
+        StatusItemRegistrationTiming.managerInitialDelay = 0
         defaults.removePersistentDomain(forName: defaultsSuiteName)
         try? FileManager.default.removeItem(at: temporaryDirectory)
         defaults = nil
         defaultsSuiteName = nil
         temporaryDirectory = nil
+    }
+
+    func testRapidInstallUninstallDoesNotDuplicateManagerItem() {
+        let model = makeModel()
+        let manager = ManagerStatusItemController(model: model)
+        controller = manager
+
+        for _ in 0..<5 {
+            manager.install()
+            XCTAssertEqual(manager.managedStatusItemCount, 1)
+            manager.uninstall()
+            XCTAssertEqual(manager.managedStatusItemCount, 0)
+        }
+
+        manager.install()
+        manager.install()
+        XCTAssertEqual(manager.managedStatusItemCount, 1)
+        XCTAssertTrue(manager.isInstalled)
     }
 
     // MARK: - Install idempotency
