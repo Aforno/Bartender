@@ -58,18 +58,9 @@ struct ProviderIcon: View {
 
         let image: NSImage
         if provider == .grok,
-           let source = CIImage(contentsOf: url)?.applyingFilter("CIMaskToAlpha") {
-            let crop = source.extent.insetBy(
-                dx: source.extent.width * 0.15,
-                dy: source.extent.height * 0.15
-            )
-            let cropped = source
-                .cropped(to: crop)
-                .transformed(by: CGAffineTransform(translationX: -crop.minX, y: -crop.minY))
-            let representation = NSCIImageRep(ciImage: cropped)
-            image = NSImage(size: representation.size)
-            image.addRepresentation(representation)
-            image.isTemplate = true
+           let source = CIImage(contentsOf: url),
+           let template = grokTemplateImage(from: source) {
+            image = template
         } else if let source = NSImage(contentsOf: url),
                   let copy = source.copy() as? NSImage {
             image = copy
@@ -88,6 +79,36 @@ struct ProviderIcon: View {
         // logical size as well as a SwiftUI frame so it cannot expand to its
         // source artwork dimensions in the composer.
         image.size = NSSize(width: logicalSize, height: logicalSize)
+        return image
+    }
+
+    /// The bundled Grok artwork is white. A plain `CIMaskToAlpha` keeps those
+    /// white RGB values, and AppKit menu controls can display them literally
+    /// instead of applying the SwiftUI template tint in light appearance.
+    /// Build a genuinely monochrome black-alpha image first, then mark it as a
+    /// template so AppKit can tint it correctly in both light and dark modes.
+    private static func grokTemplateImage(from source: CIImage) -> NSImage? {
+        let mask = source.applyingFilter("CIMaskToAlpha")
+        let crop = mask.extent.insetBy(
+            dx: mask.extent.width * 0.15,
+            dy: mask.extent.height * 0.15
+        )
+        guard !crop.isEmpty else { return nil }
+
+        let croppedMask = mask.cropped(to: crop)
+        let black = CIImage(color: .black).cropped(to: crop)
+        let blackGlyph = black.applyingFilter(
+            "CISourceInCompositing",
+            parameters: [kCIInputBackgroundImageKey: croppedMask]
+        )
+        let normalized = blackGlyph
+            .cropped(to: crop)
+            .transformed(by: CGAffineTransform(translationX: -crop.minX, y: -crop.minY))
+
+        let representation = NSCIImageRep(ciImage: normalized)
+        let image = NSImage(size: representation.size)
+        image.addRepresentation(representation)
+        image.isTemplate = true
         return image
     }
 }
