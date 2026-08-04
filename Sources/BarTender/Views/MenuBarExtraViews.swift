@@ -45,7 +45,16 @@ struct ManagerComposerView: View {
             }
 
             if let generation = model.generation {
-                generationFeedback(generation)
+                if generation.phase == .failed {
+                    ScrollView(.vertical) {
+                        generationFeedback(generation)
+                            .padding(.trailing, PremiumStyle.space4)
+                    }
+                    .frame(maxHeight: 180)
+                    .scrollIndicators(.automatic)
+                } else {
+                    generationFeedback(generation)
+                }
             }
         }
         .padding(.horizontal, PremiumStyle.space12)
@@ -84,13 +93,13 @@ struct ManagerComposerView: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         } else if session.phase == .failed {
-            // Long errors wrap within the popover; height is capped by sizing policy.
             Text(session.errorMessage ?? "Generation failed.")
                 .font(.inter(.caption))
                 .foregroundStyle(.red)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
                 .help(session.errorMessage ?? "Generation failed.")
         } else if session.phase == .cancelled {
             Label("Generation cancelled", systemImage: "xmark.circle")
