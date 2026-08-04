@@ -47,6 +47,25 @@ final class ProviderIconCacheTests: XCTestCase {
         XCTAssertEqual(cache.processingCount, 2)
     }
 
+    func testConcurrentFirstRequestsProcessOnlyOnce() {
+        let cache = ProviderIcon.ProviderIconCache.shared
+        cache.resetForTesting()
+
+        let queue = DispatchQueue(label: "ProviderIconCacheTests.concurrent", attributes: .concurrent)
+        let group = DispatchGroup()
+
+        for _ in 0..<12 {
+            group.enter()
+            queue.async {
+                _ = cache.baseImage(for: .grok)
+                group.leave()
+            }
+        }
+
+        XCTAssertEqual(group.wait(timeout: .now() + 10), .success)
+        XCTAssertEqual(cache.processingCount, 1)
+    }
+
     func testSizedCopiesDoNotMutateCachedBase() {
         let cache = ProviderIcon.ProviderIconCache.shared
         let base = cache.baseImage(for: .claude)
