@@ -150,7 +150,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             enabledAppletCount: model.store.enabledApplets.count,
             managedAppletItemCount: statusItems.managedItemCount,
             appletItems: statusItems.appletItemDiagnostics(),
-            managerHasVisibleTitleOrImage: managerStatusItem.hasVisibleTitleOrImage
+            managerHasVisibleTitleOrImage: managerStatusItem.hasVisibleTitleOrImage,
+            managerFrame: managerStatusItem.frameDiagnostic
         )
     }
 
