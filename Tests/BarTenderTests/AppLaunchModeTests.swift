@@ -56,13 +56,19 @@ final class AppLaunchModeTests: XCTestCase {
         XCTAssertEqual(mode, .silentLogin)
     }
 
-    func testOpeningMainWindowAfterSilentLaunchStillActivates() {
-        // prepareForMainWindow always activates; silent mode only suppresses launch-time activation.
+    @MainActor
+    func testOpeningMainWindowAfterSilentLaunchUsesStoredSwiftUIAction() {
         AppLaunchMode.setCurrentForTesting(.silentLogin)
-        XCTAssertFalse(AppLaunchMode.current.activatesAppAtLaunch)
+        AppActions.shared.resetForTesting()
+        defer { AppActions.shared.resetForTesting() }
 
-        // The open path uses prepareForMainWindow regardless of launch mode.
-        // This documents the intended policy for post-silent user actions.
-        XCTAssertTrue(true)
+        var openCount = 0
+        AppActions.shared.installOpenWindowAction {
+            openCount += 1
+        }
+
+        XCTAssertFalse(AppLaunchMode.current.activatesAppAtLaunch)
+        AppActions.shared.openMainWindow()
+        XCTAssertEqual(openCount, 1)
     }
 }
