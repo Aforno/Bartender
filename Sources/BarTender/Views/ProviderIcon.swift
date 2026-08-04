@@ -96,7 +96,8 @@ struct ProviderIcon: View {
         guard !crop.isEmpty else { return nil }
 
         let croppedMask = mask.cropped(to: crop)
-        let black = CIImage(color: .black).cropped(to: crop)
+        let blackColor = CIColor(red: 0, green: 0, blue: 0, alpha: 1)
+        let black = CIImage(color: blackColor).cropped(to: crop)
         let blackGlyph = black.applyingFilter(
             "CISourceInCompositing",
             parameters: [kCIInputBackgroundImageKey: croppedMask]
