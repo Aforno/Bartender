@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(AppKit)
+import AppKit
+#endif
+
 /// Snapshot of menu-bar infrastructure for packaged-app smoke validation.
 struct MenuBarDiagnosticsSnapshot: Equatable, Sendable, Codable {
     var bootstrapCompleted: Bool
@@ -8,15 +12,90 @@ struct MenuBarDiagnosticsSnapshot: Equatable, Sendable, Codable {
     var appletStatusItemManagerAttached: Bool
     var enabledAppletCount: Int
     var managedAppletItemCount: Int
-    /// Per managed item: applet name and whether the button title is non-empty.
+    /// Per managed item: applet name, title state, and live window geometry.
     var appletItems: [AppletItemDiagnostic]
     var managerHasVisibleTitleOrImage: Bool
+    var managerFrame: StatusItemFrameDiagnostic = .missing
 
     struct AppletItemDiagnostic: Equatable, Sendable, Codable {
         var appletID: String
         var name: String
         var titleNonEmpty: Bool
         var titlePreview: String
+        var frame: StatusItemFrameDiagnostic = .missing
+    }
+
+    /// Captured geometry of the AppKit window that hosts an NSStatusItem button.
+    struct StatusItemFrameDiagnostic: Equatable, Sendable, Codable {
+        var windowPresent: Bool
+        var width: Double
+        var height: Double
+        var centerOnScreen: Bool
+        var nearScreenTop: Bool
+        var appearsPaintable: Bool
+        var description: String
+
+        static let missing = StatusItemFrameDiagnostic(
+            windowPresent: false,
+            width: 0,
+            height: 0,
+            centerOnScreen: false,
+            nearScreenTop: false,
+            appearsPaintable: false,
+            description: "missing-window"
+        )
+
+        static func synthetic(paintable: Bool) -> StatusItemFrameDiagnostic {
+            StatusItemFrameDiagnostic(
+                windowPresent: paintable,
+                width: paintable ? 22 : 0,
+                height: paintable ? 22 : 0,
+                centerOnScreen: paintable,
+                nearScreenTop: paintable,
+                appearsPaintable: paintable,
+                description: paintable ? "synthetic-paintable" : "synthetic-hidden"
+            )
+        }
+
+        #if canImport(AppKit)
+        @MainActor
+        static func capture(button: NSStatusBarButton?) -> StatusItemFrameDiagnostic {
+            guard let window = button?.window else { return .missing }
+            let frame = window.frame
+            let center = NSPoint(x: frame.midX, y: frame.midY)
+            let screen = window.screen
+                ?? NSScreen.screens.first(where: { $0.frame.contains(center) })
+            let centerOnScreen = screen?.frame.contains(center) ?? false
+            let nearScreenTop: Bool
+            if let screen {
+                let tolerance = max(64, frame.height * 3)
+                nearScreenTop = frame.midY >= screen.frame.maxY - tolerance
+                    && frame.midY <= screen.frame.maxY + 4
+            } else {
+                nearScreenTop = false
+            }
+            let nonZero = frame.width >= 1 && frame.height >= 1
+            let paintable = nonZero && centerOnScreen && nearScreenTop
+            let description = String(
+                format: "x=%.1f y=%.1f w=%.1f h=%.1f centerOnScreen=%@ nearTop=%@",
+                frame.origin.x,
+                frame.origin.y,
+                frame.width,
+                frame.height,
+                centerOnScreen ? "true" : "false",
+                nearScreenTop ? "true" : "false"
+            )
+            return StatusItemFrameDiagnostic(
+                windowPresent: true,
+                width: frame.width,
+                height: frame.height,
+                centerOnScreen: centerOnScreen,
+                nearScreenTop: nearScreenTop,
+                appearsPaintable: paintable,
+                description: description
+            )
+        }
+        #endif
     }
 
     /// Machine-readable one-line JSON for CLI / smoke harnesses.
@@ -33,12 +112,13 @@ struct MenuBarDiagnosticsSnapshot: Equatable, Sendable, Codable {
     /// Human-readable summary for logs.
     var summary: String {
         let appletSummary = appletItems.map { item in
-            "\(item.name):title=\(item.titleNonEmpty ? "ok" : "empty")"
+            "\(item.name):title=\(item.titleNonEmpty ? "ok" : "empty"),frame=\(item.frame.appearsPaintable ? "ok" : item.frame.description)"
         }.joined(separator: ", ")
         return [
             "bootstrap=\(bootstrapCompleted)",
             "managerInstalled=\(managerStatusItemInstalled)",
             "managerCount=\(managerItemCount)",
+            "managerFrame=\(managerFrame.appearsPaintable ? "ok" : managerFrame.description)",
             "appletAttached=\(appletStatusItemManagerAttached)",
             "enabled=\(enabledAppletCount)",
             "managed=\(managedAppletItemCount)",
@@ -58,6 +138,12 @@ struct MenuBarDiagnosticsSnapshot: Equatable, Sendable, Codable {
         if managerItemCount != 1 {
             failures.append("expected exactly 1 manager status item, found \(managerItemCount)")
         }
+        if !managerHasVisibleTitleOrImage {
+            failures.append("manager status item has no visible title or image")
+        }
+        if !managerFrame.appearsPaintable {
+            failures.append("manager status item frame is not paintable: \(managerFrame.description)")
+        }
         if !appletStatusItemManagerAttached {
             failures.append("per-applet status item manager is not attached")
         }
@@ -70,6 +156,9 @@ struct MenuBarDiagnosticsSnapshot: Equatable, Sendable, Codable {
             }
             for item in appletItems where !item.titleNonEmpty {
                 failures.append("applet item title unexpectedly empty for \(item.name)")
+            }
+            for item in appletItems where !item.frame.appearsPaintable {
+                failures.append("applet item frame is not paintable for \(item.name): \(item.frame.description)")
             }
         }
         return failures
