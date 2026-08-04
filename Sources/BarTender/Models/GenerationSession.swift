@@ -20,8 +20,6 @@ struct ProviderLogLine: Identifiable, Equatable, Sendable {
     }
 }
 
-typealias CodexLogLine = ProviderLogLine
-
 enum GenerationPhase: String, Equatable, Sendable {
     case idle
     case preparing
@@ -48,9 +46,6 @@ enum GenerationPhase: String, Equatable, Sendable {
         case .cancelled: return "Cancelled"
         }
     }
-
-    /// Convenience for views that still read `.displayName`.
-    var displayName: String { displayName(for: nil) }
 
     var isActive: Bool {
         switch self {
@@ -152,5 +147,3 @@ enum ProviderGenerationError: LocalizedError {
         }
     }
 }
-
-typealias CodexGenerationError = ProviderGenerationError

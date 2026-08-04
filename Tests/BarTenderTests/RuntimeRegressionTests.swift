@@ -316,6 +316,13 @@ final class RuntimeRegressionTests: XCTestCase {
             titleTemplate: "{{value}}",
             config: AppletConfig(generatedSource: "#!/bin/zsh\n/usr/bin/powermetrics -n 1")
         )
+        let privilegedViaPath = AppletManifest(
+            name: "PrivilegedPath",
+            iconSystemName: "lock",
+            kind: .generatedTool,
+            titleTemplate: "{{value}}",
+            config: AppletConfig(generatedSource: "#!/bin/zsh\npowermetrics --samplers cpu_power -n 1")
+        )
 
         do {
             try await GeneratedToolSourceValidator.validate(invalid)
@@ -327,6 +334,13 @@ final class RuntimeRegressionTests: XCTestCase {
         do {
             try await GeneratedToolSourceValidator.validate(privileged)
             XCTFail("Expected privileged source to be rejected")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("administrator-only"))
+        }
+
+        do {
+            try await GeneratedToolSourceValidator.validate(privilegedViaPath)
+            XCTFail("Expected PATH-resolved privileged source to be rejected")
         } catch {
             XCTAssertTrue(error.localizedDescription.contains("administrator-only"))
         }

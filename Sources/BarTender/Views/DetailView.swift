@@ -61,7 +61,7 @@ struct DetailView: View {
 
         pageSection("Build")
         if let generation = generationSession(for: applet) {
-            CodexLogView(session: generation)
+            GenerationLogView(session: generation)
         } else {
             savedBuildReceipt(applet)
         }
@@ -188,8 +188,11 @@ struct DetailView: View {
         guard let interval = applet.refreshIntervalSeconds ?? applet.kind.defaultRefreshInterval else {
             return "Event driven"
         }
-        let seconds = Int(interval)
-        return seconds == 1 ? "Every second" : "Every \(seconds) seconds"
+        if interval == 1 { return "Every second" }
+        if interval.rounded() == interval {
+            return "Every \(Int(interval)) seconds"
+        }
+        return "Every \(interval.formatted(.number.precision(.fractionLength(0...2)))) seconds"
     }
 
     // MARK: - Timer controls
@@ -314,7 +317,11 @@ struct DetailView: View {
     }
 
     private func sourceLineCount(_ applet: AppletManifest) -> Int {
-        max(1, applet.config.generatedSource?.split(whereSeparator: \.isNewline).count ?? 0)
+        guard let source = applet.config.generatedSource, !source.isEmpty else { return 0 }
+        // Keep blank lines in the count; drop only the phantom line after a
+        // trailing newline.
+        let pieces = source.split(separator: "\n", omittingEmptySubsequences: false)
+        return max(1, source.hasSuffix("\n") ? pieces.count - 1 : pieces.count)
     }
 
     // MARK: - Shell command approval
@@ -514,7 +521,7 @@ struct DetailView: View {
                     Text("Build")
                         .font(.inter(size: 17, weight: .semibold))
                         .accessibilityAddTraits(.isHeader)
-                    CodexLogView(session: generation)
+                    GenerationLogView(session: generation)
                 }
                 .frame(maxWidth: 680, alignment: .leading)
             }

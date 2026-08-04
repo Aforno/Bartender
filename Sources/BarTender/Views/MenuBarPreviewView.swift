@@ -122,13 +122,7 @@ struct MenuBarPreviewView: View {
     }
 
     private var displayTitle: String {
-        if runState == .validating {
-            return "Testing"
-        }
-        if runState == .reviewRequired {
-            return "Review"
-        }
-        return TitleRenderer.shortMenuTitle(snapshot.title)
+        TitleRenderer.statusItemTitle(snapshot.title, runState: runState)
     }
 
     private var displayStatus: String {

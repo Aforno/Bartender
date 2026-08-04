@@ -159,8 +159,3 @@ enum ProviderSetupIssue: Equatable, Sendable {
         }
     }
 }
-
-// Backward-compatible aliases used by older view names during the multi-provider migration.
-typealias CodexAvailability = ProviderAvailability
-typealias CodexInstallation = ProviderInstallation
-typealias CodexSetupIssue = ProviderSetupIssue

@@ -265,6 +265,18 @@ final class AppletStoreTests: XCTestCase {
         XCTAssertEqual(relaunched.enabledApplets.count, 12, "The manager menu must retain all tools")
     }
 
+    func testStatusItemsHaveStableUniqueAutosaveNames() {
+        let firstID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let secondID = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+
+        let firstName = StatusItemManager.autosaveName(for: firstID)
+        let secondName = StatusItemManager.autosaveName(for: secondID)
+
+        XCTAssertEqual(firstName, StatusItemManager.autosaveName(for: firstID))
+        XCTAssertNotEqual(firstName, secondName)
+        XCTAssertTrue(firstName.contains(firstID.uuidString.lowercased()))
+    }
+
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("BarTenderTests-\(UUID().uuidString)", isDirectory: true)

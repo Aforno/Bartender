@@ -35,11 +35,6 @@ enum ModelCatalog {
         return discovered
     }
 
-    static func allModels(readyProviders: [AIProvider]? = nil) -> [AIModelOption] {
-        let providers = readyProviders ?? AIProvider.allCases
-        return providers.flatMap { models(for: $0) }
-    }
-
     // MARK: - Grok (`~/.grok/models_cache.json` or `grok models` text)
 
     private static func readGrokModels(homeDirectoryURL: URL) -> [AIModelOption] {

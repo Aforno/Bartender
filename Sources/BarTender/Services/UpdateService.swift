@@ -111,7 +111,8 @@ final class UpdateService: ObservableObject {
                 if identifier.allSatisfy(\.isNumber), let number = Int(identifier) {
                     return .numeric(number)
                 }
-                return .text(identifier.lowercased())
+                // Semver compares alphanumeric identifiers in ASCII order — case-sensitive.
+                return .text(String(identifier))
             }
         }
 

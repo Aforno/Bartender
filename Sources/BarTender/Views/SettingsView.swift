@@ -32,7 +32,7 @@ struct SettingsView: View {
                 }
                 .tag(SettingsTab.support)
         }
-        .frame(width: 560, height: 520)
+        .frame(width: 600, height: 560)
         .overlay(alignment: .top) {
             if let banner = model.bannerMessage {
                 BannerView(text: banner) {
@@ -163,6 +163,19 @@ private struct GeneralSettingsPane: View {
                 Text("Interface")
             } footer: {
                 Text("Composer controls update immediately.")
+            }
+
+            Section {
+                Stepper(
+                    "Show up to \(preferences.maximumMenuBarItems) tools in the menu bar",
+                    value: $preferences.maximumMenuBarItems,
+                    in: 1...AppPreferences.maximumMenuBarItemsBound
+                )
+                .accessibilityIdentifier("maximum-menu-bar-items")
+            } header: {
+                Text("Menu Bar")
+            } footer: {
+                Text("Each enabled tool gets its own item. On crowded menu bars, lower the limit — the rest stay available in the Bar Tender manager menu.")
             }
 
             Section {

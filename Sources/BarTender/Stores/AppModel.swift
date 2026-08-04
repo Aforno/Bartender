@@ -20,9 +20,6 @@ final class AppModel: ObservableObject {
     let generatedTools: GeneratedToolArtifactStore
     let runtime: AppletRuntimeEngine
 
-    /// Compatibility for views still referencing `codex`.
-    var codex: AIProviderService { providers }
-
     @Published var selection: UUID? {
         didSet {
             if oldValue != selection, generation?.phase.isActive != true {
@@ -38,8 +35,6 @@ final class AppModel: ObservableObject {
     }
     @Published var bannerMessage: String?
     @Published var showingProviderSetup = false
-    /// Mirrored for scene invalidation (dynamic status item count).
-    @Published private(set) var enabledApplets: [AppletManifest] = []
 
     private var cancellables = Set<AnyCancellable>()
     private var generationCancellable: AnyCancellable?
@@ -78,9 +73,6 @@ final class AppModel: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
-                DispatchQueue.main.async {
-                    self?.refreshEnabledApplets()
-                }
             }
             .store(in: &cancellables)
 
@@ -104,9 +96,9 @@ final class AppModel: ObservableObject {
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
-
-        refreshEnabledApplets()
     }
+
+    // MARK: - Startup and shutdown
 
     func bootstrap() async {
         if let bootstrapTask {
@@ -128,7 +120,6 @@ final class AppModel: ObservableObject {
         // discovery so a slow or broken provider cannot suppress the menu bar.
         let artifactIssue = restoreCurrentGeneratedToolArtifacts()
         runtime.sync(with: store.applets)
-        refreshEnabledApplets()
         if selection == nil {
             selection = store.applets.first?.id
         }
@@ -161,34 +152,6 @@ final class AppModel: ObservableObject {
             : "Could not restore executables for \(failures.count) generated tools. Save or rebuild them before running."
     }
 
-    func clearLibrary() {
-        guard generation?.phase.isActive != true else {
-            bannerMessage = "Cancel the current generation before clearing the library."
-            return
-        }
-
-        do {
-            cancelAllValidations()
-            try store.removeAll()
-            shellApprovals.removeAll()
-            var artifactCleanupError: Error?
-            do {
-                try generatedTools.removeAll()
-            } catch {
-                artifactCleanupError = error
-                AppLog.store.error("Could not remove generated tool artifacts: \(error.localizedDescription, privacy: .public)")
-            }
-            runtime.stopAll()
-            runtime.sync(with: store.applets)
-            selection = nil
-            bannerMessage = artifactCleanupError.map {
-                "Library cleared, but some generated files could not be removed: \($0.localizedDescription)"
-            } ?? "Library cleared."
-        } catch {
-            bannerMessage = error.localizedDescription
-        }
-    }
-
     func shutdown() {
         providers.cancelGeneration()
         generation?.phase = .cancelled
@@ -197,9 +160,7 @@ final class AppModel: ObservableObject {
         runtime.stopAll()
     }
 
-    private func refreshEnabledApplets() {
-        enabledApplets = store.enabledApplets
-    }
+    // MARK: - Generation
 
     private func observeGenerationSession() {
         guard let generation else {
@@ -207,8 +168,11 @@ final class AppModel: ObservableObject {
             return
         }
 
-        generationCancellable = Publishers.Merge4(
+        // Include logs so parents that only observe AppModel still refresh while
+        // the provider streams output (menu bar panel, empty-state host, etc.).
+        generationCancellable = Publishers.Merge5(
             generation.$phase.dropFirst().map { _ in () },
+            generation.$logs.dropFirst().map { _ in () },
             generation.$resultManifest.dropFirst().map { _ in () },
             generation.$errorMessage.dropFirst().map { _ in () },
             generation.$finishedAt.dropFirst().map { _ in () }
@@ -216,10 +180,6 @@ final class AppModel: ObservableObject {
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
             }
-    }
-
-    func refreshCodex() async {
-        await providers.refreshAvailability()
     }
 
     func refreshProviders() async {
@@ -459,6 +419,8 @@ final class AppModel: ObservableObject {
         generation.append(stream: .system, "Cancelling generation…")
     }
 
+    // MARK: - Tool mutations
+
     func deleteSelected() {
         guard let id = selection else { return }
         deleteApplet(id: id)
@@ -609,6 +571,8 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Execution approval
+
     func isShellApproved(_ manifest: AppletManifest) -> Bool {
         shellApprovals.isApproved(manifest)
     }
@@ -755,6 +719,36 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Library management
+
+    func clearLibrary() {
+        guard generation?.phase.isActive != true else {
+            bannerMessage = "Cancel the current generation before clearing the library."
+            return
+        }
+
+        do {
+            cancelAllValidations()
+            try store.removeAll()
+            shellApprovals.removeAll()
+            var artifactCleanupError: Error?
+            do {
+                try generatedTools.removeAll()
+            } catch {
+                artifactCleanupError = error
+                AppLog.store.error("Could not remove generated tool artifacts: \(error.localizedDescription, privacy: .public)")
+            }
+            runtime.stopAll()
+            runtime.sync(with: store.applets)
+            selection = nil
+            bannerMessage = artifactCleanupError.map {
+                "Library cleared, but some generated files could not be removed: \($0.localizedDescription)"
+            } ?? "Library cleared."
+        } catch {
+            bannerMessage = error.localizedDescription
+        }
+    }
+
     func addSampleLibrary() {
         guard generation?.phase.isActive != true else {
             bannerMessage = "Cancel the current generation before changing the library."
@@ -850,7 +844,6 @@ final class AppModel: ObservableObject {
                     }
                 }
                 runtime.sync(with: store.applets)
-                refreshEnabledApplets()
                 selection = imported.first?.id ?? store.applets.first?.id
                 bannerMessage = "Imported \(imported.count) tool(s). Review generated source before running it."
             } catch {
@@ -873,7 +866,6 @@ final class AppModel: ObservableObject {
                     rollbackErrors.append("generated files: \(error.localizedDescription)")
                 }
                 runtime.sync(with: store.applets)
-                refreshEnabledApplets()
                 if rollbackErrors.isEmpty {
                     throw importError
                 }
@@ -909,6 +901,8 @@ final class AppModel: ObservableObject {
             _ = try generatedTools.install(manifest)
         }
     }
+
+    // MARK: - Diagnostics and permissions
 
     func exportDiagnostics() {
         let panel = NSSavePanel()

@@ -295,6 +295,3 @@ struct ModelSelector: View {
         }
     }
 }
-
-/// Backward-compatible alias used by older call sites.
-typealias ChatComposerProviderLabel = ModelSelector

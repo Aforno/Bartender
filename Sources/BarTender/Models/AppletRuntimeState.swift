@@ -24,12 +24,6 @@ struct AppletSnapshot: Equatable, Sendable {
     }
 }
 
-enum AppletRuntimeEvent: Equatable, Sendable {
-    case updated(AppletSnapshot)
-    case completed(message: String)
-    case failed(message: String)
-}
-
 enum ToolRunState: Equatable, Sendable {
     case disabled
     case validating

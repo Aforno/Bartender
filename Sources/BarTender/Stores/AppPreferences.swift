@@ -4,10 +4,14 @@ import Foundation
 /// UserDefaults-backed app preferences shared across Settings and the main UI.
 @MainActor
 final class AppPreferences: ObservableObject {
+    /// Hard upper bound for individual menu bar items (matches the manager's cap).
+    static let maximumMenuBarItemsBound = StatusItemManager.maximumIndividualItems
+
     private enum Keys {
         static let confirmBeforeDelete = "BarTender.confirmBeforeDelete"
         static let showProviderInComposer = "BarTender.showProviderInComposer"
         static let autoApproveGeneratedToolEdits = "BarTender.autoApproveGeneratedToolEdits"
+        static let maximumMenuBarItems = "BarTender.maximumMenuBarItems"
     }
 
     /// Ask for confirmation before deleting applets from the library.
@@ -24,6 +28,19 @@ final class AppPreferences: ObservableObject {
     @Published var autoApproveGeneratedToolEdits: Bool {
         didSet {
             defaults.set(autoApproveGeneratedToolEdits, forKey: Keys.autoApproveGeneratedToolEdits)
+        }
+    }
+
+    /// How many enabled applets get their own menu bar item (1...8). Fewer
+    /// items leave room on crowded menu bars; the rest stay in the manager menu.
+    @Published var maximumMenuBarItems: Int {
+        didSet {
+            let clamped = min(max(maximumMenuBarItems, 1), Self.maximumMenuBarItemsBound)
+            guard clamped != maximumMenuBarItems else {
+                defaults.set(maximumMenuBarItems, forKey: Keys.maximumMenuBarItems)
+                return
+            }
+            maximumMenuBarItems = clamped
         }
     }
 
@@ -48,6 +65,15 @@ final class AppPreferences: ObservableObject {
             autoApproveGeneratedToolEdits = false
         } else {
             autoApproveGeneratedToolEdits = defaults.bool(forKey: Keys.autoApproveGeneratedToolEdits)
+        }
+
+        if defaults.object(forKey: Keys.maximumMenuBarItems) == nil {
+            maximumMenuBarItems = StatusItemManager.maximumIndividualItems
+        } else {
+            maximumMenuBarItems = min(
+                max(defaults.integer(forKey: Keys.maximumMenuBarItems), 1),
+                Self.maximumMenuBarItemsBound
+            )
         }
     }
 

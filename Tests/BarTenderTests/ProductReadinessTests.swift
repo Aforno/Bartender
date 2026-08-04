@@ -33,6 +33,11 @@ final class ProductReadinessTests: XCTestCase {
         let shortened = TitleRenderer.shortMenuTitle(title)
         XCTAssertEqual(shortened.count, TitleRenderer.menuBarMaxLength)
         XCTAssertTrue(shortened.hasSuffix("…"))
+        XCTAssertEqual(
+            TitleRenderer.statusItemTitle(title, runState: .running).count,
+            TitleRenderer.statusItemMaxLength
+        )
+        XCTAssertEqual(TitleRenderer.statusItemTitle(title, runState: .needsAttention), "Issue")
 
         let session = GenerationSession(prompt: "Long log", provider: .codex)
         for index in 0..<2_500 {

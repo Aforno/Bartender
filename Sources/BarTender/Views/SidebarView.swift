@@ -12,8 +12,9 @@ struct SidebarView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var filteredApplets: [AppletManifest] {
-        guard !searchText.isEmpty else { return store.applets }
-        return store.applets.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return store.applets }
+        return store.applets.filter { $0.name.localizedCaseInsensitiveContains(query) }
     }
 
     var body: some View {
@@ -48,7 +49,9 @@ struct SidebarView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
                     if filteredApplets.isEmpty {
-                        Text(searchText.isEmpty ? "No tools yet — describe one below." : "No matching tools.")
+                        Text(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            ? "No tools yet — describe one below."
+                            : "No matching tools.")
                             .font(.inter(.callout))
                             .foregroundStyle(.tertiary)
                             .padding(.horizontal, PremiumStyle.rowInsetH)
@@ -85,12 +88,6 @@ struct SidebarView: View {
         }
         .padding(.top, PremiumStyle.sidebarInset)
         .frame(minWidth: 200)
-        .background {
-            // Hidden shortcut: ⌘K toggles the filter field.
-            Button("") { toggleSearch() }
-                .keyboardShortcut("k", modifiers: [.command])
-                .hidden()
-        }
         .navigationTitle("Bar Tender")
     }
 
@@ -113,8 +110,10 @@ struct SidebarView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .keyboardShortcut("k", modifiers: [.command])
             .help("Search (⌘K)")
             .accessibilityLabel("Search tools")
+            .accessibilityIdentifier("toggle-tool-search")
         }
         .padding(.horizontal, PremiumStyle.sidebarInset + PremiumStyle.rowInsetH)
         .padding(.vertical, PremiumStyle.space4)
@@ -206,6 +205,7 @@ private struct ToolRow: View {
                     Text(applet.name)
                         .font(.inter(size: 13))
                         .lineLimit(1)
+                        .layoutPriority(1)
 
                     Spacer(minLength: 6)
 
@@ -214,6 +214,8 @@ private struct ToolRow: View {
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                         .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: 76, alignment: .trailing)
                 }
                 .padding(.leading, PremiumStyle.rowInsetH)
                 .padding(.vertical, PremiumStyle.rowInsetV)

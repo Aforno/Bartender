@@ -78,7 +78,7 @@ enum SystemMetricKind: String, Codable, CaseIterable, Sendable, Hashable {
 }
 
 /// Payload returned by an AI provider (without app-managed fields).
-struct CodexAppletDraft: Codable, Equatable, Sendable {
+struct AppletDraft: Codable, Equatable, Sendable {
     var name: String
     var iconSystemName: String
     var kind: AppletKind
@@ -102,6 +102,9 @@ enum ManifestLimits {
     static let refreshInterval = 1.0...3600.0
     static let expectedStatusCode = 100...599
     static let timeout = 0.5...120.0
+    /// Generated tools are clamped to 1...30s at execution time and the
+    /// generation prompt instructs the same range; validate to match.
+    static let generatedToolTimeout = 1.0...30.0
     static let port = 1...65535
 }
 
@@ -174,7 +177,7 @@ enum ManifestValidationError: LocalizedError, Equatable {
 }
 
 enum ManifestValidator {
-    static func validateDraft(_ draft: CodexAppletDraft) throws {
+    static func validateDraft(_ draft: AppletDraft) throws {
         let normalized = normalized(draft)
         try validateIdentity(
             name: normalized.name,
@@ -208,15 +211,22 @@ enum ManifestValidator {
         value.iconSystemName = trimmed(manifest.iconSystemName)
         value.titleTemplate = trimmed(manifest.titleTemplate)
         value.sourcePrompt = trimmed(manifest.sourcePrompt)
+        if manifest.kind == .timer || manifest.kind == .countdown {
+            // Timer loops are event driven and never poll; a stored interval is
+            // ignored by the runtime and only misleads the UI.
+            value.refreshIntervalSeconds = nil
+        }
         value.config = normalized(manifest.config)
         return value
     }
 
-    static func makeManifest(from draft: CodexAppletDraft, sourcePrompt: String) throws -> AppletManifest {
+    static func makeManifest(from draft: AppletDraft, sourcePrompt: String) throws -> AppletManifest {
         let draft = normalized(draft)
         try validateDraft(draft)
 
-        return AppletManifest(
+        // Route through manifest normalization so kind-specific fields
+        // (e.g. timer refresh intervals) are stripped consistently.
+        return normalized(AppletManifest(
             name: draft.name,
             iconSystemName: draft.iconSystemName,
             kind: draft.kind,
@@ -226,11 +236,11 @@ enum ManifestValidator {
             config: draft.config,
             notifyOnComplete: draft.notifyOnComplete ?? (draft.kind == .timer || draft.kind == .countdown),
             notifyOnFailure: draft.notifyOnFailure ?? false
-        )
+        ))
     }
 
-    private static func normalized(_ draft: CodexAppletDraft) -> CodexAppletDraft {
-        CodexAppletDraft(
+    private static func normalized(_ draft: AppletDraft) -> AppletDraft {
+        AppletDraft(
             name: trimmed(draft.name),
             iconSystemName: trimmed(draft.iconSystemName),
             kind: draft.kind,
@@ -297,7 +307,9 @@ enum ManifestValidator {
             guard !source.utf8.contains(0) else {
                 throw ManifestValidationError.configMismatch("Generated source may not contain null bytes.")
             }
-            try validateTimeout(config.timeoutSeconds)
+            if let timeout = config.timeoutSeconds, !ManifestLimits.generatedToolTimeout.contains(timeout) {
+                throw ManifestValidationError.invalidTimeout
+            }
             if let directory = config.workingDirectory {
                 try requireMaximumLength(directory, field: "Working directory", maximum: ManifestLimits.pathLength)
             }

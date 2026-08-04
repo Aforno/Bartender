@@ -55,7 +55,7 @@ final class ManifestValidatorTests: XCTestCase {
         #!/bin/zsh
         printf '%s\\n' '{"title":"Hi","status":"Ready","details":[],"healthy":true,"values":{"value":"Hi"}}'
         """
-        let draft = CodexAppletDraft(
+        let draft = AppletDraft(
             name: "Greeting",
             iconSystemName: "hand.wave",
             kind: .generatedTool,
@@ -74,6 +74,56 @@ final class ManifestValidatorTests: XCTestCase {
             kind: .generatedTool,
             config: AppletConfig(generatedSource: "echo not-an-executable")
         )))
+    }
+
+    func testGeneratedToolTimeoutMatchesEnforcedExecutionRange() throws {
+        let source = "#!/bin/zsh\nprintf '%s\\n' '{\"title\":\"OK\",\"status\":\"OK\",\"details\":[],\"healthy\":true}'"
+
+        XCTAssertThrowsError(try ManifestValidator.validate(makeManifest(
+            kind: .generatedTool,
+            config: AppletConfig(timeoutSeconds: 45, generatedSource: source)
+        ))) { error in
+            XCTAssertEqual(error as? ManifestValidationError, .invalidTimeout)
+        }
+
+        XCTAssertThrowsError(try ManifestValidator.validate(makeManifest(
+            kind: .generatedTool,
+            config: AppletConfig(timeoutSeconds: 0.5, generatedSource: source)
+        ))) { error in
+            XCTAssertEqual(error as? ManifestValidationError, .invalidTimeout)
+        }
+
+        XCTAssertNoThrow(try ManifestValidator.validate(makeManifest(
+            kind: .generatedTool,
+            config: AppletConfig(timeoutSeconds: 30, generatedSource: source)
+        )))
+    }
+
+    func testTimerRefreshIntervalIsStrippedBecauseTimersNeverPoll() throws {
+        let timer = AppletManifest(
+            name: "Timer",
+            iconSystemName: "timer",
+            kind: .timer,
+            titleTemplate: "{{remaining}}",
+            refreshIntervalSeconds: 5,
+            config: AppletConfig(durationSeconds: 60)
+        )
+
+        let normalized = try ManifestValidator.normalizedAndValidated(timer)
+        XCTAssertNil(normalized.refreshIntervalSeconds)
+
+        let draft = AppletDraft(
+            name: "Timer",
+            iconSystemName: "timer",
+            kind: .countdown,
+            titleTemplate: "{{remaining}}",
+            refreshIntervalSeconds: 10,
+            notifyOnComplete: nil,
+            notifyOnFailure: nil,
+            config: AppletConfig(durationSeconds: 60)
+        )
+        let manifest = try ManifestValidator.makeManifest(from: draft, sourcePrompt: "count down")
+        XCTAssertNil(manifest.refreshIntervalSeconds)
     }
 
     private func makeManifest(kind: AppletKind, config: AppletConfig) -> AppletManifest {

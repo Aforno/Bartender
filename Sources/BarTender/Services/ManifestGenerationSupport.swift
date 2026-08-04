@@ -180,7 +180,7 @@ enum ManifestGenerationSupport {
     }
 
     private static func revisionContext(for manifest: AppletManifest) -> String {
-        let draft = CodexAppletDraft(
+        let draft = AppletDraft(
             name: manifest.name,
             iconSystemName: manifest.iconSystemName,
             kind: manifest.kind,
@@ -216,14 +216,14 @@ enum ManifestGenerationSupport {
         return destination
     }
 
-    static func decodeDraft(from message: String) throws -> CodexAppletDraft {
+    static func decodeDraft(from message: String) throws -> AppletDraft {
         let jsonText = extractJSONObject(from: message) ?? message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let data = jsonText.data(using: .utf8) else {
             throw ProviderGenerationError.invalidResponse("Could not encode provider response as UTF-8.")
         }
 
         do {
-            return try JSONDecoder().decode(CodexAppletDraft.self, from: data)
+            return try JSONDecoder().decode(AppletDraft.self, from: data)
         } catch {
             throw ProviderGenerationError.invalidResponse(
                 "Failed to decode applet manifest JSON: \(error.localizedDescription)\n\n\(jsonText.prefix(1500))"

@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The build receipt, Notion-style: one calm status line, with the raw
 /// provider log tucked behind a "Technical details" toggle.
-struct CodexLogView: View {
+struct GenerationLogView: View {
     @ObservedObject var session: GenerationSession
     @State private var showTechnicalDetails = false
 
@@ -132,7 +132,7 @@ struct CodexLogView: View {
         return elapsed < 60 ? "took \(elapsed)s" : "took \(elapsed / 60)m"
     }
 
-    private func color(for stream: CodexLogLine.Stream) -> Color {
+    private func color(for stream: ProviderLogLine.Stream) -> Color {
         switch stream {
         case .stdout: return .secondary
         case .stderr: return .orange

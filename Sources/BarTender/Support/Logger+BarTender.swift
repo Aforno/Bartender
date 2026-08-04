@@ -5,7 +5,7 @@ enum AppLog {
     static let subsystem = Bundle.main.bundleIdentifier ?? "io.github.aforno.bartender"
 
     static let app = Logger(subsystem: subsystem, category: "App")
-    static let codex = Logger(subsystem: subsystem, category: "Codex")
+    static let provider = Logger(subsystem: subsystem, category: "Provider")
     static let runtime = Logger(subsystem: subsystem, category: "Runtime")
     static let store = Logger(subsystem: subsystem, category: "Store")
     static let menuBar = Logger(subsystem: subsystem, category: "MenuBar")

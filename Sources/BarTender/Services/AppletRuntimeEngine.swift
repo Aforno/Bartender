@@ -151,6 +151,11 @@ final class AppletRuntimeEngine: ObservableObject {
         timerPausedRemaining[id] = nil
         metricCollectors[id] = nil
         failureTransitions.remove(id: id)
+        // Re-publish so status items refresh validation/approval chrome even when
+        // the title text is unchanged (e.g. first-run check just started).
+        if let current = snapshots[id] {
+            snapshots[id] = current
+        }
     }
 
     func stopAll() {

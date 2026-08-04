@@ -4,6 +4,7 @@ import SwiftUI
 /// Window-style menu bar panel with a single message bar for generating new tools.
 struct MenuBarManagerMenu: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var store: AppletStore
     @EnvironmentObject private var providers: AIProviderService
     @EnvironmentObject private var preferences: AppPreferences
     @Environment(\.openWindow) private var openWindow
@@ -49,7 +50,7 @@ struct MenuBarManagerMenu: View {
                 generationFeedback(generation)
             }
 
-            if !model.enabledApplets.isEmpty {
+            if !store.enabledApplets.isEmpty {
                 Divider()
                 Text("Running tools")
                     .font(.inter(.caption, weight: .semibold))
@@ -58,7 +59,7 @@ struct MenuBarManagerMenu: View {
 
                 ScrollView {
                     LazyVStack(spacing: 2) {
-                        ForEach(model.enabledApplets) { applet in
+                        ForEach(store.enabledApplets) { applet in
                             Button {
                                 open(applet)
                             } label: {
@@ -91,7 +92,7 @@ struct MenuBarManagerMenu: View {
                 }
                 Spacer()
                 Button("Quit and Stop Tools") {
-                    NSApp.terminate(nil)
+                    AppDelegate.requestQuit()
                 }
             }
             .font(.inter(.caption))

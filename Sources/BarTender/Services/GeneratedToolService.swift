@@ -306,7 +306,7 @@ enum GeneratedToolSourceValidator {
         let lowered = source.lowercased()
         let forbiddenPatterns = [
             #"(^|[^a-z0-9_])sudo([^a-z0-9_]|$)"#,
-            #"(^|/)powermetrics([^a-z0-9_]|$)"#
+            #"(^|[^a-z0-9_])powermetrics([^a-z0-9_]|$)"#
         ]
         if forbiddenPatterns.contains(where: {
             lowered.range(of: $0, options: .regularExpression) != nil

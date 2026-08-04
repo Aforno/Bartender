@@ -4,8 +4,6 @@ import SwiftUI
 @main
 struct BarTenderApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var model = AppModel()
-    @StateObject private var statusItems = StatusItemManager()
 
     init() {
         InterFont.registerIfNeeded()
@@ -20,54 +18,69 @@ struct BarTenderApp: App {
     var body: some Scene {
         WindowGroup("Bar Tender", id: "main") {
             ContentView()
-                .background(MainWindowActionsInstaller(model: model))
+                .background(MainWindowActionsInstaller(model: appDelegate.model))
                 .tint(PremiumStyle.brand)
                 .font(.inter(.body))
-                .environmentObject(model)
-                .environmentObject(model.store)
-                .environmentObject(model.providers)
-                .environmentObject(model.runtime)
-                .environmentObject(model.preferences)
+                .environmentObject(appDelegate.model)
+                .environmentObject(appDelegate.model.store)
+                .environmentObject(appDelegate.model.providers)
+                .environmentObject(appDelegate.model.runtime)
+                .environmentObject(appDelegate.model.preferences)
                 .task {
-                    appDelegate.model = model
-                    statusItems.attach(model: model)
-                    AppActions.shared.model = model
-                    await model.bootstrap()
+                    // Main window is open: use a regular app activation policy (Dock + menus).
+                    AppDelegate.prepareForMainWindow()
+                    // Re-attach/rebuild when the main window appears (idempotent).
+                    // Primary attach + bootstrap happen in applicationDidFinishLaunching.
+                    appDelegate.statusItems.attach(model: appDelegate.model)
+                    AppActions.shared.model = appDelegate.model
+                    await appDelegate.model.bootstrap()
                 }
         }
+        // Menu-bar tools are created in applicationDidFinishLaunching and are
+        // independent of the main window. The window opens at launch so the
+        // user always sees the app; the tools stay in the menu bar regardless.
+        // .defaultLaunchBehavior(.suppressed)
         .defaultSize(width: 1180, height: 760)
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Tool") {
-                    model.beginNewTool()
+                    appDelegate.model.beginNewTool()
                 }
                 .keyboardShortcut("n", modifiers: [.command])
-                .disabled(model.generation?.phase.isActive == true)
+                .disabled(appDelegate.model.generation?.phase.isActive == true)
             }
             CommandMenu("Tool") {
-                Button(model.selectedApplet == nil ? "Build New Tool from Prompt" : "Update Selected Tool from Prompt") {
-                    Task { await model.createFromPrompt() }
+                Button(appDelegate.model.selectedApplet == nil ? "Build New Tool from Prompt" : "Update Selected Tool from Prompt") {
+                    Task { await appDelegate.model.createFromPrompt() }
                 }
                 .disabled(
-                    model.generation?.phase.isActive == true
-                        || model.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        || !model.providers.availability.isReady
+                    appDelegate.model.generation?.phase.isActive == true
+                        || appDelegate.model.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || !appDelegate.model.providers.availability.isReady
                 )
 
                 Button("Cancel Generation") {
-                    model.cancelGeneration()
+                    appDelegate.model.cancelGeneration()
                 }
                 .keyboardShortcut(.escape, modifiers: [.command])
-                .disabled(model.generation?.phase.isActive != true)
+                .disabled(appDelegate.model.generation?.phase.isActive != true)
 
                 Divider()
 
                 Button("Delete Selected Tool") {
-                    model.deleteSelected()
+                    appDelegate.model.deleteSelected()
                 }
                 .keyboardShortcut(.delete, modifiers: [.command])
-                .disabled(model.selectedApplet == nil || model.generation?.phase.isActive == true)
+                .disabled(appDelegate.model.selectedApplet == nil || appDelegate.model.generation?.phase.isActive == true)
+            }
+            // Route standard Quit through requestQuit so it matches the menu-bar
+            // "Quit and Stop Tools" path and always marks a user-initiated exit.
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit Bar Tender") {
+                    AppDelegate.requestQuit()
+                }
+                .keyboardShortcut("q", modifiers: [.command])
             }
         }
 
@@ -76,11 +89,11 @@ struct BarTenderApp: App {
             MenuBarManagerMenu()
                 .tint(PremiumStyle.brand)
                 .font(.inter(.body))
-                .environmentObject(model)
-                .environmentObject(model.store)
-                .environmentObject(model.runtime)
-                .environmentObject(model.providers)
-                .environmentObject(model.preferences)
+                .environmentObject(appDelegate.model)
+                .environmentObject(appDelegate.model.store)
+                .environmentObject(appDelegate.model.runtime)
+                .environmentObject(appDelegate.model.providers)
+                .environmentObject(appDelegate.model.preferences)
         }
         .menuBarExtraStyle(.window)
 
@@ -88,10 +101,10 @@ struct BarTenderApp: App {
             SettingsView()
                 .tint(PremiumStyle.brand)
                 .font(.inter(.body))
-                .environmentObject(model)
-                .environmentObject(model.store)
-                .environmentObject(model.providers)
-                .environmentObject(model.preferences)
+                .environmentObject(appDelegate.model)
+                .environmentObject(appDelegate.model.store)
+                .environmentObject(appDelegate.model.providers)
+                .environmentObject(appDelegate.model.preferences)
         }
     }
 }
@@ -99,8 +112,9 @@ struct BarTenderApp: App {
 @MainActor
 enum MainWindowRouter {
     static func open(using openWindow: OpenWindowAction) {
+        AppDelegate.prepareForMainWindow()
+
         if let window = NSApp.windows.first(where: isMainWindow) {
-            NSApp.activate(ignoringOtherApps: true)
             if window.isMiniaturized {
                 window.deminiaturize(nil)
             }
@@ -109,7 +123,6 @@ enum MainWindowRouter {
         }
 
         openWindow(id: "main")
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     static func isMainWindow(_ window: NSWindow) -> Bool {

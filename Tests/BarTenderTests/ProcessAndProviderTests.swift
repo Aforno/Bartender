@@ -123,6 +123,36 @@ final class ProcessAndProviderTests: XCTestCase {
         XCTAssertTrue(childWasReaped, "The isolated descendant process group should be cleaned up.")
     }
 
+    func testIncompleteUTF8SuffixDetection() {
+        // "é" = 0xC3 0xA9, "€" = 0xE2 0x82 0xAC, "𝄞" = 0xF0 0x9D 0x84 0x9E
+        XCTAssertEqual(ProcessRunner.incompleteUTF8SuffixLength(of: Data([0x61, 0x62])), 0)
+        XCTAssertEqual(ProcessRunner.incompleteUTF8SuffixLength(of: Data([0x61, 0xC3])), 1)
+        XCTAssertEqual(ProcessRunner.incompleteUTF8SuffixLength(of: Data([0x61, 0xC3, 0xA9])), 0)
+        XCTAssertEqual(ProcessRunner.incompleteUTF8SuffixLength(of: Data([0xE2, 0x82])), 2)
+        XCTAssertEqual(ProcessRunner.incompleteUTF8SuffixLength(of: Data([0x61, 0xE2, 0x82, 0xAC])), 0)
+        XCTAssertEqual(ProcessRunner.incompleteUTF8SuffixLength(of: Data([0xF0, 0x9D, 0x84])), 3)
+        XCTAssertEqual(ProcessRunner.incompleteUTF8SuffixLength(of: Data([0xF0, 0x9D, 0x84, 0x9E])), 0)
+        // Invalid lead bytes decode as-is instead of being held back forever.
+        XCTAssertEqual(ProcessRunner.incompleteUTF8SuffixLength(of: Data([0x61, 0xFF])), 0)
+    }
+
+    func testProcessRunnerStreamsMultiByteUTF8AcrossChunkBoundaries() async throws {
+        // 100 000 é characters (2 bytes each = 200 KB) force several 64 KB reads,
+        // guaranteeing some character straddles a read boundary.
+        let runner = ProcessRunner()
+        let streamed = LockedString()
+        let result = try await runner.run(
+            executable: "/usr/bin/awk",
+            arguments: ["BEGIN { s = \"é\"; for (i = 0; i < 100000; i++) printf \"%s\", s }"],
+            timeout: 10,
+            onStdout: { streamed.append($0) }
+        )
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertFalse(streamed.value.contains("\u{FFFD}"), "Streamed chunks must not split multi-byte characters")
+        XCTAssertEqual(streamed.value, result.stdout)
+    }
+
     func testProcessRunnerCapsRetainedStdoutAndStderr() async throws {
         let runner = ProcessRunner()
         let emittedBytes = ProcessRunner.maximumRetainedOutputBytes + 8_192
@@ -310,6 +340,23 @@ final class ProcessAndProviderTests: XCTestCase {
         XCTAssertNoThrow(
             try ManifestGenerationSupport.requireCommandAvailable(manifest, environment: environment)
         )
+    }
+}
+
+private final class LockedString: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = ""
+
+    var value: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func append(_ text: String) {
+        lock.lock()
+        storage += text
+        lock.unlock()
     }
 }
 

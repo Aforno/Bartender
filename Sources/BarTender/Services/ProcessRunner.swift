@@ -306,6 +306,36 @@ actor ProcessRunner {
         _ = Darwin.kill(processIdentifier, SIGKILL)
     }
 
+    /// Number of trailing bytes that form an incomplete UTF-8 sequence (0–3).
+    /// Used to avoid lossy-decoding a character split across read() boundaries.
+    static func incompleteUTF8SuffixLength(of data: Data) -> Int {
+        var continuationCount = 0
+        var leadByte: UInt8?
+        for byte in data.suffix(4).reversed() {
+            if byte & 0xC0 == 0x80 {
+                continuationCount += 1
+            } else {
+                leadByte = byte
+                break
+            }
+        }
+        guard let lead = leadByte else { return 0 }
+        let expectedLength: Int
+        if lead & 0x80 == 0 {
+            expectedLength = 1
+        } else if lead & 0xE0 == 0xC0 {
+            expectedLength = 2
+        } else if lead & 0xF0 == 0xE0 {
+            expectedLength = 3
+        } else if lead & 0xF8 == 0xF0 {
+            expectedLength = 4
+        } else {
+            return 0 // Invalid lead byte; decode as-is.
+        }
+        let available = continuationCount + 1
+        return available < expectedLength ? available : 0
+    }
+
     /// Cooperative wait so timeout/cancellation tasks stay schedulable.
     private static func waitForTermination(of processIdentifier: pid_t) async -> WaitResult {
         var status: Int32 = 0
@@ -313,9 +343,11 @@ actor ProcessRunner {
             let result = Darwin.waitpid(processIdentifier, &status, WNOHANG)
             if result == processIdentifier {
                 let terminationSignal = status & 0x7f
+                // Report signal deaths with the conventional 128+signal code so a
+                // killed process is not mistaken for a real small exit status.
                 let exitCode = terminationSignal == 0
                     ? (status >> 8) & 0xff
-                    : terminationSignal
+                    : 128 + terminationSignal
                 return WaitResult(exitCode: exitCode)
             }
             if result == 0 {
@@ -513,6 +545,9 @@ private func collectProcessOutput(
         maximumBytes: ProcessRunner.maximumRetainedOutputBytes,
         marker: ProcessRunner.outputTruncationMarker
     )
+    // Multi-byte UTF-8 characters can straddle read() boundaries; hold back an
+    // incomplete trailing sequence so streamed chunks never emit U+FFFD halves.
+    var pendingStreamBytes = Data()
 
     while true {
         let parentHasTerminated = parentTerminated.value
@@ -550,7 +585,14 @@ private func collectProcessOutput(
             let chunk = Data(buffer.prefix(count))
             collector.append(chunk)
             if let onChunk {
-                onChunk(String(decoding: chunk, as: UTF8.self))
+                pendingStreamBytes.append(chunk)
+                let holdback = ProcessRunner.incompleteUTF8SuffixLength(of: pendingStreamBytes)
+                let decodableCount = pendingStreamBytes.count - holdback
+                if decodableCount > 0 {
+                    onChunk(String(decoding: pendingStreamBytes.prefix(decodableCount), as: UTF8.self))
+                    // Copy to re-base indices and release the full read buffer.
+                    pendingStreamBytes = Data(pendingStreamBytes.suffix(holdback))
+                }
             }
             if parentHasTerminated {
                 readsAfterParentTermination += 1
@@ -564,6 +606,11 @@ private func collectProcessOutput(
             continue
         }
         break
+    }
+
+    // Flush any bytes still held back (incomplete sequence at EOF decodes as U+FFFD).
+    if let onChunk, !pendingStreamBytes.isEmpty {
+        onChunk(String(decoding: pendingStreamBytes, as: UTF8.self))
     }
 
     return collector.result()

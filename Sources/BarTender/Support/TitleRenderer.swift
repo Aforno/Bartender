@@ -1,8 +1,9 @@
 import Foundation
 
 enum TitleRenderer {
-    /// Caps menu bar titles to keep MenuBarExtra labels readable.
+    /// Menu rows can be wider than the always-visible status item itself.
     static let menuBarMaxLength = 30
+    static let statusItemMaxLength = 22
 
     static func render(template: String, values: [String: String], fallback: String) -> String {
         var result = template
@@ -24,10 +25,24 @@ enum TitleRenderer {
     }
 
     static func shortMenuTitle(_ title: String) -> String {
-        if title.count <= menuBarMaxLength {
-            return title
+        shortened(title, maximumLength: menuBarMaxLength)
+    }
+
+    static func statusItemTitle(_ title: String, runState: ToolRunState) -> String {
+        let resolved: String
+        switch runState {
+        case .disabled:
+            resolved = "Off"
+        case .validating:
+            resolved = "Testing"
+        case .reviewRequired:
+            resolved = "Review"
+        case .needsAttention:
+            resolved = "Issue"
+        case .running, .idle:
+            resolved = title
         }
-        return String(title.prefix(menuBarMaxLength - 1)) + "…"
+        return shortened(resolved, maximumLength: statusItemMaxLength)
     }
 
     static func formatDuration(_ seconds: Int) -> String {
@@ -47,6 +62,11 @@ enum TitleRenderer {
 
     static func formatBytes(_ bytes: UInt64) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .memory)
+    }
+
+    private static func shortened(_ title: String, maximumLength: Int) -> String {
+        guard title.count > maximumLength else { return title }
+        return String(title.prefix(maximumLength - 1)) + "…"
     }
 }
 

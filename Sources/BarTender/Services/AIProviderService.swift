@@ -100,9 +100,10 @@ final class AIProviderService: ObservableObject {
             selectedModel = match
             selectedProvider = match.provider
         } else {
+            // Set iteration order is nondeterministic; fall back in declaration order.
             let preferred = enabledProviders.contains(provider)
                 ? provider
-                : (enabledProviders.first ?? provider)
+                : (firstEnabledProvider ?? provider)
             selectedModel = preferredModel(for: preferred)
             selectedProvider = selectedModel.provider
         }
@@ -147,6 +148,12 @@ final class AIProviderService: ObservableObject {
         enabledProviders.contains(provider)
     }
 
+    /// The first enabled provider in `AIProvider.allCases` order (deterministic,
+    /// unlike `Set.first`).
+    private var firstEnabledProvider: AIProvider? {
+        AIProvider.allCases.first(where: enabledProviders.contains)
+    }
+
     /// Turns a provider on/off in Settings. At least one provider must stay enabled.
     func setProviderEnabled(_ provider: AIProvider, enabled: Bool) {
         var next = enabledProviders
@@ -160,13 +167,13 @@ final class AIProviderService: ObservableObject {
 
         // If the active provider was disabled, hop to another enabled one.
         if !enabledProviders.contains(selectedProvider),
-           let fallback = enabledProviders.first {
+           let fallback = firstEnabledProvider {
             selectProvider(fallback)
         }
 
         // Drop selected model if its provider is now off.
         if !enabledProviders.contains(selectedModel.provider),
-           let fallback = selectableModels.first ?? enabledProviders.first.map({ preferredModel(for: $0) }) {
+           let fallback = selectableModels.first ?? firstEnabledProvider.map({ preferredModel(for: $0) }) {
             selectModel(fallback)
         }
 
@@ -227,7 +234,7 @@ final class AIProviderService: ObservableObject {
         if !isProviderEnabled(selectedProvider) || !availability.isReady,
            let fallback = readyProviders.first {
             selectProvider(fallback)
-            AppLog.codex.info("Selected provider fell back to \(fallback.rawValue, privacy: .public)")
+            AppLog.provider.info("Selected provider fell back to \(fallback.rawValue, privacy: .public)")
         } else if !selectableModels.contains(where: { $0.id == selectedModel.id }) {
             selectedModel = preferredModel(for: selectedProvider)
         }
@@ -235,7 +242,7 @@ final class AIProviderService: ObservableObject {
 
     func refreshModelCatalog() {
         availableModels = AIProvider.allCases.flatMap(modelProvider)
-        AppLog.codex.info("Model catalog loaded (\(self.availableModels.count, privacy: .public) models)")
+        AppLog.provider.info("Model catalog loaded (\(self.availableModels.count, privacy: .public) models)")
     }
 
     private func preferredModel(for provider: AIProvider) -> AIModelOption {
@@ -373,7 +380,7 @@ final class AIProviderService: ObservableObject {
         environment: [String: String]
     ) async -> ProviderAvailability {
         guard let path = executableResolver(provider.executableName, environment) else {
-            AppLog.codex.error("\(provider.rawValue, privacy: .public) CLI not found on PATH")
+            AppLog.provider.error("\(provider.rawValue, privacy: .public) CLI not found on PATH")
             return .unavailable(.notFound)
         }
 
@@ -389,7 +396,7 @@ final class AIProviderService: ObservableObject {
                 version: version,
                 authSummary: auth?.summary ?? "Installed"
             )
-            AppLog.codex.info("\(provider.rawValue, privacy: .public) ready at \(path, privacy: .public) (\(version, privacy: .public))")
+            AppLog.provider.info("\(provider.rawValue, privacy: .public) ready at \(path, privacy: .public) (\(version, privacy: .public))")
             return .ready(install)
         } catch let error as ProbeError {
             switch error {
@@ -961,7 +968,3 @@ final class AIProviderService: ObservableObject {
         return value
     }
 }
-
-/// Compatibility alias so existing `@EnvironmentObject private var codex` call sites keep compiling
-/// while views migrate to `providers`.
-typealias CodexCLIService = AIProviderService
