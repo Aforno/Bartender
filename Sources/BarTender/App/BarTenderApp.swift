@@ -141,7 +141,9 @@ enum MainWindowRouter {
     @discardableResult
     private static func focusExistingMainWindow() -> Bool {
         AppDelegate.prepareForMainWindow()
-        guard let window = NSApp.windows.first(where: isMainWindow) else {
+        // Unit-test hosts may not have a shared NSApplication; treat as no window.
+        guard let app = NSApp else { return false }
+        guard let window = app.windows.first(where: isMainWindow) else {
             return false
         }
         if window.isMiniaturized {

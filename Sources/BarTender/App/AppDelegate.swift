@@ -125,9 +125,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     /// Activate when presenting the main window from a menu bar action.
+    /// No-op when `NSApp` is unavailable (e.g. pure unit-test host without AppKit app bootstrap).
     static func prepareForMainWindow() {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        guard let app = NSApp else { return }
+        app.setActivationPolicy(.regular)
+        app.activate(ignoringOtherApps: true)
     }
 
     static func requestQuit() {
