@@ -275,4 +275,61 @@ final class UpdateServiceTests: XCTestCase {
         XCTAssertEqual(service.currentBuildNumber, "9")
         XCTAssertEqual(service.channel, .adhoc)
     }
+
+    func testNextPageURLParsesGitHubLinkHeader() {
+        let header = #"<https://api.github.com/repos/Aforno/Bartender/releases?page=2&per_page=100>; rel="next", <https://api.github.com/repos/Aforno/Bartender/releases?page=5&per_page=100>; rel="last""#
+        let next = UpdateService.nextPageURL(fromLinkHeader: header)
+        XCTAssertEqual(
+            next?.absoluteString,
+            "https://api.github.com/repos/Aforno/Bartender/releases?page=2&per_page=100"
+        )
+        XCTAssertNil(UpdateService.nextPageURL(fromLinkHeader: #"<https://example.com>; rel="last""#))
+        XCTAssertNil(UpdateService.nextPageURL(fromLinkHeader: ""))
+    }
+
+    func testCompatibleReleaseBeyondFirstPageIsStillSelectable() {
+        // Simulates page 1: 31 incompatible/stable releases, page 2: one ad-hoc update.
+        let page1: [UpdateService.Release] = (0..<31).map { index in
+            UpdateService.Release(
+                tagName: "v9.0.\(index)",
+                htmlURL: "https://example.com/stable-\(index)",
+                draft: false,
+                prerelease: false,
+                publishedBuildNumber: 100 + index
+            )
+        }
+        let page2 = [
+            UpdateService.Release(
+                tagName: "v1.0.2-adhoc+build.4",
+                htmlURL: "https://example.com/compatible",
+                draft: false,
+                prerelease: true,
+                publishedBuildNumber: 4
+            )
+        ]
+        let accumulated = page1 + page2
+
+        // After page 1 alone there is no compatible candidate.
+        XCTAssertEqual(
+            UpdateService.selectRelease(
+                from: page1,
+                currentVersion: "1.0.1-adhoc",
+                currentBuild: "2",
+                channel: .adhoc
+            ),
+            .noneCompatible
+        )
+
+        // After following pagination the compatible release is discovered.
+        guard case let .update(version, url) = UpdateService.selectRelease(
+            from: accumulated,
+            currentVersion: "1.0.1-adhoc",
+            currentBuild: "2",
+            channel: .adhoc
+        ) else {
+            return XCTFail("Expected compatible release after pagination")
+        }
+        XCTAssertEqual(version, "1.0.2-adhoc+build.4")
+        XCTAssertEqual(url.absoluteString, "https://example.com/compatible")
+    }
 }

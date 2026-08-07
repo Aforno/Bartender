@@ -5,7 +5,7 @@
 
 A native macOS app that turns natural-language descriptions into live menu bar applets.
 
-> **Project status:** This branch ships **ad-hoc (unsigned) binaries** so testers can download a DMG without a paid Apple Developer Program membership. Builds are universal, hardened-runtime sealed, and published as ZIP/DMG prereleases. They are **not** Developer ID signed or notarized—users must bypass Gatekeeper on first open (see the release notes). The `main` branch still targets the paid-account signed/notarized path.
+> **Project status:** The `main` branch currently publishes **ad-hoc (unsigned) prerelease** builds for testing on every push. Builds are universal, hardened-runtime sealed, and published as ZIP/DMG prereleases. They are **not** Developer ID signed or notarized—users must bypass Gatekeeper on first open (see the release notes). A signed/notarized stable channel can replace or complement this workflow once Developer ID credentials are available.
 
 Bar Tender uses an already installed and authenticated **Codex, Claude, Grok, Gemini, or Antigravity (`agy`) CLI** on your Mac. It does **not** ask for API keys. Each prompt produces a dedicated, reviewable zsh tool artifact that becomes its own live menu bar item.
 
@@ -93,7 +93,7 @@ To exercise the complete local packaging path with an ad-hoc signature:
 ./script/install_smoke_test.sh dist/release/BarTender-1.0.0.dmg
 ```
 
-Developer ID signing and notarization are intentionally mandatory for distribution builds. See [docs/RELEASING.md](docs/RELEASING.md).
+Ad-hoc packaging is the current public distribution path. Developer ID signing and notarization remain reserved for a future stable channel—see [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Provider integration (CLI-only)
 

@@ -223,9 +223,18 @@ final class AIProviderService: ObservableObject {
         }
 
         let environment = await environmentLoader()
-        // Probe sequentially on the main actor so ProcessRunner hops stay simple.
-        for provider in AIProvider.allCases {
-            statuses[provider] = await probe(provider, environment: environment)
+        // Probe providers concurrently. Each probe awaits ProcessRunner (an actor),
+        // so independent CLIs progress in parallel; status is published as each finishes.
+        await withTaskGroup(of: (AIProvider, ProviderAvailability).self) { group in
+            for provider in AIProvider.allCases {
+                group.addTask { @MainActor in
+                    let status = await self.probe(provider, environment: environment)
+                    return (provider, status)
+                }
+            }
+            for await (provider, status) in group {
+                statuses[provider] = status
+            }
         }
 
         refreshModelCatalog()
@@ -305,12 +314,12 @@ final class AIProviderService: ObservableObject {
         onLog(.system, "Model: \(model.modelID) (\(model.displayName))")
         onLog(.system, "Launching: \(installation.executablePath)")
         onLog(.system, "Version: \(installation.version)")
-        onLog(.system, "Args: \(invocation.arguments.joined(separator: " "))")
+        onLog(.system, "Args: \(Self.redactedArgumentList(invocation.arguments))")
         onLog(.system, existingTool.map { "Mode: Revising \($0.name) in place" } ?? "Mode: Creating a new tool")
         if iterationFeedback != nil {
             onLog(.system, "Feedback: Retrying with validator or first-run diagnostics")
         }
-        onLog(.system, "Prompt: \(trimmed)")
+        onLog(.system, "Prompt size: \(fullPrompt.count) characters")
 
         let localRunner = ProcessRunner()
         generationRunner = localRunner
@@ -713,6 +722,39 @@ final class AIProviderService: ObservableObject {
             "--mode", "plan",
             "--sandbox"
         ]
+    }
+
+    /// Redacts prompt payloads and large schema blobs from display logs while
+    /// keeping useful operational flags (model, mode, paths).
+    nonisolated static func redactedArgumentList(_ arguments: [String]) -> String {
+        let promptFlags: Set<String> = ["-p", "--print", "--prompt", "--single"]
+        let omitValueFlags: Set<String> = ["--json-schema"]
+        var redacted: [String] = []
+        var index = 0
+        while index < arguments.count {
+            let argument = arguments[index]
+            if promptFlags.contains(argument), index + 1 < arguments.count {
+                redacted.append(argument)
+                redacted.append("<prompt redacted>")
+                index += 2
+                continue
+            }
+            if omitValueFlags.contains(argument), index + 1 < arguments.count {
+                redacted.append(argument)
+                redacted.append("<schema omitted>")
+                index += 2
+                continue
+            }
+            // Positional prompt (e.g. codex exec … <prompt>) or any oversized value.
+            if !argument.hasPrefix("-"), argument.count > 120 {
+                redacted.append("<prompt redacted>")
+                index += 1
+                continue
+            }
+            redacted.append(argument)
+            index += 1
+        }
+        return redacted.joined(separator: " ")
     }
 
     private func modelFlag(for provider: AIProvider, modelID: String) -> [String] {

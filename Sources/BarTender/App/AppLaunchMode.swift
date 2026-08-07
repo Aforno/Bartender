@@ -78,7 +78,7 @@ enum AppLaunchMode: Equatable, Sendable {
     }
 
     /// Detects Launch Services / login-item starts via the Apple Event that
-    /// launched the process (`keyAELaunchedAsLogInItem` = `'lili'`).
+    /// launched the process (`keyAELaunchedAsLogInItem` = `'lgit'`).
     static func detectLaunchedAsLoginItem(
         appleEvent: NSAppleEventDescriptor? = nil
     ) -> Bool {
@@ -86,15 +86,14 @@ enum AppLaunchMode: Equatable, Sendable {
         let event = appleEvent ?? NSAppleEventManager.shared().currentAppleEvent
         guard let event else { return false }
 
-        // AEKeyword for keyAELaunchedAsLogInItem ('lili')
-        let keyLaunchedAsLogInItem = AEKeyword(UInt32(bitPattern: Int32(0x6C696C69)))
-        if event.paramDescriptor(forKeyword: keyLaunchedAsLogInItem)?.booleanValue == true {
+        // Platform constant from AERegistry.h (`'lgit'`). Prefer the named
+        // constant so a wrong four-character code cannot regress silently.
+        if event.paramDescriptor(forKeyword: keyAELaunchedAsLogInItem)?.booleanValue == true {
             return true
         }
 
-        // AEKeyword for keyAELaunchedAsServiceItem ('svit') — treat as silent.
-        let keyLaunchedAsServiceItem = AEKeyword(UInt32(bitPattern: Int32(0x73766974)))
-        if event.paramDescriptor(forKeyword: keyLaunchedAsServiceItem)?.booleanValue == true {
+        // `keyAELaunchedAsServiceItem` (`'svit'`) — treat as silent as well.
+        if event.paramDescriptor(forKeyword: keyAELaunchedAsServiceItem)?.booleanValue == true {
             return true
         }
         #endif

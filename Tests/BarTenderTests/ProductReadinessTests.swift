@@ -46,6 +46,12 @@ final class ProductReadinessTests: XCTestCase {
         XCTAssertEqual(session.logs.count, GenerationSession.maximumLogLines)
         XCTAssertEqual(session.logs.first?.text, "line 500")
         XCTAssertEqual(session.logs.last?.text, "line 2499")
+
+        let huge = String(repeating: "x", count: ProviderLogLine.maximumTextCharacters + 500)
+        let bounded = ProviderLogLine(stream: .stdout, text: huge)
+        XCTAssertLessThanOrEqual(bounded.text.count, ProviderLogLine.maximumTextCharacters + 40)
+        XCTAssertTrue(bounded.text.contains("truncated"))
+        XCTAssertFalse(bounded.text.count > huge.count)
     }
 }
 

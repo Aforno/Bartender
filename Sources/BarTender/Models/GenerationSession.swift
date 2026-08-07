@@ -7,6 +7,9 @@ struct ProviderLogLine: Identifiable, Equatable, Sendable {
         case system
     }
 
+    /// Soft cap so a single CLI chunk cannot become an unbounded SwiftUI row.
+    static let maximumTextCharacters = 4_000
+
     let id: UUID
     let date: Date
     let stream: Stream
@@ -16,7 +19,16 @@ struct ProviderLogLine: Identifiable, Equatable, Sendable {
         self.id = id
         self.date = date
         self.stream = stream
-        self.text = text
+        self.text = Self.boundedText(text)
+    }
+
+    static func boundedText(_ text: String, limit: Int = maximumTextCharacters) -> String {
+        guard limit > 32, text.count > limit else { return text }
+        let headCount = limit / 2
+        let tailCount = limit - headCount - 24
+        let head = text.prefix(headCount)
+        let tail = text.suffix(max(0, tailCount))
+        return "\(head)… [truncated \(text.count) chars] …\(tail)"
     }
 }
 

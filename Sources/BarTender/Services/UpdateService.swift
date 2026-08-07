@@ -32,8 +32,13 @@ final class UpdateService: ObservableObject {
     /// Info dictionary override for tests (short version / build).
     nonisolated let infoDictionary: [String: Any]?
 
+    /// Default page size for GitHub Releases listing.
+    nonisolated static let releasesPerPage = 100
+    /// Bound how far back the updater will scan when no compatible release is found yet.
+    nonisolated static let maximumReleasePages = 5
+
     nonisolated private static let defaultReleasesURL = URL(
-        string: "https://api.github.com/repos/Aforno/Bartender/releases?per_page=30"
+        string: "https://api.github.com/repos/Aforno/Bartender/releases?per_page=\(releasesPerPage)"
     )!
 
     init(
@@ -134,9 +139,60 @@ final class UpdateService: ObservableObject {
         session: URLSession,
         currentVersion: String,
         currentBuild: String,
-        channel: Channel
+        channel: Channel,
+        maximumPages: Int = maximumReleasePages
     ) async throws -> Selection {
-        var request = URLRequest(url: releasesURL)
+        // GitHub returns releases newest-first. Paginate until we see any
+        // channel-compatible release (then the newest is already in hand) or
+        // we exhaust the bound / next-link chain.
+        var pageURL = releasesURL
+        var accumulated: [Release] = []
+        let pageLimit = max(1, maximumPages)
+
+        for _ in 0..<pageLimit {
+            let (data, http) = try await fetchReleasePage(
+                url: pageURL,
+                session: session,
+                currentVersion: currentVersion
+            )
+
+            let pageReleases: [Release]
+            do {
+                pageReleases = try decodeReleases(from: data)
+            } catch {
+                throw UpdateError.invalidResponse
+            }
+            accumulated.append(contentsOf: pageReleases)
+
+            if accumulated.contains(where: { isSelectableCandidate($0, channel: channel) }) {
+                return selectRelease(
+                    from: accumulated,
+                    currentVersion: currentVersion,
+                    currentBuild: currentBuild,
+                    channel: channel
+                )
+            }
+
+            guard let next = nextPageURL(from: http) else {
+                break
+            }
+            pageURL = next
+        }
+
+        return selectRelease(
+            from: accumulated,
+            currentVersion: currentVersion,
+            currentBuild: currentBuild,
+            channel: channel
+        )
+    }
+
+    nonisolated private static func fetchReleasePage(
+        url: URL,
+        session: URLSession,
+        currentVersion: String
+    ) async throws -> (Data, HTTPURLResponse) {
+        var request = URLRequest(url: url)
         request.setValue("BarTender/\(currentVersion)", forHTTPHeaderField: "User-Agent")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 30
@@ -157,7 +213,7 @@ final class UpdateService: ObservableObject {
 
         switch http.statusCode {
         case 200...299:
-            break
+            return (data, http)
         case 403, 429:
             throw UpdateError.rateLimited
         case 404:
@@ -165,20 +221,44 @@ final class UpdateService: ObservableObject {
         default:
             throw UpdateError.httpStatus(http.statusCode)
         }
+    }
 
-        let releases: [Release]
-        do {
-            releases = try decodeReleases(from: data)
-        } catch {
-            throw UpdateError.invalidResponse
+    /// Whether a release can enter ranking for the given channel.
+    nonisolated static func isSelectableCandidate(_ release: Release, channel: Channel) -> Bool {
+        isCompatible(release, channel: channel)
+            && SemanticVersion(normalizeTag(release.tagName)) != nil
+            && validatedReleaseURL(release.htmlURL) != nil
+    }
+
+    /// Parses GitHub's `Link` response header and returns the `rel="next"` URL when present.
+    nonisolated static func nextPageURL(from response: HTTPURLResponse) -> URL? {
+        // URLResponse stores header names case-insensitively; GitHub sends `Link`.
+        guard let linkHeader = response.value(forHTTPHeaderField: "Link") else {
+            return nil
         }
+        return nextPageURL(fromLinkHeader: linkHeader)
+    }
 
-        return selectRelease(
-            from: releases,
-            currentVersion: currentVersion,
-            currentBuild: currentBuild,
-            channel: channel
-        )
+    /// Pure Link-header parser for production and unit tests.
+    nonisolated static func nextPageURL(fromLinkHeader header: String) -> URL? {
+        // Example: <https://api.github.com/...?page=2>; rel="next", <...>; rel="last"
+        let parts = header.split(separator: ",")
+        for part in parts {
+            let segment = part.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard segment.contains("rel=\"next\"") || segment.contains("rel='next'") else {
+                continue
+            }
+            guard let start = segment.firstIndex(of: "<"),
+                  let end = segment.firstIndex(of: ">"),
+                  start < end else {
+                continue
+            }
+            let urlString = String(segment[segment.index(after: start)..<end])
+            if let url = URL(string: urlString) {
+                return url
+            }
+        }
+        return nil
     }
 
     /// Decodes a GitHub releases list, skipping individual malformed entries.
@@ -218,11 +298,7 @@ final class UpdateService: ObservableObject {
         // Invalid semantic versions and non-web URLs never enter the ranking.
         // Otherwise a malformed entry with an artificially high build number
         // could sort above a valid release and hide the real update.
-        let compatible = releases.filter { release in
-            isCompatible(release, channel: channel)
-                && SemanticVersion(normalizeTag(release.tagName)) != nil
-                && validatedReleaseURL(release.htmlURL) != nil
-        }
+        let compatible = releases.filter { isSelectableCandidate($0, channel: channel) }
         guard !compatible.isEmpty else {
             return .noneCompatible
         }
