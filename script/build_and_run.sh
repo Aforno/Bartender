@@ -37,6 +37,11 @@ cp "$ROOT_DIR/Packaging/Info.plist" "$INFO_PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$INFO_PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$INFO_PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$INFO_PLIST"
+if /usr/libexec/PlistBuddy -c "Print :BarTenderUpdateChannel" "$INFO_PLIST" >/dev/null 2>&1; then
+  /usr/libexec/PlistBuddy -c "Set :BarTenderUpdateChannel prerelease" "$INFO_PLIST"
+else
+  /usr/libexec/PlistBuddy -c "Add :BarTenderUpdateChannel string prerelease" "$INFO_PLIST"
+fi
 
 PARTIAL_PLIST="$DIST_DIR/assetcatalog.plist"
 xcrun actool "$ROOT_DIR/Packaging/Assets.xcassets" \

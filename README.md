@@ -5,7 +5,7 @@
 
 A native macOS app that turns natural-language descriptions into live menu bar applets.
 
-> **Project status:** This branch ships **ad-hoc (unsigned) binaries** so testers can download a DMG without a paid Apple Developer Program membership. Builds are universal, hardened-runtime sealed, and published as ZIP/DMG prereleases. They are **not** Developer ID signed or notarized—users must bypass Gatekeeper on first open (see the release notes). The `main` branch still targets the paid-account signed/notarized path.
+> **Project status:** The `main` branch currently publishes **prerelease** builds for testing on every push. Builds are universal, hardened-runtime sealed, and published as ZIP/DMG GitHub prereleases (`v<version>+build.<n>`). They are **not** Developer ID signed or notarized—users must bypass Gatekeeper on first open (see the release notes). A signed/notarized stable channel can replace or complement this workflow once Developer ID credentials are available.
 
 Bar Tender uses an already installed and authenticated **Codex, Claude, Grok, Gemini, or Antigravity (`agy`) CLI** on your Mac. It does **not** ask for API keys. Each prompt produces a dedicated, reviewable zsh tool artifact that becomes its own live menu bar item.
 
@@ -71,9 +71,9 @@ The script creates a development app bundle at `dist/BarTender.app`. It is not a
 
 ## Install a release
 
-Ad-hoc prerelease DMGs are published on [GitHub Releases](https://github.com/Aforno/Bartender/releases) from every push to `main`. Download the DMG, verify it against `SHA256SUMS.txt`, open it, and drag **BarTender** to **Applications**.
+Prerelease DMGs are published on [GitHub Releases](https://github.com/Aforno/Bartender/releases) from every push to `main`. Download the DMG, verify it against `SHA256SUMS.txt`, open it, and drag **BarTender** to **Applications**.
 
-**First launch:** Control-click the app → **Open** → **Open** (or use **Privacy & Security → Open Anyway**). Ad-hoc builds are not notarized, so Gatekeeper blocks a normal double-click until you approve the app once. Artifacts are universal for Apple silicon and Intel and require macOS 26 or newer.
+**First launch:** Control-click the app → **Open** → **Open** (or use **Privacy & Security → Open Anyway**). Current prerelease builds are not notarized, so Gatekeeper blocks a normal double-click until you approve the app once. Artifacts are universal for Apple silicon and Intel and require macOS 26 or newer.
 
 Bar Tender checks for updates only when you choose **Check for Updates** in Settings. When a newer GitHub release exists, it opens that release for a user-controlled download and install; it never replaces the app silently.
 
@@ -85,15 +85,15 @@ swift test
 swift build -c release
 ```
 
-To exercise the complete local packaging path with an ad-hoc signature:
+To exercise the complete local packaging path (ad-hoc codesign for CI/local use):
 
 ```bash
 ./script/package_release.sh --adhoc --skip-notarization --arch universal
-./script/verify_release.sh --app dist/release/BarTender.app --dmg dist/release/BarTender-1.0.0.dmg
-./script/install_smoke_test.sh dist/release/BarTender-1.0.0.dmg
+./script/verify_release.sh --app dist/release/BarTender.app --dmg dist/release/BarTender-1.0.1.dmg
+./script/install_smoke_test.sh dist/release/BarTender-1.0.1.dmg
 ```
 
-Developer ID signing and notarization are intentionally mandatory for distribution builds. See [docs/RELEASING.md](docs/RELEASING.md).
+Prerelease packaging is the current public distribution path. Developer ID signing and notarization remain reserved for a future stable channel—see [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Provider integration (CLI-only)
 

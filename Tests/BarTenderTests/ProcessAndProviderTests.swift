@@ -209,6 +209,41 @@ final class ProcessAndProviderTests: XCTestCase {
         }
     }
 
+    func testRedactedArgumentListHidesPromptAndSchemaPayloads() {
+        let longPrompt = String(repeating: "user request and tool source ", count: 20)
+        let longSchema = String(repeating: #"{"type":"object"}"#, count: 10)
+
+        let claude = AIProviderService.redactedArgumentList([
+            "-p", longPrompt,
+            "--model", "claude-fable",
+            "--output-format", "json",
+            "--json-schema", longSchema,
+            "--tools", ""
+        ])
+        XCTAssertTrue(claude.contains("-p <prompt redacted>"))
+        XCTAssertTrue(claude.contains("--json-schema <schema omitted>"))
+        XCTAssertTrue(claude.contains("--model claude-fable"))
+        XCTAssertFalse(claude.contains("user request"))
+        XCTAssertFalse(claude.contains(#"{"type":"object"}"#))
+
+        let codex = AIProviderService.redactedArgumentList([
+            "exec",
+            "--model", "o4-mini",
+            "--json",
+            "--output-schema", "/tmp/schema.json",
+            longPrompt
+        ])
+        XCTAssertTrue(codex.contains("--output-schema /tmp/schema.json"))
+        XCTAssertTrue(codex.contains("<prompt redacted>"))
+        XCTAssertFalse(codex.contains("user request"))
+
+        let grok = AIProviderService.redactedArgumentList([
+            "--single", longPrompt,
+            "--model", "grok-3"
+        ])
+        XCTAssertEqual(grok, "--single <prompt redacted> --model grok-3")
+    }
+
     func testExtractsManifestFromProviderEnvelope() {
         let envelope = #"{"type":"result","result":"{\"name\":\"Timer\",\"kind\":\"timer\",\"iconSystemName\":\"timer\",\"titleTemplate\":\"{{remaining}}\",\"config\":{\"durationSeconds\":60}}"}"#
         let payload = ManifestGenerationSupport.extractMessagePayload(from: envelope)

@@ -40,4 +40,4 @@ The assembled `.app` was launched and inspected through the macOS accessibility 
 
 ## CI matrix
 
-The committed CI matrix targets macOS 26 on both Apple silicon and Intel, and runs on pushes to `main` and `develop` plus pull requests. The release workflow on `main` only packages the ad-hoc universal app, verifies the sealed layout, smoke-tests the DMG, and publishes an immutable `v<VERSION>+build.<BUILD_NUMBER>` prerelease. Partial release failures are cleaned up so the same build can be retried; existing completed release identities are never replaced.
+The committed CI matrix targets macOS 26 on both Apple silicon and Intel, and runs on pushes to `main` and `develop` plus pull requests. The release workflow on `main` packages the universal app (ad-hoc codesign for the current testing path), verifies the sealed layout including `BarTenderUpdateChannel`, smoke-tests the DMG, and publishes an immutable `v<VERSION>+build.<BUILD_NUMBER>` GitHub prerelease. Partial release failures are cleaned up so the same build can be retried; existing completed release identities are never replaced.
