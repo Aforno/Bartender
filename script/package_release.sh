@@ -120,6 +120,19 @@ cp "$ROOT_DIR/Packaging/Info.plist" "$INFO_PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$INFO_PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$INFO_PLIST"
 /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion $MIN_SYSTEM_VERSION" "$INFO_PLIST"
+# Explicit update channel metadata (not encoded in the semantic version).
+# Ad-hoc-signed CI/testing builds track GitHub prereleases; Developer ID
+# distribution builds track stable (non-prerelease) GitHub releases.
+if $ADHOC_SIGNING; then
+  UPDATE_CHANNEL="prerelease"
+else
+  UPDATE_CHANNEL="stable"
+fi
+if /usr/libexec/PlistBuddy -c "Print :BarTenderUpdateChannel" "$INFO_PLIST" >/dev/null 2>&1; then
+  /usr/libexec/PlistBuddy -c "Set :BarTenderUpdateChannel $UPDATE_CHANNEL" "$INFO_PLIST"
+else
+  /usr/libexec/PlistBuddy -c "Add :BarTenderUpdateChannel string $UPDATE_CHANNEL" "$INFO_PLIST"
+fi
 
 PARTIAL_PLIST="$BUILD_ROOT/assetcatalog.plist"
 xcrun actool "$ROOT_DIR/Packaging/Assets.xcassets" \

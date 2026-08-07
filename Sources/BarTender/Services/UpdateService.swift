@@ -10,17 +10,33 @@ final class UpdateService: ObservableObject {
         case failed(String)
     }
 
-    /// Distribution channel inferred from the installed short version.
-    enum Channel: Equatable, Sendable {
-        case adhoc
+    /// Distribution channel for update eligibility.
+    ///
+    /// Encoded as explicit bundle metadata (`BarTenderUpdateChannel`), not in
+    /// the semantic version string. Prerelease app builds track GitHub
+    /// prereleases; stable builds track non-prerelease GitHub releases.
+    enum Channel: String, Equatable, Sendable {
+        case prerelease
         case stable
 
-        static func of(version: String) -> Channel {
-            let normalized = version.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            if normalized.contains("adhoc") {
-                return .adhoc
+        /// Info.plist / bundle key written by packaging scripts.
+        static let infoDictionaryKey = "BarTenderUpdateChannel"
+
+        /// Resolves the channel from build metadata. Unknown or missing values
+        /// default to prerelease so local/debug builds continue to track the
+        /// public testing feed rather than silently switching to stable.
+        static func of(infoDictionary: [String: Any]?) -> Channel {
+            guard let raw = infoDictionary?[infoDictionaryKey] as? String else {
+                return .prerelease
             }
-            return .stable
+            switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case Channel.prerelease.rawValue, "pre-release", "pre":
+                return .prerelease
+            case Channel.stable.rawValue, "release":
+                return .stable
+            default:
+                return .prerelease
+            }
         }
     }
 
@@ -29,13 +45,11 @@ final class UpdateService: ObservableObject {
     /// Injectable for tests; production uses the shared session.
     nonisolated let session: URLSession
     nonisolated let releasesURL: URL
-    /// Info dictionary override for tests (short version / build).
+    /// Info dictionary override for tests (short version / build / channel).
     nonisolated let infoDictionary: [String: Any]?
 
     /// Default page size for GitHub Releases listing.
     nonisolated static let releasesPerPage = 100
-    /// Bound how far back the updater will scan when no compatible release is found yet.
-    nonisolated static let maximumReleasePages = 5
 
     nonisolated private static let defaultReleasesURL = URL(
         string: "https://api.github.com/repos/Aforno/Bartender/releases?per_page=\(releasesPerPage)"
@@ -62,7 +76,7 @@ final class UpdateService: ObservableObject {
     }
 
     var channel: Channel {
-        Channel.of(version: currentVersion)
+        Channel.of(infoDictionary: infoDictionary ?? Bundle.main.infoDictionary)
     }
 
     var statusText: String? {
@@ -134,22 +148,30 @@ final class UpdateService: ObservableObject {
         var publishedBuildNumber: Int?
     }
 
+    /// Fetches every page of GitHub releases reachable via `Link: rel="next"`,
+    /// then ranks channel-compatible candidates by semantic version and build.
+    ///
+    /// GitHub's default ordering is newest-first by creation time, which is not
+    /// the same as semantic-version order. All pages must be collected before
+    /// ranking so a later page cannot hide a newer tag.
     nonisolated static func fetchCompatibleRelease(
         releasesURL: URL,
         session: URLSession,
         currentVersion: String,
         currentBuild: String,
-        channel: Channel,
-        maximumPages: Int = maximumReleasePages
+        channel: Channel
     ) async throws -> Selection {
-        // GitHub returns releases newest-first. Paginate until we see any
-        // channel-compatible release (then the newest is already in hand) or
-        // we exhaust the bound / next-link chain.
         var pageURL = releasesURL
         var accumulated: [Release] = []
-        let pageLimit = max(1, maximumPages)
+        var visited: Set<String> = []
 
-        for _ in 0..<pageLimit {
+        while true {
+            let pageKey = pageURL.absoluteString
+            guard visited.insert(pageKey).inserted else {
+                // Defensive: break cycles if a malformed Link header loops.
+                break
+            }
+
             let (data, http) = try await fetchReleasePage(
                 url: pageURL,
                 session: session,
@@ -163,15 +185,6 @@ final class UpdateService: ObservableObject {
                 throw UpdateError.invalidResponse
             }
             accumulated.append(contentsOf: pageReleases)
-
-            if accumulated.contains(where: { isSelectableCandidate($0, channel: channel) }) {
-                return selectRelease(
-                    from: accumulated,
-                    currentVersion: currentVersion,
-                    currentBuild: currentBuild,
-                    channel: channel
-                )
-            }
 
             guard let next = nextPageURL(from: http) else {
                 break
@@ -232,7 +245,6 @@ final class UpdateService: ObservableObject {
 
     /// Parses GitHub's `Link` response header and returns the `rel="next"` URL when present.
     nonisolated static func nextPageURL(from response: HTTPURLResponse) -> URL? {
-        // URLResponse stores header names case-insensitively; GitHub sends `Link`.
         guard let linkHeader = response.value(forHTTPHeaderField: "Link") else {
             return nil
         }
@@ -322,13 +334,13 @@ final class UpdateService: ObservableObject {
 
     nonisolated static func isCompatible(_ release: Release, channel: Channel) -> Bool {
         if release.draft { return false }
-        let version = normalizeTag(release.tagName).lowercased()
         switch channel {
-        case .adhoc:
-            // Ad-hoc app builds track explicitly marked ad-hoc prereleases only.
-            return release.prerelease && version.contains("adhoc")
+        case .prerelease:
+            // Prerelease app builds track GitHub prereleases only.
+            return release.prerelease
         case .stable:
-            return !release.prerelease && !version.contains("adhoc")
+            // Stable app builds track non-prerelease GitHub releases only.
+            return !release.prerelease
         }
     }
 

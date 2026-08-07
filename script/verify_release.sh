@@ -32,9 +32,21 @@ RESOURCE_BUNDLE="$APP_BUNDLE/Contents/Resources/BarTender_BarTender.bundle"
 BUNDLE_ID="$(plutil -extract CFBundleIdentifier raw "$INFO_PLIST")"
 VERSION="$(plutil -extract CFBundleShortVersionString raw "$INFO_PLIST")"
 BUILD_NUMBER="$(plutil -extract CFBundleVersion raw "$INFO_PLIST")"
+UPDATE_CHANNEL="$(plutil -extract BarTenderUpdateChannel raw "$INFO_PLIST" 2>/dev/null || true)"
 [[ "$BUNDLE_ID" == "io.github.aforno.bartender.v2" ]] || { printf 'Unexpected bundle identifier: %s\n' "$BUNDLE_ID" >&2; exit 1; }
 [[ "$VERSION" == "$(tr -d '[:space:]' < "$ROOT_DIR/VERSION")" ]] || { printf 'Version mismatch: %s\n' "$VERSION" >&2; exit 1; }
 [[ "$BUILD_NUMBER" == "$(tr -d '[:space:]' < "$ROOT_DIR/BUILD_NUMBER")" ]] || { printf 'Build mismatch: %s\n' "$BUILD_NUMBER" >&2; exit 1; }
+[[ "$UPDATE_CHANNEL" == "prerelease" || "$UPDATE_CHANNEL" == "stable" ]] || {
+  printf 'Missing or invalid BarTenderUpdateChannel (got %s).\n' "${UPDATE_CHANNEL:-<absent>}" >&2
+  exit 1
+}
+# Ad-hoc-signed packages must track the prerelease update feed.
+if grep -q 'Signature=adhoc\|Authority=(unavailable)' <<<"$(/usr/bin/codesign -dvvv "$APP_BUNDLE" 2>&1 || true)"; then
+  [[ "$UPDATE_CHANNEL" == "prerelease" ]] || {
+    printf 'Ad-hoc signed build must set BarTenderUpdateChannel=prerelease (got %s).\n' "$UPDATE_CHANNEL" >&2
+    exit 1
+  }
+fi
 [[ -f "$APP_BUNDLE/Contents/Resources/Assets.car" ]] || { printf '%s\n' 'Compiled asset catalog is missing.' >&2; exit 1; }
 [[ -f "$APP_BUNDLE/Contents/Resources/AppIcon.icns" ]] || { printf '%s\n' 'Compiled application icon is missing.' >&2; exit 1; }
 [[ -d "$RESOURCE_BUNDLE" ]] || { printf '%s\n' 'SwiftPM resource bundle is missing from Contents/Resources.' >&2; exit 1; }

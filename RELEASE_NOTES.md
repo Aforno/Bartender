@@ -1,4 +1,4 @@
-# Bar Tender 1.0.1-adhoc
+# Bar Tender 1.0.1
 
 Bar Tender turns a plain-language request into a dedicated macOS menu bar tool using an already installed Codex, Claude, Grok, Gemini, or Antigravity (`agy`) CLI.
 
@@ -12,7 +12,7 @@ This prerelease isolates menu-bar visibility:
 
 ## Distribution notice (read this)
 
-This is an **ad-hoc (unsigned) prerelease**. It is **not** signed with an Apple Developer ID certificate and is **not** notarized by Apple.
+This is a **prerelease** build. It is **not** signed with an Apple Developer ID certificate and is **not** notarized by Apple.
 
 Gatekeeper will block a normal double-click after download. That is expected.
 
@@ -51,6 +51,6 @@ A future release signed with Developer ID and notarized will remove this step wh
 - No generation deadline: long provider runs continue until completion or explicit cancellation.
 - Launch at login, library export/import, contextual alerts, diagnostics export, provider setup, and update checks.
 - A manager menu that remains usable with many running tools.
-- Universal ad-hoc packaging for macOS 26 and newer (unsigned; Gatekeeper bypass required once).
+- Universal packaging for macOS 26 and newer (not Developer ID signed; Gatekeeper bypass required once).
 
 Important trust note: approved generated code is not sandboxed. It runs with your user privileges and can access local files, network services, commands, and credentials available to local processes. Review source before approval.

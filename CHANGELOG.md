@@ -5,22 +5,22 @@ All notable user-visible changes are recorded here. Bar Tender follows semantic 
 ## Unreleased
 
 - Added Gemini CLI (`gemini`) and Antigravity CLI (`agy`) as generation providers, with install/auth probing, model catalogs, and branded icons.
+- Fixed GitHub update pagination to accumulate every `Link: rel="next"` page before semantic ranking.
+- Moved the update channel out of the version string into explicit `BarTenderUpdateChannel` bundle metadata (`prerelease` / `stable`).
+- Product version and release tags no longer include an `adhoc` suffix (`1.0.1`, `v1.0.1+build.N`).
 
-## 1.0.1-adhoc — 2026-08-04
+## 1.0.1 — 2026-08-04
 
 - Diagnostic menu-bar release: only `AppDelegate` attaches status items; reattach is ignored while the delayed first registration is pending (avoids racing Control Center).
 - Default to one square, icon-only individual applet status item so clipping is less likely; raise the cap in Settings when needed.
 - Migrated bundle identifier to `io.github.aforno.bartender.v2` (build 2) so macOS 26 Control Center host tracking starts clean. Applet library under Application Support is unchanged; preferences and Launch at Login reset.
 - Removed unsupported `NSStatusItem Visible*` / `VisibleCC*` UserDefaults resets and `orderFrontRegardless()` workarounds.
 
-## 1.0.0-adhoc — 2026-07-24
+## 1.0.0 — 2026-07-24
 
-- Published the first downloadable universal ZIP/DMG as an **ad-hoc prerelease** (no Developer ID signature or notarization). Install requires a one-time Gatekeeper bypass (Control-click → Open).
+- Published the first downloadable universal ZIP/DMG as a prerelease (no Developer ID signature or notarization). Install requires a one-time Gatekeeper bypass (Control-click → Open).
 - Added an opt-in setting to automatically approve provider-written edits to previously approved generated tools. New tools, imports, and automatic repairs still require review.
 - Added Mac component temperature readings for generated tools. Tools can run `"$BARTENDER_CLI" --sensors` (key=value lines) or `"$BARTENDER_CLI" --sensors-json` (per-sensor detail) to get CPU, GPU, SoC, battery, ambient, memory, and storage temperatures in °C — no extra software or elevated privileges needed, on Apple silicon and Intel.
-
-## 1.0.0 — 2026-07-20
-
 - Added generated menu bar tools through local Codex, Claude, and Grok CLIs, with provider and model selection.
 - Added bounded validation retries and first-run diagnostic feedback so providers can repair generated tools instead of leaving them at “Needs Attention.”
 - Fixed newly enabled tools showing stale placeholder data until their second scheduled refresh.
@@ -30,5 +30,5 @@ All notable user-visible changes are recorded here. Bar Tender follows semantic 
 - Added provider brand icons throughout setup and model selection, plus a dedicated Bar Tender application icon.
 - Added launch at login, contextual notification permission, library export/import, provider setup reopening, sanitized diagnostics export, support/privacy links, and user-initiated GitHub release checks.
 - Added overflow handling for large tool libraries and clarified that closing the window leaves enabled menu bar tools running.
-- Added universal Developer ID signing, hardened runtime, notarization, stapling, ZIP/DMG packaging, checksums, install smoke tests, and macOS 26 CI coverage on Apple silicon and Intel.
+- Added universal packaging, hardened runtime, checksums, install smoke tests, and macOS 26 CI coverage on Apple silicon and Intel.
 - Added end-to-end provider process tests for missing, unauthenticated, expired, malformed, cancelled, and successful generation states.

@@ -15,9 +15,11 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.1-adhoc</string>
+    <string>1.0.1</string>
     <key>CFBundleVersion</key>
     <string>2</string>
+    <key>BarTenderUpdateChannel</key>
+    <string>prerelease</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.utilities</string>
     <key>LSMinimumSystemVersion</key>

@@ -1,8 +1,9 @@
-name: Release (ad-hoc)
+name: Release
 
-# Ad-hoc distribution path. Does not require a paid Apple Developer Program
-# membership. Artifacts are not Developer ID signed or notarized. Users must
-# bypass Gatekeeper on first launch. See RELEASE_NOTES.md.
+# Public prerelease distribution path. Packages a universal app with an ad-hoc
+# signature (no paid Apple Developer Program membership required). Artifacts
+# are not Developer ID signed or notarized. Users must bypass Gatekeeper on
+# first launch. See RELEASE_NOTES.md.
 #
 # Every push to main packages a universal build and creates one immutable GitHub
 # prerelease for tag v<VERSION>+build.<BUILD_NUMBER>. Either VERSION or
@@ -16,12 +17,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-adhoc-main
+  group: release-prerelease-main
   cancel-in-progress: true
 
 jobs:
-  adhoc-release:
-    name: Package ad-hoc universal release and publish
+  prerelease:
+    name: Package universal prerelease and publish
     runs-on: macos-26
     timeout-minutes: 45
 
@@ -63,10 +64,10 @@ jobs:
 
           printf 'Release identity OK: tag=%s version=%s build=%s\n' "$TAG" "$VERSION" "$BUILD_NUMBER"
 
-      - name: Build ad-hoc universal release
+      - name: Build universal release package
         run: ./script/package_release.sh --adhoc --skip-notarization --arch universal
 
-      - name: Verify ad-hoc package integrity
+      - name: Verify package integrity
         run: ./script/verify_release.sh --app dist/release/BarTender.app --dmg "dist/release/BarTender-$(tr -d '[:space:]' < VERSION).dmg"
 
       - name: Mount, copy, and launch the DMG
@@ -83,7 +84,7 @@ jobs:
           ZIP="dist/release/BarTender-${VERSION}.zip"
           DMG="dist/release/BarTender-${VERSION}.dmg"
           SUMS="dist/release/SHA256SUMS.txt"
-          TITLE="Bar Tender ${VERSION} (build ${BUILD_NUMBER}, ad-hoc)"
+          TITLE="Bar Tender ${VERSION} (build ${BUILD_NUMBER})"
 
           # Let GitHub create the tag as part of release creation. Clean up a
           # partially-created release/tag when asset upload fails so rerunning the
