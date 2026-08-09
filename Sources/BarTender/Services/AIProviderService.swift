@@ -372,6 +372,10 @@ final class AIProviderService: ObservableObject {
                 throw ProviderGenerationError.cancelled
             }
             return manifest
+        } catch is CancellationError {
+            throw ProviderGenerationError.cancelled
+        } catch ProcessRunnerError.cancelled {
+            throw ProviderGenerationError.cancelled
         } catch let error as ProviderGenerationError {
             if case .authenticationExpired(let provider) = error {
                 statuses[provider] = .unavailable(.notAuthenticated(
