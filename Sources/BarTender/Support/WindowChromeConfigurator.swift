@@ -62,6 +62,9 @@ struct WindowChromeConfigurator: NSViewRepresentable {
 
         private func configure(_ window: NSWindow) {
             window.styleMask.insert(.fullSizeContentView)
+            window.backgroundColor = .black
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.isOpaque = true
             window.titlebarAppearsTransparent = true
             window.titlebarSeparatorStyle = .none
         }

@@ -15,10 +15,7 @@ struct MenuBarPreviewView: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: PremiumStyle.cardRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: PremiumStyle.cardRadius, style: .continuous)
-                .strokeBorder(PremiumStyle.cardStroke, lineWidth: 1)
-        )
+        .background(PremiumStyle.raised, in: RoundedRectangle(cornerRadius: PremiumStyle.cardRadius, style: .continuous))
     }
 
     // MARK: - Simulated menu bar
@@ -34,7 +31,7 @@ struct MenuBarPreviewView: View {
                 Image(systemName: "switch.2")
             }
             .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(.secondary.opacity(0.7))
+            .foregroundStyle(PremiumStyle.secondaryText)
             .accessibilityHidden(true)
 
             if runState != .disabled {
@@ -43,13 +40,13 @@ struct MenuBarPreviewView: View {
                     Image(systemName: manifest.iconSystemName)
                         .font(.system(size: 12, weight: .medium))
                     Text(displayTitle)
-                        .font(.inter(size: 13, weight: .medium))
+                        .font(BarTenderFont.bodyEmphasis)
                         .monospacedDigit()
                         .lineLimit(1)
                 }
                 .padding(.horizontal, 9)
                 .padding(.vertical, 3)
-                .background(PremiumStyle.brand.opacity(0.20), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                .background(PremiumStyle.raisedStrong, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                 .padding(.leading, 14)
                 .padding(.trailing, 12)
                 .accessibilityElement(children: .combine)
@@ -60,7 +57,7 @@ struct MenuBarPreviewView: View {
             }
         }
         .frame(height: 26)
-        .background(PremiumStyle.fieldFill)
+        .background(PremiumStyle.raised)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(PremiumStyle.cardStroke)
@@ -93,7 +90,7 @@ struct MenuBarPreviewView: View {
         }
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(PremiumStyle.fieldFill)
+        .background(PremiumStyle.raised)
     }
 
     private var disabledMessage: some View {
@@ -112,11 +109,11 @@ struct MenuBarPreviewView: View {
         }
         .padding(PremiumStyle.space16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(PremiumStyle.fieldFill)
+        .background(PremiumStyle.raised)
     }
 
     private var separator: some View {
-        Divider()
+        BarTenderHairline()
             .padding(.horizontal, 12)
             .padding(.vertical, 4)
     }

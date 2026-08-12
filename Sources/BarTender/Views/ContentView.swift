@@ -28,8 +28,9 @@ struct ContentView: View {
 
     var body: some View {
         mainWorkspace
-        .frame(minWidth: 720, minHeight: 500)
+        .frame(minWidth: 760, minHeight: 500)
         .background(WindowChromeConfigurator())
+        .deepBlackWindowSurface()
         .sheet(isPresented: $model.showingProviderSetup) {
             ProviderSetupSheet()
                 .environmentObject(model)
@@ -87,7 +88,7 @@ struct ContentView: View {
             Button(action: navigateBack) {
                 Image(systemName: "chevron.left")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(BarTenderIconButtonStyle())
             .disabled(backHistory.isEmpty)
             .help("Back")
             .accessibilityLabel("Back")
@@ -96,20 +97,19 @@ struct ContentView: View {
             Button(action: navigateForward) {
                 Image(systemName: "chevron.right")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(BarTenderIconButtonStyle())
             .disabled(forwardHistory.isEmpty)
             .help("Forward")
             .accessibilityLabel("Forward")
             .accessibilityIdentifier("navigate-forward")
         }
-        .font(.system(size: 15, weight: .medium))
         .frame(height: 28)
     }
 
     private var mainWorkspace: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView()
-                .navigationSplitViewColumnWidth(min: 200, ideal: 224, max: 280)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 300)
                 .background(PremiumStyle.sidebarBackground)
         } detail: {
             VStack(spacing: 0) {
@@ -118,13 +118,15 @@ struct ContentView: View {
                 ComposerView()
                     .background(PremiumStyle.canvas)
             }
-            .frame(minWidth: 500, maxWidth: .infinity, maxHeight: .infinity)
+            .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
             .background {
                 PremiumStyle.canvas
                     .ignoresSafeArea(edges: .top)
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .foregroundStyle(PremiumStyle.primaryText)
+        .deepBlackWindowSurface()
         .overlay(alignment: .top) {
             VStack(spacing: PremiumStyle.space8) {
                 if !providers.anyProviderReady, !isStillChecking {

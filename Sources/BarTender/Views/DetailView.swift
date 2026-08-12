@@ -18,12 +18,12 @@ struct DetailView: View {
                         emptyState
                     }
                 }
-                .frame(maxWidth: 680, alignment: .leading)
+                .frame(maxWidth: 720, alignment: .leading)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, PremiumStyle.contentMargin)
-            .padding(.top, PremiumStyle.space32)
-            .padding(.bottom, PremiumStyle.space32)
+            .padding(.top, PremiumStyle.space20)
+            .padding(.bottom, PremiumStyle.space24)
         }
         .background(PremiumStyle.canvas)
     }
@@ -35,7 +35,7 @@ struct DetailView: View {
         header(applet)
         props(applet)
 
-        Divider()
+        BarTenderHairline()
             .padding(.vertical, PremiumStyle.space16)
 
         if applet.kind == .timer || applet.kind == .countdown {
@@ -69,27 +69,39 @@ struct DetailView: View {
 
     private func pageSection(_ title: String) -> some View {
         Text(title)
-            .font(.inter(size: 17, weight: .semibold))
+            .font(BarTenderFont.sectionLabel)
+            .foregroundStyle(Color.white.opacity(0.74))
             .accessibilityAddTraits(.isHeader)
-            .padding(.top, PremiumStyle.space24)
+            .padding(.top, PremiumStyle.space20)
             .padding(.bottom, PremiumStyle.space8)
     }
 
     // MARK: - Header
 
     private func header(_ applet: AppletManifest) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 12) {
             Image(systemName: applet.iconSystemName)
                 .symbolRenderingMode(.hierarchical)
-                .font(.system(size: 32))
-                .foregroundStyle(PremiumStyle.brand)
-                .frame(height: 40)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(PremiumStyle.primaryText)
+                .frame(width: 32, height: 32)
+                .background(
+                    PremiumStyle.raisedStrong,
+                    in: RoundedRectangle(cornerRadius: PremiumStyle.controlRadius, style: .continuous)
+                )
 
-            Text(applet.name)
-                .font(.inter(size: 30, weight: .bold))
-                .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(applet.name)
+                    .font(BarTenderFont.display)
+                    .foregroundStyle(PremiumStyle.primaryText)
+                    .accessibilityAddTraits(.isHeader)
+                Text(applet.kind.displayName)
+                    .font(BarTenderFont.footnote)
+                    .foregroundStyle(PremiumStyle.secondaryText)
+            }
+            Spacer(minLength: 0)
         }
-        .padding(.bottom, PremiumStyle.space16)
+        .padding(.bottom, PremiumStyle.space12)
     }
 
     // MARK: - Property rows
@@ -307,7 +319,7 @@ struct DetailView: View {
                     } label: {
                         Label("Allow, Test & Run", systemImage: "play.fill")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(BarTenderPillButtonStyle())
                     .accessibilityIdentifier("allow-and-run.\(applet.id.uuidString)")
                 }
             }
@@ -382,7 +394,7 @@ struct DetailView: View {
                     } label: {
                         Label(applet.enabled ? "Allow & Run" : "Allow Command", systemImage: "play.fill")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(BarTenderPillButtonStyle())
                     .accessibilityIdentifier("allow-shell-command.\(applet.id.uuidString)")
                 }
             }
@@ -461,11 +473,11 @@ struct DetailView: View {
             )
                 .foregroundStyle(tint)
             Text(isValidating ? "Testing source" : savedReceiptTitle(for: applet))
-                .font(.inter(.callout, weight: .medium))
+                .font(BarTenderFont.bodyEmphasis)
                 .foregroundStyle(tint)
             Text("· \(metadata)")
-                .font(.inter(.caption))
-                .foregroundStyle(.tertiary)
+                .font(BarTenderFont.caption)
+                .foregroundStyle(PremiumStyle.tertiaryText)
         }
     }
 
@@ -483,18 +495,21 @@ struct DetailView: View {
     // MARK: - Empty state
 
     private var emptyState: some View {
-        VStack(spacing: 20) {
-            ContentUnavailableView {
-                Label {
-                    Text(store.applets.isEmpty ? "Create your first menu bar tool" : "Create a new menu bar tool")
-                        .accessibilityAddTraits(.isHeader)
-                } icon: {
-                    Image(systemName: "wineglass")
-                        .font(.system(size: 44, weight: .light))
-                        .foregroundStyle(PremiumStyle.brand)
-                }
-            } description: {
+        VStack(spacing: 16) {
+            Image(systemName: "wineglass")
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(PremiumStyle.secondaryText)
+
+            VStack(spacing: 4) {
+                Text(store.applets.isEmpty ? "Create your first menu bar tool" : "Create a new menu bar tool")
+                    .font(BarTenderFont.display)
+                    .foregroundStyle(PremiumStyle.primaryText)
+                    .accessibilityAddTraits(.isHeader)
                 Text("Describe what you want to see or control. Bar Tender writes the tool—you review the code before it runs.")
+                    .font(BarTenderFont.caption)
+                    .foregroundStyle(PremiumStyle.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 420)
             }
 
             HStack(spacing: 10) {
@@ -503,7 +518,7 @@ struct DetailView: View {
                 } label: {
                     Label("Try an Idea", systemImage: "wand.and.stars")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(BarTenderPillButtonStyle())
 
                 if hasMissingSamples {
                     Button {
@@ -513,13 +528,14 @@ struct DetailView: View {
                     }
                 }
             }
-            .controlSize(.large)
+            .controlSize(.small)
             .disabled(model.generation?.phase.isActive == true)
 
             if let generation = newToolGenerationSession {
                 VStack(alignment: .leading, spacing: PremiumStyle.space8) {
                     Text("Build")
-                        .font(.inter(size: 17, weight: .semibold))
+                        .font(BarTenderFont.sectionLabel)
+                        .foregroundStyle(Color.white.opacity(0.74))
                         .accessibilityAddTraits(.isHeader)
                     GenerationLogView(session: generation)
                 }
@@ -527,7 +543,7 @@ struct DetailView: View {
             }
         }
         .frame(maxWidth: .infinity, minHeight: 420)
-        .padding(.top, PremiumStyle.space32)
+        .padding(.top, PremiumStyle.space20)
     }
 
     private var newToolGenerationSession: GenerationSession? {
@@ -559,19 +575,19 @@ private struct PropertyRow<Content: View>: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Label(label, systemImage: systemImage)
-                .font(.inter(size: 12.5))
-                .foregroundStyle(.tertiary)
+                .font(BarTenderFont.caption)
+                .foregroundStyle(PremiumStyle.tertiaryText)
                 .frame(width: 148, alignment: .leading)
 
             content()
-                .font(.inter(size: 13))
+                .font(BarTenderFont.body)
 
             Spacer(minLength: 0)
         }
         .padding(.horizontal, PremiumStyle.rowInsetH)
         .padding(.vertical, PremiumStyle.space4)
         .background(
-            Color.primary.opacity(hovering ? 0.045 : 0),
+            Color.white.opacity(hovering ? 0.055 : 0),
             in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
         )
         .padding(.horizontal, -PremiumStyle.rowInsetH)

@@ -11,6 +11,7 @@ struct ProviderSetupSheet: View {
         }
         .overlay(alignment: .topTrailing) {
             Button("Done") { dismiss() }
+                .buttonStyle(BarTenderPillButtonStyle())
                 .keyboardShortcut(.cancelAction)
                 .padding(PremiumStyle.space16)
         }
@@ -28,10 +29,10 @@ struct BannerView: View {
         HStack(spacing: 10) {
             Image(systemName: "info.circle.fill")
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(PremiumStyle.brand)
+                .foregroundStyle(PremiumStyle.secondaryText)
                 .accessibilityHidden(true)
             Text(text)
-                .font(.inter(.callout))
+                .font(BarTenderFont.body)
                 .lineLimit(4)
             Spacer(minLength: 8)
             Button(action: onDismiss) {
@@ -47,13 +48,12 @@ struct BannerView: View {
             .accessibilityIdentifier("dismiss-banner")
         }
         .padding(.horizontal, PremiumStyle.space16)
-        .padding(.vertical, PremiumStyle.space12)
-        .background(PremiumStyle.fieldFill, in: RoundedRectangle(cornerRadius: PremiumStyle.cardRadius, style: .continuous))
+        .padding(.vertical, 9)
+        .background(PremiumStyle.raisedStrong, in: RoundedRectangle(cornerRadius: PremiumStyle.cardRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: PremiumStyle.cardRadius, style: .continuous)
                 .strokeBorder(PremiumStyle.cardStroke, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.10), radius: 12, y: 3)
         .padding(.horizontal, PremiumStyle.space20)
         .frame(maxWidth: 560)
         .accessibilityElement(children: .contain)
@@ -90,23 +90,22 @@ struct ProviderUnavailableBanner: View {
                 .foregroundStyle(.orange)
                 .accessibilityHidden(true)
             Text("Your tools remain available, but creating or updating one needs a ready model provider.")
-                .font(.inter(.callout))
+                .font(BarTenderFont.body)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             Button("Set Up…", action: onSetup)
-                .controlSize(.small)
+                .buttonStyle(BarTenderPillButtonStyle())
         }
         .padding(.horizontal, PremiumStyle.space16)
-        .padding(.vertical, PremiumStyle.space12)
+        .padding(.vertical, 9)
         .background(
-            PremiumStyle.fieldFill,
+            PremiumStyle.raisedStrong,
             in: RoundedRectangle(cornerRadius: PremiumStyle.cardRadius, style: .continuous)
         )
         .overlay(
             RoundedRectangle(cornerRadius: PremiumStyle.cardRadius, style: .continuous)
                 .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.10), radius: 12, y: 3)
         .padding(.horizontal, PremiumStyle.space20)
         .frame(maxWidth: 620)
         .accessibilityElement(children: .contain)

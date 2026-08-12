@@ -60,16 +60,17 @@ extension Font.Weight {
 }
 
 extension Font {
-    /// Inter at an explicit point size.
+    /// Kept as a source-compatible bridge while the UI uses the compact system
+    /// face shared with AgentNotch.
     static func inter(size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .custom(weight.interFaceName, size: size)
+        .system(size: size, weight: weight)
     }
 
     /// Inter matching a SwiftUI text style, keeping Dynamic Type scaling.
     /// Weight is baked into the face because `.weight(_:)` is ignored for
     /// custom fonts.
     static func inter(_ style: Font.TextStyle, weight: Font.Weight = .regular) -> Font {
-        .custom(weight.interFaceName, size: style.interBaseSize, relativeTo: style)
+        .system(style, design: .default).weight(weight)
     }
 }
 

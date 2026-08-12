@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Shared message input used by the main window and menu bar panel.
-/// Rounded-rectangle field — a SaaS-style input, not a floating pill.
+/// Compact raised input aligned with AgentNotch's window controls.
 struct ChatComposerBar<Accessory: View>: View {
     @Binding var text: String
     var placeholder: String = "Message Bar Tender"
@@ -15,13 +15,12 @@ struct ChatComposerBar<Accessory: View>: View {
     var onCancel: (() -> Void)? = nil
     @ViewBuilder var accessory: () -> Accessory
 
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focused: Bool
 
     /// Target single-line height (controls + vertical padding).
-    private var controlSize: CGFloat { compact ? 28 : 32 }
-    private var barRadius: CGFloat { compact ? 10 : 12 }
+    private var controlSize: CGFloat { 26 }
+    private var barRadius: CGFloat { PremiumStyle.cardRadius }
 
     var body: some View {
         HStack(alignment: .center, spacing: compact ? 8 : 10) {
@@ -31,11 +30,14 @@ struct ChatComposerBar<Accessory: View>: View {
                     focused = true
                 } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(PremiumStyle.secondaryText)
                         .frame(width: controlSize, height: controlSize)
-                        .background(Color.primary.opacity(0.055), in: Circle())
-                        .contentShape(Circle())
+                        .background(
+                            PremiumStyle.raisedStrong,
+                            in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
+                        )
+                        .contentShape(RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .disabled(isBusy)
@@ -47,15 +49,15 @@ struct ChatComposerBar<Accessory: View>: View {
             ZStack(alignment: .leading) {
                 if text.isEmpty {
                     Text(placeholder)
-                        .font(.inter(size: compact ? 14 : 15))
-                        .foregroundStyle(.tertiary)
+                        .font(BarTenderFont.body)
+                        .foregroundStyle(PremiumStyle.tertiaryText)
                         .lineLimit(1)
                 }
 
                 TextField("", text: $text, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .font(.inter(size: compact ? 14 : 15))
-                    .foregroundStyle(.primary)
+                    .font(BarTenderFont.body)
+                    .foregroundStyle(PremiumStyle.primaryText)
                     .lineLimit(lineLimit)
                     .focused($focused)
                     .disabled(isBusy)
@@ -77,13 +79,13 @@ struct ChatComposerBar<Accessory: View>: View {
                 sendButton
             }
         }
-        .padding(.horizontal, compact ? PremiumStyle.space8 : PremiumStyle.space12)
-        .padding(.vertical, compact ? PremiumStyle.space4 : PremiumStyle.space8)
-        .frame(minHeight: compact ? 40 : 52)
+        .padding(.horizontal, PremiumStyle.space8)
+        .padding(.vertical, 6)
+        .frame(minHeight: compact ? 38 : 42)
         .background(barBackground, in: RoundedRectangle(cornerRadius: barRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: barRadius, style: .continuous)
-                .strokeBorder(focused ? PremiumStyle.brand.opacity(0.55) : barStroke, lineWidth: 1)
+                .strokeBorder(focused ? Color.white.opacity(0.18) : barStroke, lineWidth: 1)
         )
         .animation(reduceMotion ? nil : .snappy(duration: 0.15), value: focused)
     }
@@ -94,10 +96,13 @@ struct ChatComposerBar<Accessory: View>: View {
     private var sendButton: some View {
         Button(action: onSend) {
             Image(systemName: "arrow.up")
-                .font(.system(size: 13, weight: .bold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(sendForeground)
                 .frame(width: controlSize, height: controlSize)
-                .background(sendBackground, in: Circle())
+                .background(
+                    sendBackground,
+                    in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
+                )
         }
         .buttonStyle(.plain)
         .disabled(!canSend)
@@ -111,14 +116,12 @@ struct ChatComposerBar<Accessory: View>: View {
     private func cancelButton(_ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: "stop.fill")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(Color.primary.opacity(0.75))
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(PremiumStyle.primaryText)
                 .frame(width: controlSize, height: controlSize)
                 .background(
-                    colorScheme == .dark
-                        ? Color.white.opacity(0.14)
-                        : Color.primary.opacity(0.12),
-                    in: Circle()
+                    PremiumStyle.raisedStrong,
+                    in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
                 )
         }
         .buttonStyle(.plain)
@@ -130,7 +133,7 @@ struct ChatComposerBar<Accessory: View>: View {
     // MARK: - Chrome
 
     private var barBackground: Color {
-        PremiumStyle.fieldFill
+        PremiumStyle.raised
     }
 
     private var barStroke: Color {
@@ -138,23 +141,11 @@ struct ChatComposerBar<Accessory: View>: View {
     }
 
     private var sendBackground: Color {
-        if canSend {
-            // Ready: a pour of house copper in both schemes
-            return PremiumStyle.brand
-        }
-        // Idle: soft warm-gray circle
-        return colorScheme == .dark
-            ? Color(red: 0.42, green: 0.38, blue: 0.34)
-            : Color(red: 0.28, green: 0.20, blue: 0.11).opacity(0.14)
+        canSend ? PremiumStyle.raisedStrong : Color.white.opacity(0.035)
     }
 
     private var sendForeground: Color {
-        if canSend {
-            return colorScheme == .dark ? Color.black.opacity(0.88) : Color.white
-        }
-        return colorScheme == .dark
-            ? Color.white.opacity(0.42)
-            : Color.primary.opacity(0.35)
+        canSend ? PremiumStyle.primaryText : PremiumStyle.tertiaryText
     }
 }
 
@@ -225,20 +216,18 @@ struct ModelSelector: View {
                 ProviderIcon(provider: providers.selectedModel.provider, size: compact ? 14 : 16)
 
                 Text(providers.selectedModel.shortLabel)
-                    .font(.inter(size: compact ? 13 : 14, weight: .medium))
-                    .foregroundStyle(Color.primary.opacity(hovering ? 0.84 : 0.68))
+                    .font(BarTenderFont.control)
+                    .foregroundStyle(Color.white.opacity(hovering ? 0.84 : 0.68))
                     .lineLimit(1)
 
                 Image(systemName: "chevron.down")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(Color.primary.opacity(hovering ? 0.68 : 0.50))
+                    .foregroundStyle(Color.white.opacity(hovering ? 0.68 : 0.50))
             }
             .padding(.horizontal, compact ? PremiumStyle.space8 : PremiumStyle.space12)
             .padding(.vertical, compact ? PremiumStyle.rowInsetV : PremiumStyle.space8)
             .background(
-                hovering
-                    ? Color.primary.opacity(0.07)
-                    : Color.clear,
+                hovering ? PremiumStyle.raisedStrong : Color.clear,
                 in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
             )
             .contentShape(RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous))
