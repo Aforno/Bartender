@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Notion-style sidebar: quiet rows, live values right-aligned, hover-revealed actions.
+/// Compact AgentNotch-style library: deep black, quiet rows, and state-first values.
 struct SidebarView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var store: AppletStore
@@ -39,8 +39,8 @@ struct SidebarView: View {
             .padding(.top, PremiumStyle.space4)
 
             Text("Tools")
-                .font(.inter(size: 11.5, weight: .medium))
-                .foregroundStyle(.tertiary)
+                .font(BarTenderFont.sectionLabel)
+                .foregroundStyle(Color.white.opacity(0.74))
                 .accessibilityAddTraits(.isHeader)
                 .padding(.horizontal, PremiumStyle.sidebarInset + PremiumStyle.rowInsetH)
                 .padding(.top, PremiumStyle.space12)
@@ -52,8 +52,8 @@ struct SidebarView: View {
                         Text(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             ? "No tools yet — describe one below."
                             : "No matching tools.")
-                            .font(.inter(.callout))
-                            .foregroundStyle(.tertiary)
+                            .font(BarTenderFont.caption)
+                            .foregroundStyle(PremiumStyle.tertiaryText)
                             .padding(.horizontal, PremiumStyle.rowInsetH)
                             .padding(.vertical, PremiumStyle.rowInsetV)
                     } else {
@@ -73,8 +73,7 @@ struct SidebarView: View {
                 .padding(.horizontal, PremiumStyle.sidebarInset)
             }
 
-            Divider()
-                .padding(.horizontal, PremiumStyle.sidebarInset)
+            BarTenderHairline()
                 .padding(.top, PremiumStyle.space4)
 
             SidebarSettingsRow(
@@ -89,6 +88,8 @@ struct SidebarView: View {
         .padding(.top, PremiumStyle.sidebarInset)
         .frame(minWidth: 200)
         .navigationTitle("Bar Tender")
+        .foregroundStyle(PremiumStyle.primaryText)
+        .deepBlackWindowSurface()
     }
 
     // MARK: - Header
@@ -96,7 +97,8 @@ struct SidebarView: View {
     private var header: some View {
         HStack(spacing: 8) {
             Text("Bar Tender")
-                .font(.inter(size: 14, weight: .semibold))
+                .font(BarTenderFont.title)
+                .foregroundStyle(PremiumStyle.primaryText)
 
             Spacer(minLength: 0)
 
@@ -104,12 +106,10 @@ struct SidebarView: View {
                 toggleSearch()
             } label: {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24, height: 24)
+                    .font(.system(size: 11, weight: .medium))
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(BarTenderIconButtonStyle())
             .keyboardShortcut("k", modifiers: [.command])
             .help("Search (⌘K)")
             .accessibilityLabel("Search tools")
@@ -138,11 +138,12 @@ struct SidebarView: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 12.5))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(PremiumStyle.tertiaryText)
                 .frame(width: 18)
             TextField("Search", text: $searchText)
                 .textFieldStyle(.plain)
-                .font(.inter(size: 13))
+                .font(BarTenderFont.body)
+                .foregroundStyle(PremiumStyle.primaryText)
                 .focused($searchFocused)
                 .onExitCommand {
                     toggleSearch()
@@ -150,12 +151,16 @@ struct SidebarView: View {
                 .accessibilityIdentifier("tool-search")
             if searchText.isEmpty && !searchFocused {
                 Text("⌘K")
-                    .font(.inter(size: 11))
-                    .foregroundStyle(.tertiary)
+                    .font(BarTenderFont.caption)
+                    .foregroundStyle(PremiumStyle.tertiaryText)
             }
         }
         .padding(.horizontal, PremiumStyle.rowInsetH)
         .padding(.vertical, PremiumStyle.rowInsetV)
+        .background(
+            PremiumStyle.raised,
+            in: RoundedRectangle(cornerRadius: PremiumStyle.controlRadius, style: .continuous)
+        )
         .padding(.horizontal, PremiumStyle.sidebarInset)
     }
 
@@ -198,20 +203,20 @@ private struct ToolRow: View {
                 HStack(spacing: 8) {
                     Image(systemName: applet.iconSystemName)
                         .symbolRenderingMode(.hierarchical)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(selected ? PremiumStyle.brand : Color.secondary)
+                        .font(.system(size: 12))
+                        .foregroundStyle(selected ? PremiumStyle.primaryText : PremiumStyle.secondaryText)
                         .frame(width: 18)
 
                     Text(applet.name)
-                        .font(.inter(size: 13))
+                        .font(BarTenderFont.bodyEmphasis)
                         .lineLimit(1)
                         .layoutPriority(1)
 
                     Spacer(minLength: 6)
 
                     Text(value)
-                        .font(.inter(size: 11.5))
-                        .foregroundStyle(.secondary)
+                        .font(BarTenderFont.caption)
+                        .foregroundStyle(PremiumStyle.secondaryText)
                         .monospacedDigit()
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -219,7 +224,7 @@ private struct ToolRow: View {
                 }
                 .padding(.leading, PremiumStyle.rowInsetH)
                 .padding(.vertical, PremiumStyle.rowInsetV)
-                .foregroundStyle(.primary)
+                .foregroundStyle(PremiumStyle.primaryText)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -235,7 +240,7 @@ private struct ToolRow: View {
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary.opacity(hovering || selected ? 1 : 0.45))
+                    .foregroundStyle(PremiumStyle.secondaryText.opacity(hovering || selected ? 1 : 0.55))
                     .frame(width: 24, height: 20)
                     .contentShape(Rectangle())
             }
@@ -248,7 +253,7 @@ private struct ToolRow: View {
         .background(
             selected
                 ? PremiumStyle.selectionFill
-                : Color.primary.opacity(hovering ? 0.045 : 0),
+                : Color.white.opacity(hovering ? 0.055 : 0),
             in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
         )
         .contentShape(RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous))
@@ -320,23 +325,23 @@ private struct SidebarRowLabel: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
-                .font(.system(size: 12.5))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 12))
+                .foregroundStyle(PremiumStyle.secondaryText)
                 .frame(width: 18)
             Text(title)
-                .font(.inter(size: 13))
+                .font(BarTenderFont.bodyEmphasis)
             Spacer()
             if let shortcutHint {
                 Text(shortcutHint)
-                    .font(.inter(size: 11))
-                    .foregroundStyle(.tertiary)
+                    .font(BarTenderFont.caption)
+                    .foregroundStyle(PremiumStyle.tertiaryText)
             }
         }
         .padding(.horizontal, PremiumStyle.rowInsetH)
         .padding(.vertical, PremiumStyle.rowInsetV)
-        .foregroundStyle(.primary)
+        .foregroundStyle(PremiumStyle.primaryText)
         .background(
-            Color.primary.opacity(hovering ? 0.045 : 0),
+            Color.white.opacity(hovering ? 0.055 : 0),
             in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
         )
         .contentShape(RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous))

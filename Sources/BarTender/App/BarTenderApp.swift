@@ -6,8 +6,6 @@ struct BarTenderApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
-        InterFont.registerIfNeeded()
-
         // Command-line sensor reports for generated tools run before any app
         // startup so the process exits immediately with the report on stdout.
         if let exitCode = HardwareSensorsCLI.handledExitCode() {
@@ -20,7 +18,9 @@ struct BarTenderApp: App {
             ContentView()
                 .background(MainWindowActionsInstaller(model: appDelegate.model))
                 .tint(PremiumStyle.brand)
-                .font(.inter(.body))
+                .font(BarTenderFont.body)
+                .foregroundStyle(PremiumStyle.primaryText)
+                .preferredColorScheme(.dark)
                 .environmentObject(appDelegate.model)
                 .environmentObject(appDelegate.model.store)
                 .environmentObject(appDelegate.model.providers)
@@ -101,7 +101,9 @@ struct BarTenderApp: App {
         Settings {
             SettingsView()
                 .tint(PremiumStyle.brand)
-                .font(.inter(.body))
+                .font(BarTenderFont.body)
+                .foregroundStyle(PremiumStyle.primaryText)
+                .preferredColorScheme(.dark)
                 .environmentObject(appDelegate.model)
                 .environmentObject(appDelegate.model.store)
                 .environmentObject(appDelegate.model.providers)

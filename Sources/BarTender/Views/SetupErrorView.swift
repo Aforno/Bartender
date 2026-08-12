@@ -7,32 +7,32 @@ struct SetupErrorView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 22) {
+            VStack(alignment: .leading, spacing: 24) {
+                HStack(spacing: 12) {
                 Image(systemName: "wineglass")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 64, height: 64)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(PremiumStyle.primaryText)
+                    .frame(width: 32, height: 32)
                     .background(
-                        PremiumStyle.brandGradient,
-                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        PremiumStyle.raisedStrong,
+                        in: RoundedRectangle(cornerRadius: PremiumStyle.controlRadius, style: .continuous)
                     )
-                    .shadow(color: PremiumStyle.brand.opacity(0.30), radius: 12, y: 3)
 
-                VStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text("Local AI providers")
-                        .font(.inter(.title, weight: .semibold))
+                        .font(BarTenderFont.display)
                         .accessibilityAddTraits(.isHeader)
 
                     Text("Bar Tender uses local AI CLIs to create and revise tools. Review their status below; generation needs at least one installed, signed-in, enabled provider. Bar Tender never asks for API keys.")
-                        .font(.inter(.body))
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
+                        .font(BarTenderFont.caption)
+                        .foregroundStyle(PremiumStyle.secondaryText)
                         .frame(maxWidth: 520)
+                }
                 }
 
                 VStack(spacing: 0) {
                     ForEach(Array(AIProvider.allCases.enumerated()), id: \.element) { index, provider in
-                        if index > 0 { Divider() }
+                        if index > 0 { BarTenderHairline(leadingInset: 46) }
                         providerRow(provider)
                     }
                 }
@@ -44,8 +44,8 @@ struct SetupErrorView: View {
                     Label("Generation uses documented CLI flags only, via Process.", systemImage: "terminal")
                     Label("Generated source is installed locally and shown for review before it can run.", systemImage: "checkmark.shield")
                 }
-                .font(.inter(.callout))
-                .foregroundStyle(.secondary)
+                .font(BarTenderFont.caption)
+                .foregroundStyle(PremiumStyle.secondaryText)
                 .frame(maxWidth: 560, alignment: .leading)
 
                 GeneratedCodeTrustDisclosure(compact: true)
@@ -55,8 +55,7 @@ struct SetupErrorView: View {
                     Button("Recheck providers") {
                         onRecheck()
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
+                    .buttonStyle(BarTenderPillButtonStyle())
                     .keyboardShortcut(.defaultAction)
 
                     Button("Copy setup tips") {
@@ -66,14 +65,16 @@ struct SetupErrorView: View {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(tip, forType: .string)
                     }
-                    .controlSize(.large)
+                    .buttonStyle(BarTenderPillButtonStyle())
                 }
             }
-            .padding(PremiumStyle.space40)
+            .padding(PremiumStyle.contentMargin)
             .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(PremiumStyle.canvas)
+        .foregroundStyle(PremiumStyle.primaryText)
+        .deepBlackWindowSurface()
     }
 
     private func providerRow(_ provider: AIProvider) -> some View {
@@ -85,40 +86,40 @@ struct SetupErrorView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
                     Text(provider.displayName)
-                        .font(.inter(.headline, weight: .semibold))
+                        .font(.system(size: 13, weight: .medium))
                     Spacer()
                     statusBadge(status, enabled: enabled)
                 }
                 if !enabled {
                     Text("Disabled in Settings")
                         .font(.inter(.caption))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(PremiumStyle.secondaryText)
                     Text("Enable this provider in Settings → Providers to use it for generation.")
                         .font(.inter(.caption2))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(PremiumStyle.secondaryText)
                         .lineLimit(2)
                 } else {
                     switch status {
                     case .checking:
                         Text("Checking…")
                             .font(.inter(.caption))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(PremiumStyle.secondaryText)
                     case .ready(let install):
                         Text(install.version)
                             .font(.inter(.caption))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(PremiumStyle.secondaryText)
                             .lineLimit(1)
                         Text(install.authSummary)
                             .font(.inter(.caption2))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(PremiumStyle.secondaryText)
                             .lineLimit(1)
                     case .unavailable(let issue):
                         Text(issue.title(for: provider))
                             .font(.inter(.caption))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(PremiumStyle.secondaryText)
                         Text(issue.recoverySuggestion(for: provider))
                             .font(.inter(.caption2))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(PremiumStyle.secondaryText)
                             .lineLimit(2)
                     }
                 }

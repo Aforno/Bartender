@@ -61,6 +61,9 @@ struct ManagerComposerView: View {
         .padding(.vertical, PremiumStyle.space8)
         .frame(width: 360)
         .fixedSize(horizontal: true, vertical: true)
+        .foregroundStyle(PremiumStyle.primaryText)
+        .background(PremiumStyle.canvas)
+        .preferredColorScheme(.dark)
         .onAppear {
             AppLog.menuBar.info("Opened Bar Tender manager composer")
         }

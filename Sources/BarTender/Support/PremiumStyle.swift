@@ -1,18 +1,16 @@
 import AppKit
 import SwiftUI
 
-/// Bar Tender's shared visual language: a warm, bar-inspired palette — copper
-/// brand tones, paper-tinted canvas, and hairlines that lean warm instead of
-/// stock macOS gray. Flat SaaS-style surfaces, minimal elevation.
+/// Bar Tender's window vocabulary, intentionally aligned with AgentNotch:
+/// deep black, compact system typography, translucent raised surfaces, and a
+/// restrained white-opacity hierarchy. State colour is reserved for meaning.
 enum PremiumStyle {
-    /// Radius for the few remaining contained surfaces (previews, code blocks).
-    static let cardRadius: CGFloat = 10
-    /// Small radius for inline controls and code blocks.
+    static let cardRadius: CGFloat = 9
     static let chipRadius: CGFloat = 7
+    static let controlRadius: CGFloat = 8
 
     // MARK: - Spacing
 
-    /// 4pt spacing scale — the only spacing values used across the app.
     static let space2: CGFloat = 2
     static let space4: CGFloat = 4
     static let space8: CGFloat = 8
@@ -23,103 +21,50 @@ enum PremiumStyle {
     static let space32: CGFloat = 32
     static let space40: CGFloat = 40
 
-    /// Shared horizontal margin for the detail page and the composer, so the
-    /// page body and the input bar track the same left edge.
-    static let contentMargin: CGFloat = 28
-
-    /// Inset for sidebar list containers (workspace menu, search, tool list, footer).
-    static let sidebarInset: CGFloat = 6
-    /// Horizontal padding inside rows (sidebar rows, property rows, hover rows).
-    static let rowInsetH: CGFloat = 8
-    /// Vertical padding inside rows.
-    static let rowInsetV: CGFloat = 5
+    static let contentMargin: CGFloat = 20
+    static let sidebarInset: CGFloat = 10
+    static let rowInsetH: CGFloat = 10
+    static let rowInsetV: CGFloat = 6
 
     // MARK: - Palette
 
-    /// Adaptive light/dark color.
-    private static func adaptive(light: NSColor, dark: NSColor) -> Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark ? dark : light
-        })
-    }
+    static let canvas = Color.black
+    static let sidebarBackground = Color.black
+    static let raised = Color.white.opacity(0.055)
+    static let raisedStrong = Color.white.opacity(0.10)
+    static let raisedPressed = Color.white.opacity(0.135)
+    static let fieldFill = Color.white.opacity(0.075)
+    static let surfaceFill = Color.white.opacity(0.055)
+    static let cardStroke = Color.white.opacity(0.08)
+    static let chromeStroke = Color.white.opacity(0.14)
+    static let selectionFill = Color.white.opacity(0.10)
 
-    /// Signature copper-amber — the house pour. Used for tint, selection,
-    /// and brand imagery instead of the stock system blue.
-    static var brand: Color {
-        adaptive(
-            light: NSColor(red: 0.678, green: 0.353, blue: 0.094, alpha: 1), // #AD5A18
-            dark: NSColor(red: 0.918, green: 0.631, blue: 0.345, alpha: 1)   // #EAA158
-        )
-    }
+    static let primaryText = Color.white.opacity(0.92)
+    static let secondaryText = Color.white.opacity(0.58)
+    static let tertiaryText = Color.white.opacity(0.34)
 
-    /// Deeper end of the brand pour, for gradients on brand imagery.
-    static var brandDeep: Color {
-        adaptive(
-            light: NSColor(red: 0.482, green: 0.227, blue: 0.051, alpha: 1), // #7B3A0D
-            dark: NSColor(red: 0.761, green: 0.435, blue: 0.176, alpha: 1)   // #C26F2D
-        )
-    }
-
-    /// Vertical gradient for brand imagery (app mark, hero glyphs).
-    static var brandGradient: LinearGradient {
-        LinearGradient(
-            colors: [brand, brandDeep],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-    }
-
-    /// Warm paper canvas for the detail pane — reads crafted, not stock.
-    static var canvas: Color {
-        adaptive(
-            light: NSColor(red: 0.984, green: 0.965, blue: 0.937, alpha: 1), // #FBF6EF
-            dark: NSColor(red: 0.106, green: 0.090, blue: 0.078, alpha: 1)   // #1B1714
-        )
-    }
-
-    /// One opaque surface shared by the sidebar and unified title bar. Keeping
-    /// this solid avoids a second material composition at the safe-area seam.
-    static var sidebarBackground: Color {
-        adaptive(
-            light: NSColor(red: 0.955, green: 0.955, blue: 0.950, alpha: 1),
-            dark: NSColor(red: 0.125, green: 0.130, blue: 0.128, alpha: 1)
-        )
-    }
-
-    // MARK: - Warm neutrals
-
-    /// Base hue for warm-tinted hairlines and fills.
-    private static var warmInk: Color {
-        adaptive(
-            light: NSColor(red: 0.28, green: 0.20, blue: 0.11, alpha: 1),
-            dark: NSColor(red: 1.0, green: 0.93, blue: 0.82, alpha: 1)
-        )
-    }
-
-    /// Hairline stroke used on contained surfaces and fields.
-    static var cardStroke: Color { warmInk.opacity(0.10) }
-    /// Slightly stronger stroke used for focused or hovered chrome.
-    static var chromeStroke: Color { warmInk.opacity(0.17) }
-
-    /// Flat fill for contained surfaces — no material, no elevation.
-    static var surfaceFill: Color { warmInk.opacity(0.045) }
-
-    /// Elevated surface for inputs, cards, and floating chrome — paper-bright
-    /// in light mode, warm charcoal in dark. The single "lifted" background;
-    /// everything else is either `canvas` or `surfaceFill`.
-    static var fieldFill: Color {
-        adaptive(
-            light: NSColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1),        // white on paper
-            dark: NSColor(red: 0.176, green: 0.153, blue: 0.133, alpha: 1)   // #2D2722 warm charcoal
-        )
-    }
-
-    /// Sidebar selection wash — a pour of brand instead of neutral gray.
-    static var selectionFill: Color { brand.opacity(0.16) }
+    /// AgentNotch uses colour to communicate active state. Bar Tender follows
+    /// that rule with system blue for active/building controls.
+    static let brand = Color.blue
+    static let brandDeep = Color.blue.opacity(0.76)
+    static let brandGradient = LinearGradient(
+        colors: [Color.white.opacity(0.92), Color.white.opacity(0.62)],
+        startPoint: .top,
+        endPoint: .bottom
+    )
 }
 
-// MARK: - Bordered container
+enum BarTenderFont {
+    static let display = Font.system(size: 17, weight: .semibold)
+    static let title = Font.system(size: 15, weight: .semibold)
+    static let body = Font.system(size: 12, weight: .regular)
+    static let bodyEmphasis = Font.system(size: 12, weight: .medium)
+    static let caption = Font.system(size: 11, weight: .regular)
+    static let footnote = Font.system(size: 10, weight: .regular)
+    static let sectionLabel = Font.system(size: 11, weight: .semibold)
+    static let control = Font.system(size: 11, weight: .medium)
+    static let mono = Font.system(size: 10, weight: .regular, design: .monospaced)
+}
 
 private struct BorderedContainer: ViewModifier {
     var cornerRadius: CGFloat = PremiumStyle.cardRadius
@@ -130,16 +75,96 @@ private struct BorderedContainer: ViewModifier {
                 PremiumStyle.surfaceFill,
                 in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             )
+    }
+}
+
+private struct DeepBlackWindowConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        configureWhenAttached(view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        configureWhenAttached(nsView)
+    }
+
+    private func configureWhenAttached(_ view: NSView) {
+        DispatchQueue.main.async { [weak view] in
+            guard let window = view?.window else { return }
+            window.backgroundColor = .black
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.titlebarAppearsTransparent = true
+            window.isOpaque = true
+            if window.styleMask.contains(.titled) {
+                window.styleMask.insert([.miniaturizable, .resizable])
+            }
+        }
+    }
+}
+
+extension View {
+    /// AgentNotch-style raised surface. Panels are separated by fill and
+    /// spacing; borders are reserved for interactive controls.
+    func borderedContainer(cornerRadius: CGFloat = PremiumStyle.cardRadius) -> some View {
+        modifier(BorderedContainer(cornerRadius: cornerRadius))
+    }
+
+    func deepBlackWindowSurface() -> some View {
+        background(PremiumStyle.canvas)
+            .background(DeepBlackWindowConfigurator())
+            .preferredColorScheme(.dark)
+    }
+}
+
+struct BarTenderHairline: View {
+    var leadingInset: CGFloat = 0
+
+    var body: some View {
+        Rectangle()
+            .fill(PremiumStyle.cardStroke)
+            .frame(height: 0.6)
+            .padding(.leading, leadingInset)
+    }
+}
+
+struct BarTenderPillButtonStyle: ButtonStyle {
+    var destructive = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(BarTenderFont.control)
+            .foregroundStyle(
+                destructive
+                    ? Color.red.opacity(configuration.isPressed ? 0.70 : 0.88)
+                    : Color.white.opacity(configuration.isPressed ? 0.62 : 0.82)
+            )
+            .padding(.horizontal, 11)
+            .frame(height: 26)
+            .background(
+                configuration.isPressed ? PremiumStyle.raisedPressed : PremiumStyle.raisedStrong,
+                in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
+            )
             .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
                     .strokeBorder(PremiumStyle.cardStroke, lineWidth: 1)
             )
     }
 }
 
-extension View {
-    /// Flat hairline-bordered surface — the only container style; no material, no shadow.
-    func borderedContainer(cornerRadius: CGFloat = PremiumStyle.cardRadius) -> some View {
-        modifier(BorderedContainer(cornerRadius: cornerRadius))
+struct BarTenderIconButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(Color.white.opacity(configuration.isPressed ? 0.55 : 0.72))
+            .frame(width: 26, height: 26)
+            .background(
+                configuration.isPressed ? PremiumStyle.raisedPressed : PremiumStyle.raisedStrong,
+                in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
+                    .strokeBorder(PremiumStyle.cardStroke, lineWidth: 1)
+            )
     }
 }

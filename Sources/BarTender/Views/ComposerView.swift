@@ -34,8 +34,6 @@ struct ComposerView: View {
                     )
                 }
             }
-            // The message box floats on the page — soft lift, no separator bar.
-            .shadow(color: .black.opacity(0.07), radius: 14, y: 3)
         }
         .padding(.horizontal, PremiumStyle.contentMargin)
         .padding(.top, PremiumStyle.space12)
@@ -55,15 +53,15 @@ struct ComposerView: View {
                 .controlSize(.small)
             VStack(alignment: .leading, spacing: 2) {
                 Text(model.generation?.phase.displayName(for: model.generation?.provider) ?? "Generating")
-                    .font(.inter(.callout, weight: .medium))
+                    .font(BarTenderFont.bodyEmphasis)
                     .contentTransition(.numericText())
                 Text(
                     model.generation?.isRevision == true
                         ? "The selected menu bar item will be updated in place."
                         : "A dedicated executable will appear as a new menu bar item."
                 )
-                    .font(.inter(.caption))
-                    .foregroundStyle(.secondary)
+                    .font(BarTenderFont.caption)
+                    .foregroundStyle(PremiumStyle.secondaryText)
             }
             Spacer(minLength: 0)
             Button("Cancel") {
