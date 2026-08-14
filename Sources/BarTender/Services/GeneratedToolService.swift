@@ -299,6 +299,9 @@ enum GeneratedToolRunner {
 }
 
 enum GeneratedToolSourceValidator {
+    /// Advisory UX: the prompt and these two patterns reject common
+    /// administrator-only commands. They are not a sandbox. Approved tools
+    /// still run with the user's privileges.
     static func validate(_ manifest: AppletManifest) async throws {
         guard manifest.kind == .generatedTool,
               let source = manifest.config.generatedSource else { return }

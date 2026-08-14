@@ -7,24 +7,28 @@ enum PortProbe {
               let nwPort = NWEndpoint.Port(rawValue: UInt16(port)) else { return false }
         let connection = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
 
-        return await withCheckedContinuation { continuation in
-            let state = FinishState()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                let state = FinishState()
 
-            connection.stateUpdateHandler = { connectionState in
-                switch connectionState {
-                case .ready:
-                    state.finish(true, connection: connection, continuation: continuation)
-                case .failed, .cancelled:
+                connection.stateUpdateHandler = { connectionState in
+                    switch connectionState {
+                    case .ready:
+                        state.finish(true, connection: connection, continuation: continuation)
+                    case .failed, .cancelled:
+                        state.finish(false, connection: connection, continuation: continuation)
+                    default:
+                        break
+                    }
+                }
+                connection.start(queue: .global(qos: .utility))
+
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {
                     state.finish(false, connection: connection, continuation: continuation)
-                default:
-                    break
                 }
             }
-            connection.start(queue: .global(qos: .utility))
-
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {
-                state.finish(false, connection: connection, continuation: continuation)
-            }
+        } onCancel: {
+            connection.cancel()
         }
     }
 }

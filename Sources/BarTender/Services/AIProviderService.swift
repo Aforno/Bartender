@@ -45,6 +45,7 @@ final class AIProviderService: ObservableObject {
     private var availabilityRefreshTask: Task<Void, Never>?
     private var generationTask: Task<AppletManifest, Error>?
     private var generationRunner: ProcessRunner?
+    private var generationSessionID: UUID?
     private var generationCancellationRequested = false
 
     private static let selectedProviderKey = "BarTender.selectedProvider"
@@ -264,8 +265,13 @@ final class AIProviderService: ObservableObject {
     func cancelGeneration() {
         generationCancellationRequested = true
         generationTask?.cancel()
+        // Capture and clear the runner on this actor hop so a later generate
+        // cannot publish a new runner that this cancellation then kills.
+        let runner = generationRunner
+        generationRunner = nil
+        guard let runner else { return }
         Task {
-            await generationRunner?.cancel()
+            await runner.cancel()
         }
     }
 
@@ -322,10 +328,15 @@ final class AIProviderService: ObservableObject {
         onLog(.system, "Prompt size: \(fullPrompt.count) characters")
 
         let localRunner = ProcessRunner()
+        let sessionID = UUID()
+        generationSessionID = sessionID
         generationRunner = localRunner
 
         guard !generationCancellationRequested else {
-            generationRunner = nil
+            if generationSessionID == sessionID {
+                generationRunner = nil
+                generationSessionID = nil
+            }
             throw ProviderGenerationError.cancelled
         }
 
@@ -362,9 +373,17 @@ final class AIProviderService: ObservableObject {
 
         generationTask = task
         defer {
-            generationTask = nil
-            generationRunner = nil
-            generationCancellationRequested = false
+            // Only the session that still owns generation may clear shared
+            // state. A superseded run must not nil the next runner or reset
+            // a newer cancellation flag.
+            if generationSessionID == sessionID {
+                generationTask = nil
+                if generationRunner === localRunner {
+                    generationRunner = nil
+                }
+                generationCancellationRequested = false
+                generationSessionID = nil
+            }
         }
         do {
             let manifest = try await task.value

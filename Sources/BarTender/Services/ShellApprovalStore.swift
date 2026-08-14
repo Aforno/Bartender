@@ -50,6 +50,8 @@ final class ShellApprovalStore {
         approvals
     }
 
+    /// Restores a previously captured fingerprint map. This is an exact-content
+    /// rollback after a failed import, not a collision-resistant merge.
     func restore(_ snapshot: [String: String]) {
         approvals = snapshot
         persist()
@@ -71,9 +73,18 @@ final class ShellApprovalStore {
 
         let directory = manifest.config.workingDirectory?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // NUL is the field delimiter. Reject it in every field so crafted
+        // command/cwd values cannot collide with another canonical input.
+        guard !containsNUL(executableContent), !containsNUL(directory) else {
+            return nil
+        }
         let canonical = manifest.kind.rawValue + "\u{0}" + executableContent + "\u{0}" + directory
         let digest = SHA256.hash(data: Data(canonical.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func containsNUL(_ value: String) -> Bool {
+        value.utf8.contains(0)
     }
 
     private func persist() {

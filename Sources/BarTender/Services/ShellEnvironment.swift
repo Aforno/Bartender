@@ -9,6 +9,13 @@ enum ShellEnvironment {
         await cache.environment()
     }
 
+    /// Keys forwarded to generated tools, approved shell applets, and git probes.
+    /// Authentication tokens inherited by a terminal-launched GUI are excluded.
+    static let executionAllowlistKeys = [
+        "HOME", "USER", "LOGNAME", "PATH", "SHELL", "TMPDIR",
+        "LANG", "LC_ALL", "LC_CTYPE", "TERM", "NO_COLOR"
+    ]
+
     /// Environment exposed to approved generated tools. Authentication tokens
     /// inherited by the app are intentionally excluded; tools still receive the
     /// standard user identity, locale, temporary directory, shell, and PATH.
@@ -16,14 +23,7 @@ enum ShellEnvironment {
     /// tools can run `"$BARTENDER_CLI" --sensors` without launching a second app
     /// instance that would race on applets.json / UserDefaults.
     static func generatedToolEnvironment() async -> [String: String] {
-        let login = await loginEnvironment()
-        let allowedKeys = [
-            "HOME", "USER", "LOGNAME", "PATH", "SHELL", "TMPDIR",
-            "LANG", "LC_ALL", "LC_CTYPE", "TERM", "NO_COLOR"
-        ]
-        var environment = Dictionary(uniqueKeysWithValues: allowedKeys.compactMap { key in
-            login[key].map { (key, $0) }
-        })
+        var environment = restrict(await loginEnvironment())
         let wrapperTask = Task.detached(priority: .utility) {
             Self.ensureSensorCLIWrapper()
         }
@@ -31,6 +31,38 @@ enum ShellEnvironment {
             environment["BARTENDER_CLI"] = cliPath
         }
         return environment
+    }
+
+    /// Same allowlist as generated tools. AI CLIs keep the full login environment.
+    static func approvedCommandEnvironment() async -> [String: String] {
+        restrict(await loginEnvironment())
+    }
+
+    /// Allowlisted user identity plus git hardening keys. Repo-configured
+    /// helpers are disabled at the invocation site, not by inheriting `GIT_*`.
+    static func gitProbeEnvironment() async -> [String: String] {
+        restrict(
+            await loginEnvironment(),
+            additionalValues: [
+                "GIT_OPTIONAL_LOCKS": "0",
+                "GIT_TERMINAL_PROMPT": "0"
+            ]
+        )
+    }
+
+    static func restrict(
+        _ environment: [String: String],
+        extraKeys: [String] = [],
+        additionalValues: [String: String] = [:]
+    ) -> [String: String] {
+        let allowed = Set(executionAllowlistKeys + extraKeys)
+        var restricted = Dictionary(uniqueKeysWithValues: allowed.compactMap { key in
+            environment[key].map { (key, $0) }
+        })
+        for (key, value) in additionalValues {
+            restricted[key] = value
+        }
+        return restricted
     }
 
     /// Writes (or refreshes) a small zsh wrapper that only allows `--sensors` /

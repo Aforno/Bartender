@@ -55,7 +55,7 @@ find "$RESOURCE_BUNDLE" -type f -name 'applet-manifest.schema.json' -print -quit
   exit 1
 }
 
-for provider_icon in chatgpt claude grok; do
+for provider_icon in chatgpt claude grok gemini agy; do
   find "$RESOURCE_BUNDLE" -type f -name "$provider_icon.png" -print -quit | grep -q . || {
     printf 'Provider icon is missing: %s.png\n' "$provider_icon" >&2
     exit 1

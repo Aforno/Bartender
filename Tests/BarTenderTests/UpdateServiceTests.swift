@@ -75,21 +75,21 @@ final class UpdateServiceTests: XCTestCase {
         let releases = [
             UpdateService.Release(
                 tagName: "v1.0.2",
-                htmlURL: "https://example.com/1.0.2",
+                htmlURL: "https://github.com/Aforno/Bartender/releases/tag/1.0.2",
                 draft: false,
                 prerelease: false,
                 publishedBuildNumber: 5
             ),
             UpdateService.Release(
                 tagName: "v1.0.2",
-                htmlURL: "https://example.com/1.0.2-draft",
+                htmlURL: "https://github.com/Aforno/Bartender/releases/tag/1.0.2-draft",
                 draft: true,
                 prerelease: true,
                 publishedBuildNumber: 6
             ),
             UpdateService.Release(
                 tagName: "v1.0.1+build.3",
-                htmlURL: "https://example.com/1.0.1-build3",
+                htmlURL: "https://github.com/Aforno/Bartender/releases/tag/1.0.1-build3",
                 draft: false,
                 prerelease: true,
                 publishedBuildNumber: 3
@@ -107,14 +107,14 @@ final class UpdateServiceTests: XCTestCase {
             return XCTFail("Expected prerelease update, got \(selection)")
         }
         XCTAssertEqual(version, "1.0.1+build.3")
-        XCTAssertEqual(url.absoluteString, "https://example.com/1.0.1-build3")
+        XCTAssertEqual(url.absoluteString, "https://github.com/Aforno/Bartender/releases/tag/1.0.1-build3")
     }
 
     func testPrereleaseChannelRequiresGitHubPrereleaseFlag() {
         let releases = [
             UpdateService.Release(
                 tagName: "v1.0.9",
-                htmlURL: "https://example.com/not-prerelease",
+                htmlURL: "https://github.com/Aforno/Bartender/releases/tag/not-prerelease",
                 draft: false,
                 prerelease: false,
                 publishedBuildNumber: 99
@@ -136,14 +136,14 @@ final class UpdateServiceTests: XCTestCase {
         let releases = [
             UpdateService.Release(
                 tagName: "v2.0.0",
-                htmlURL: "https://example.com/2.0.0-pre",
+                htmlURL: "https://github.com/Aforno/Bartender/releases/tag/2.0.0-pre",
                 draft: false,
                 prerelease: true,
                 publishedBuildNumber: 1
             ),
             UpdateService.Release(
                 tagName: "v1.1.0",
-                htmlURL: "https://example.com/1.1.0",
+                htmlURL: "https://github.com/Aforno/Bartender/releases/tag/1.1.0",
                 draft: false,
                 prerelease: false,
                 publishedBuildNumber: 4
@@ -164,14 +164,14 @@ final class UpdateServiceTests: XCTestCase {
         let releases = [
             UpdateService.Release(
                 tagName: "v1.0.1",
-                htmlURL: "https://example.com/old",
+                htmlURL: "https://github.com/Aforno/Bartender/releases/tag/old",
                 draft: false,
                 prerelease: true,
                 publishedBuildNumber: 2
             ),
             UpdateService.Release(
                 tagName: "v1.0.3",
-                htmlURL: "https://example.com/new",
+                htmlURL: "https://github.com/Aforno/Bartender/releases/tag/new",
                 draft: false,
                 prerelease: true,
                 publishedBuildNumber: 4
@@ -194,7 +194,7 @@ final class UpdateServiceTests: XCTestCase {
         let releases = [
             UpdateService.Release(
                 tagName: "v1.0.1+build.3",
-                htmlURL: "https://example.com/build3",
+                htmlURL: "https://github.com/Aforno/Bartender/releases/tag/build3",
                 draft: false,
                 prerelease: true,
                 publishedBuildNumber: 3
@@ -215,7 +215,7 @@ final class UpdateServiceTests: XCTestCase {
         let releases = [
             UpdateService.Release(
                 tagName: "v1.0.1+build.2",
-                htmlURL: "https://example.com/build2",
+                htmlURL: "https://github.com/Aforno/Bartender/releases/tag/build2",
                 draft: false,
                 prerelease: true,
                 publishedBuildNumber: 2
@@ -234,14 +234,14 @@ final class UpdateServiceTests: XCTestCase {
         let releases = [
             UpdateService.Release(
                 tagName: "broken-tag",
-                htmlURL: "https://example.com/broken",
+                htmlURL: "https://github.com/Aforno/Bartender/releases/tag/broken",
                 draft: false,
                 prerelease: true,
                 publishedBuildNumber: 999
             ),
             UpdateService.Release(
                 tagName: "v1.0.2+build.4",
-                htmlURL: "https://example.com/valid",
+                htmlURL: "https://github.com/Aforno/Bartender/releases/tag/valid",
                 draft: false,
                 prerelease: true,
                 publishedBuildNumber: 4
@@ -258,7 +258,7 @@ final class UpdateServiceTests: XCTestCase {
             return XCTFail("Expected the valid update, got \(selection)")
         }
         XCTAssertEqual(version, "1.0.2+build.4")
-        XCTAssertEqual(url.absoluteString, "https://example.com/valid")
+        XCTAssertEqual(url.absoluteString, "https://github.com/Aforno/Bartender/releases/tag/valid")
     }
 
     func testInvalidReleaseURLIsSkipped() {
@@ -272,7 +272,14 @@ final class UpdateServiceTests: XCTestCase {
             ),
             UpdateService.Release(
                 tagName: "v1.0.2",
-                htmlURL: "https://example.com/valid",
+                htmlURL: "http://github.com/Aforno/Bartender/releases/tag/insecure",
+                draft: false,
+                prerelease: true,
+                publishedBuildNumber: 5
+            ),
+            UpdateService.Release(
+                tagName: "v1.0.3",
+                htmlURL: "https://github.com/Aforno/Bartender/releases/tag/valid",
                 draft: false,
                 prerelease: true,
                 publishedBuildNumber: 4
@@ -287,14 +294,14 @@ final class UpdateServiceTests: XCTestCase {
         ) else {
             return XCTFail("Expected valid URL release to be selected")
         }
-        XCTAssertEqual(version, "1.0.2")
+        XCTAssertEqual(version, "1.0.3")
     }
 
     func testNoCompatibleRelease() {
         let releases = [
             UpdateService.Release(
                 tagName: "v1.0.2",
-                htmlURL: "https://example.com/stable",
+                htmlURL: "https://github.com/Aforno/Bartender/releases/tag/stable",
                 draft: false,
                 prerelease: false,
                 publishedBuildNumber: 1
@@ -312,10 +319,10 @@ final class UpdateServiceTests: XCTestCase {
     func testDecodeReleasesSkipsMalformedEntries() throws {
         let json = """
         [
-          {"tag_name": "v1.0.1+build.4", "html_url": "https://example.com/a", "draft": false, "prerelease": true, "name": "Bar Tender 1.0.1 (build 4)"},
+          {"tag_name": "v1.0.1+build.4", "html_url": "https://github.com/Aforno/Bartender/releases/tag/a", "draft": false, "prerelease": true, "name": "Bar Tender 1.0.1 (build 4)"},
           {"tag_name": 123, "html_url": "bad"},
-          {"html_url": "https://example.com/missing-tag"},
-          {"tag_name": "v1.0.0", "html_url": "https://example.com/b", "draft": false, "prerelease": true}
+          {"html_url": "https://github.com/Aforno/Bartender/releases/tag/missing-tag"},
+          {"tag_name": "v1.0.0", "html_url": "https://github.com/Aforno/Bartender/releases/tag/b", "draft": false, "prerelease": true}
         ]
         """.data(using: .utf8)!
 
@@ -355,8 +362,19 @@ final class UpdateServiceTests: XCTestCase {
             next?.absoluteString,
             "https://api.github.com/repos/Aforno/Bartender/releases?page=2&per_page=100"
         )
-        XCTAssertNil(UpdateService.nextPageURL(fromLinkHeader: #"<https://example.com>; rel="last""#))
+        XCTAssertNil(UpdateService.nextPageURL(fromLinkHeader: #"<https://github.com/Aforno/Bartender/releases/tag>; rel="last""#))
         XCTAssertNil(UpdateService.nextPageURL(fromLinkHeader: ""))
+        XCTAssertNil(UpdateService.nextPageURL(fromLinkHeader: #"<https://evil.example/releases>; rel="next""#))
+        XCTAssertNil(UpdateService.nextPageURL(fromLinkHeader: #"<http://api.github.com/repos/Aforno/Bartender/releases?page=2>; rel="next""#))
+        XCTAssertNil(UpdateService.nextPageURL(fromLinkHeader: #"<https://api.github.com.evil.example/repos/Aforno/Bartender/releases?page=2>; rel="next""#))
+    }
+
+    func testReleasePageURLsMustBeHTTPSGitHubHosts() {
+        XCTAssertNotNil(UpdateService.validatedReleaseURL("https://github.com/Aforno/Bartender/releases/tag/v1.0.2"))
+        XCTAssertNotNil(UpdateService.validatedReleaseURL("https://www.github.com/Aforno/Bartender/releases/tag/v1.0.2"))
+        XCTAssertNil(UpdateService.validatedReleaseURL("http://github.com/Aforno/Bartender/releases/tag/v1.0.2"))
+        XCTAssertNil(UpdateService.validatedReleaseURL("https://example.com/v1.0.2"))
+        XCTAssertNil(UpdateService.validatedReleaseURL("https://user:pass@github.com/Aforno/Bartender/releases/tag/v1.0.2"))
     }
 
     // MARK: - fetchCompatibleRelease via mocked network
@@ -369,7 +387,7 @@ final class UpdateServiceTests: XCTestCase {
                 statusCode: 200,
                 linkHeader: #"<https://api.github.com/repos/Aforno/Bartender/releases?page=2&per_page=100>; rel="next""#,
                 body: releaseJSON([
-                    ["tag_name": "v9.0.0", "html_url": "https://example.com/stable", "draft": false, "prerelease": false, "name": "Bar Tender 9.0.0 (build 1)"]
+                    ["tag_name": "v9.0.0", "html_url": "https://github.com/Aforno/Bartender/releases/tag/stable", "draft": false, "prerelease": false, "name": "Bar Tender 9.0.0 (build 1)"]
                 ])
             ),
             MockGitHubReleasesURLProtocol.Page(
@@ -377,7 +395,7 @@ final class UpdateServiceTests: XCTestCase {
                 statusCode: 200,
                 linkHeader: nil,
                 body: releaseJSON([
-                    ["tag_name": "v1.0.2+build.4", "html_url": "https://example.com/compatible", "draft": false, "prerelease": true, "name": "Bar Tender 1.0.2 (build 4)"]
+                    ["tag_name": "v1.0.2+build.4", "html_url": "https://github.com/Aforno/Bartender/releases/tag/compatible", "draft": false, "prerelease": true, "name": "Bar Tender 1.0.2 (build 4)"]
                 ])
             )
         ])
@@ -394,7 +412,7 @@ final class UpdateServiceTests: XCTestCase {
             return XCTFail("Expected update from page 2, got \(selection)")
         }
         XCTAssertEqual(version, "1.0.2+build.4")
-        XCTAssertEqual(url.absoluteString, "https://example.com/compatible")
+        XCTAssertEqual(url.absoluteString, "https://github.com/Aforno/Bartender/releases/tag/compatible")
         XCTAssertEqual(MockGitHubReleasesURLProtocol.requestURLs.count, 2)
     }
 
@@ -408,7 +426,7 @@ final class UpdateServiceTests: XCTestCase {
                 statusCode: 200,
                 linkHeader: #"<https://api.github.com/repos/Aforno/Bartender/releases?page=2&per_page=100>; rel="next""#,
                 body: releaseJSON([
-                    ["tag_name": "v1.0.1+build.5", "html_url": "https://example.com/1.0.1", "draft": false, "prerelease": true, "name": "Bar Tender 1.0.1 (build 5)"]
+                    ["tag_name": "v1.0.1+build.5", "html_url": "https://github.com/Aforno/Bartender/releases/tag/1.0.1", "draft": false, "prerelease": true, "name": "Bar Tender 1.0.1 (build 5)"]
                 ])
             ),
             MockGitHubReleasesURLProtocol.Page(
@@ -416,7 +434,7 @@ final class UpdateServiceTests: XCTestCase {
                 statusCode: 200,
                 linkHeader: nil,
                 body: releaseJSON([
-                    ["tag_name": "v1.1.0+build.1", "html_url": "https://example.com/1.1.0", "draft": false, "prerelease": true, "name": "Bar Tender 1.1.0 (build 1)"]
+                    ["tag_name": "v1.1.0+build.1", "html_url": "https://github.com/Aforno/Bartender/releases/tag/1.1.0", "draft": false, "prerelease": true, "name": "Bar Tender 1.1.0 (build 1)"]
                 ])
             )
         ])
@@ -433,7 +451,7 @@ final class UpdateServiceTests: XCTestCase {
             return XCTFail("Expected semantically newest update, got \(selection)")
         }
         XCTAssertEqual(version, "1.1.0+build.1")
-        XCTAssertEqual(url.absoluteString, "https://example.com/1.1.0")
+        XCTAssertEqual(url.absoluteString, "https://github.com/Aforno/Bartender/releases/tag/1.1.0")
         XCTAssertEqual(MockGitHubReleasesURLProtocol.requestURLs.count, 2)
     }
 
@@ -447,7 +465,7 @@ final class UpdateServiceTests: XCTestCase {
                 statusCode: 200,
                 linkHeader: #"<\#(page2.absoluteString)>; rel="next""#,
                 body: releaseJSON([
-                    ["tag_name": "v0.9.0", "html_url": "https://example.com/0.9", "draft": false, "prerelease": true, "name": "Bar Tender 0.9.0 (build 1)"]
+                    ["tag_name": "v0.9.0", "html_url": "https://github.com/Aforno/Bartender/releases/tag/0.9", "draft": false, "prerelease": true, "name": "Bar Tender 0.9.0 (build 1)"]
                 ])
             ),
             .init(
@@ -455,7 +473,7 @@ final class UpdateServiceTests: XCTestCase {
                 statusCode: 200,
                 linkHeader: #"<\#(page3.absoluteString)>; rel="next", <\#(page3.absoluteString)>; rel="last""#,
                 body: releaseJSON([
-                    ["tag_name": "v1.0.0", "html_url": "https://example.com/1.0", "draft": false, "prerelease": true, "name": "Bar Tender 1.0.0 (build 1)"]
+                    ["tag_name": "v1.0.0", "html_url": "https://github.com/Aforno/Bartender/releases/tag/1.0", "draft": false, "prerelease": true, "name": "Bar Tender 1.0.0 (build 1)"]
                 ])
             ),
             .init(
@@ -463,7 +481,7 @@ final class UpdateServiceTests: XCTestCase {
                 statusCode: 200,
                 linkHeader: nil,
                 body: releaseJSON([
-                    ["tag_name": "v1.2.0+build.7", "html_url": "https://example.com/1.2", "draft": false, "prerelease": true, "name": "Bar Tender 1.2.0 (build 7)"]
+                    ["tag_name": "v1.2.0+build.7", "html_url": "https://github.com/Aforno/Bartender/releases/tag/1.2", "draft": false, "prerelease": true, "name": "Bar Tender 1.2.0 (build 7)"]
                 ])
             )
         ])
@@ -495,7 +513,7 @@ final class UpdateServiceTests: XCTestCase {
                 statusCode: 200,
                 linkHeader: #"<https://api.github.com/repos/Aforno/Bartender/releases?page=1&per_page=100>; rel="last""#,
                 body: releaseJSON([
-                    ["tag_name": "v1.0.1+build.2", "html_url": "https://example.com/current", "draft": false, "prerelease": true, "name": "Bar Tender 1.0.1 (build 2)"]
+                    ["tag_name": "v1.0.1+build.2", "html_url": "https://github.com/Aforno/Bartender/releases/tag/current", "draft": false, "prerelease": true, "name": "Bar Tender 1.0.1 (build 2)"]
                 ])
             )
         ])
@@ -521,7 +539,7 @@ final class UpdateServiceTests: XCTestCase {
                 statusCode: 200,
                 linkHeader: #"<\#(page2.absoluteString)>; rel="next""#,
                 body: releaseJSON([
-                    ["tag_name": "v1.0.1", "html_url": "https://example.com/1.0.1", "draft": false, "prerelease": true, "name": "Bar Tender 1.0.1 (build 1)"]
+                    ["tag_name": "v1.0.1", "html_url": "https://github.com/Aforno/Bartender/releases/tag/1.0.1", "draft": false, "prerelease": true, "name": "Bar Tender 1.0.1 (build 1)"]
                 ])
             ),
             .init(
@@ -591,8 +609,8 @@ final class UpdateServiceTests: XCTestCase {
                 statusCode: 200,
                 linkHeader: #"<\#(page2.absoluteString)>; rel="next""#,
                 body: releaseJSON([
-                    ["tag_name": "v1.0.5+build.9", "html_url": "https://example.com/1.0.5", "draft": false, "prerelease": true, "name": "Bar Tender 1.0.5 (build 9)"],
-                    ["tag_name": "v1.0.4", "html_url": "https://example.com/1.0.4", "draft": false, "prerelease": true, "name": "Bar Tender 1.0.4 (build 1)"]
+                    ["tag_name": "v1.0.5+build.9", "html_url": "https://github.com/Aforno/Bartender/releases/tag/1.0.5", "draft": false, "prerelease": true, "name": "Bar Tender 1.0.5 (build 9)"],
+                    ["tag_name": "v1.0.4", "html_url": "https://github.com/Aforno/Bartender/releases/tag/1.0.4", "draft": false, "prerelease": true, "name": "Bar Tender 1.0.4 (build 1)"]
                 ])
             ),
             .init(
@@ -600,8 +618,8 @@ final class UpdateServiceTests: XCTestCase {
                 statusCode: 200,
                 linkHeader: nil,
                 body: releaseJSON([
-                    ["tag_name": "v2.0.0+build.1", "html_url": "https://example.com/2.0.0", "draft": false, "prerelease": true, "name": "Bar Tender 2.0.0 (build 1)"],
-                    ["tag_name": "v1.9.9", "html_url": "https://example.com/1.9.9", "draft": false, "prerelease": true, "name": "Bar Tender 1.9.9 (build 1)"]
+                    ["tag_name": "v2.0.0+build.1", "html_url": "https://github.com/Aforno/Bartender/releases/tag/2.0.0", "draft": false, "prerelease": true, "name": "Bar Tender 2.0.0 (build 1)"],
+                    ["tag_name": "v1.9.9", "html_url": "https://github.com/Aforno/Bartender/releases/tag/1.9.9", "draft": false, "prerelease": true, "name": "Bar Tender 1.9.9 (build 1)"]
                 ])
             )
         ])
@@ -618,7 +636,7 @@ final class UpdateServiceTests: XCTestCase {
             return XCTFail("Expected highest semver across all pages, got \(selection)")
         }
         XCTAssertEqual(version, "2.0.0+build.1")
-        XCTAssertEqual(url.absoluteString, "https://example.com/2.0.0")
+        XCTAssertEqual(url.absoluteString, "https://github.com/Aforno/Bartender/releases/tag/2.0.0")
     }
 
     // MARK: - Helpers
