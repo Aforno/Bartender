@@ -1,7 +1,5 @@
-import AppKit
 import Combine
 import Foundation
-import UniformTypeIdentifiers
 import UserNotifications
 
 @MainActor
@@ -53,7 +51,8 @@ final class AppModel: ObservableObject {
         launchAtLogin: LaunchAtLoginController? = nil,
         updates: UpdateService? = nil,
         shellApprovals: ShellApprovalStore? = nil,
-        generatedTools: GeneratedToolArtifactStore? = nil
+        generatedTools: GeneratedToolArtifactStore? = nil,
+        runtime: AppletRuntimeEngine? = nil
     ) {
         let resolvedApprovals = shellApprovals ?? ShellApprovalStore()
         let resolvedArtifacts = generatedTools ?? GeneratedToolArtifactStore()
@@ -64,7 +63,7 @@ final class AppModel: ObservableObject {
         self.updates = updates ?? UpdateService()
         self.shellApprovals = resolvedApprovals
         self.generatedTools = resolvedArtifacts
-        self.runtime = AppletRuntimeEngine(
+        self.runtime = runtime ?? AppletRuntimeEngine(
             shellApprovals: resolvedApprovals,
             generatedTools: resolvedArtifacts
         )
@@ -210,6 +209,10 @@ final class AppModel: ObservableObject {
         initialFeedback: String? = nil
     ) async {
         let resolved = (prompt ?? composerText).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard generation?.phase.isActive != true else {
+            bannerMessage = "A generation is already running. Cancel it before starting another."
+            return
+        }
         guard !resolved.isEmpty else {
             bannerMessage = existingTool == nil
                 ? "Describe a new menu bar tool to build."
@@ -224,7 +227,6 @@ final class AppModel: ObservableObject {
             }
             return
         }
-        guard generation?.phase.isActive != true else { return }
 
         composerText = resolved
 
@@ -434,14 +436,7 @@ final class AppModel: ObservableObject {
         guard let applet = store.applet(id: id) else { return }
 
         if preferences.confirmBeforeDelete {
-            let alert = NSAlert()
-            alert.messageText = "Delete “\(applet.name)”?"
-            alert.informativeText = "This removes the applet from your library. This cannot be undone."
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: "Cancel")
-            let deleteButton = alert.addButton(withTitle: "Delete")
-            deleteButton.hasDestructiveAction = true
-            guard alert.runModal() == .alertSecondButtonReturn else { return }
+            guard LibraryFilePanels.confirmDelete(name: applet.name) else { return }
         }
 
         do {
@@ -675,6 +670,13 @@ final class AppModel: ObservableObject {
             return
         }
 
+        if generation?.phase.isActive == true {
+            runtime.restart(manifest: persisted)
+            runtime.sync(with: store.applets)
+            bannerMessage = "“\(persisted.name)” still needs attention. Cancel the current generation to send the first-run result back to \(providers.selectedProvider.displayName)."
+            return
+        }
+
         guard providers.availability.isReady else {
             runtime.restart(manifest: persisted)
             runtime.sync(with: store.applets)
@@ -774,11 +776,7 @@ final class AppModel: ObservableObject {
     }
 
     func exportLibrary() {
-        let panel = NSSavePanel()
-        panel.title = "Export Bar Tender Library"
-        panel.nameFieldStringValue = "BarTender-Library.json"
-        panel.allowedContentTypes = [.json]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let url = LibraryFilePanels.chooseExportURL() else { return }
 
         do {
             try store.exportArchiveData().write(to: url, options: [.atomic])
@@ -794,21 +792,8 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let panel = NSOpenPanel()
-        panel.title = "Import Bar Tender Library"
-        panel.allowedContentTypes = [.json]
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        let choice = NSAlert()
-        choice.messageText = "Import this tool library?"
-        choice.informativeText = "Merge keeps tools with different IDs and updates matching IDs. Replace removes the current library first. Imported generated code always requires fresh approval."
-        choice.addButton(withTitle: "Merge")
-        choice.addButton(withTitle: "Replace All")
-        choice.addButton(withTitle: "Cancel")
-        let response = choice.runModal()
-        guard response != .alertThirdButtonReturn else { return }
-        let mode: AppletImportMode = response == .alertSecondButtonReturn ? .replace : .merge
+        guard let url = LibraryFilePanels.chooseImportURL() else { return }
+        guard let mode = LibraryFilePanels.confirmImport() else { return }
 
         do {
             let data = try Data(contentsOf: url)
@@ -905,11 +890,7 @@ final class AppModel: ObservableObject {
     // MARK: - Diagnostics and permissions
 
     func exportDiagnostics() {
-        let panel = NSSavePanel()
-        panel.title = "Export Sanitized Diagnostics"
-        panel.nameFieldStringValue = "BarTender-Diagnostics.txt"
-        panel.allowedContentTypes = [.plainText]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let url = LibraryFilePanels.chooseDiagnosticsURL() else { return }
 
         do {
             try diagnosticsReport().write(to: url, atomically: true, encoding: .utf8)

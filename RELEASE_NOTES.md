@@ -4,15 +4,15 @@ Bar Tender turns a plain-language request into a dedicated macOS menu bar tool u
 
 ## Diagnostic focus (this build)
 
-This prerelease isolates menu-bar visibility:
+This prerelease is about whether menu bar items actually show up.
 
-- Bundle identifier is `io.github.aforno.bartender.v2` (fresh Control Center host state).
+- Bundle identifier is `io.github.aforno.bartender.v2`, so Control Center starts from a clean host state.
 - At most one individual applet status item by default, rendered as a compact square icon.
-- Status items attach once from launch; the main window no longer forces an immediate re-registration.
+- Status items attach once from launch. The main window no longer forces an immediate re-registration.
 
 ## Distribution notice (read this)
 
-This is a **prerelease** build. It is **not** signed with an Apple Developer ID certificate and is **not** notarized by Apple.
+This is a prerelease. It is not signed with an Apple Developer ID certificate and is not notarized by Apple.
 
 Gatekeeper will block a normal double-click after download. That is expected.
 
@@ -20,12 +20,12 @@ Gatekeeper will block a normal double-click after download. That is expected.
 
 1. Download the `BarTender-<version>.dmg` file listed in this release's assets.
 2. Optionally verify the file against `SHA256SUMS.txt`.
-3. Open the DMG and drag **BarTender** to **Applications**.
-4. First launch — use one of these:
+3. Open the DMG and drag BarTender to Applications.
+4. On first launch, use one of these:
 
-   - **Finder:** Control-click (or right-click) **BarTender** → **Open** → **Open**.
-   - **Or** after a blocked launch: **System Settings → Privacy & Security** → scroll to the message about Bar Tender → **Open Anyway**.
-   - **Or** from Terminal (only if you trust this build):
+   - In Finder, Control-click or right-click BarTender, then Open, then Open.
+   - After a blocked launch: System Settings → Privacy & Security, scroll to the message about Bar Tender, then Open Anyway.
+   - From Terminal, only if you trust this build:
 
      ```bash
      xattr -dr com.apple.quarantine /Applications/BarTender.app
@@ -34,7 +34,7 @@ Gatekeeper will block a normal double-click after download. That is expected.
 
 5. Later launches can use a normal double-click.
 
-A future release signed with Developer ID and notarized will remove this step when Apple credentials are available.
+A later release signed with Developer ID and notarized will drop this step, once Apple credentials exist.
 
 ### Requirements
 
@@ -44,13 +44,13 @@ A future release signed with Developer ID and notarized will remove this step wh
 
 ### What's in this release
 
-- Review-before-run generated zsh tools with approval bound to the exact source and working directory.
-- Opt-in setting to automatically approve provider-written edits to tools you already approved (new tools, imports, and automatic repairs still require review).
+- Review-before-run generated zsh tools. Approval is bound to the exact source and working directory.
+- Opt-in setting to automatically approve provider-written edits to tools you already approved. New tools, imports, and automatic repairs still require review.
 - Generated tools can read Mac component temperatures via `"$BARTENDER_CLI" --sensors` or `--sensors-json` (CPU, GPU, SoC, battery, ambient, memory, storage; °C; no elevated privileges).
 - Provider and model selection with native ChatGPT, Claude, and Grok artwork.
-- No generation deadline: long provider runs continue until completion or explicit cancellation.
+- No generation deadline. Long provider runs continue until they finish or you cancel them.
 - Launch at login, library export/import, contextual alerts, diagnostics export, provider setup, and update checks.
-- A manager menu that remains usable with many running tools.
-- Universal packaging for macOS 26 and newer (not Developer ID signed; Gatekeeper bypass required once).
+- A manager menu that stays usable with many running tools.
+- Universal packaging for macOS 26 and newer. Not Developer ID signed. Gatekeeper bypass required once.
 
-Important trust note: approved generated code is not sandboxed. It runs with your user privileges and can access local files, network services, commands, and credentials available to local processes. Review source before approval.
+Approved generated code is not sandboxed. It runs with your user privileges and can reach local files, network services, commands, and credentials available to local processes. Read the source before you approve it.

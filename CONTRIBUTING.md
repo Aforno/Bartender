@@ -1,11 +1,11 @@
 # Contributing to Bar Tender
 
-Thanks for helping improve Bar Tender.
+Thanks for helping with Bar Tender.
 
 ## Before you start
 
 - Search existing issues before opening a new one.
-- For a substantial feature or architectural change, open an issue first so the approach can be discussed.
+- For a large feature or architectural change, open an issue first so the approach can be discussed.
 - Never include API keys, CLI credentials, private prompts, generated tools containing personal data, or other secrets in an issue or pull request.
 
 ## Local development
@@ -20,7 +20,7 @@ swift test
 ./script/build_and_run.sh --verify
 ```
 
-The run script builds a local app bundle in `dist/`. That directory is intentionally ignored by Git.
+The run script builds a local app bundle in `dist/`. That directory is ignored by Git on purpose.
 
 ## Pull requests
 
@@ -30,13 +30,13 @@ The run script builds a local app bundle in `dist/`. That directory is intention
 4. Run `./script/check_repository.sh`, `swift test`, and `swift build -c release`.
 5. Describe the user-visible result, test evidence, and any security implications in the pull request.
 
-Changes to generated-tool execution, approval, provider invocation, persistence, or process handling require regression tests. Generated tools must remain inert until their exact source and working directory have been approved by the user.
+Changes to generated-tool execution, approval, provider invocation, persistence, or process handling need regression tests. Generated tools must stay inert until their exact source and working directory have been approved by the user.
 
 ## Style
 
 - Follow the existing Swift and SwiftUI conventions.
 - Prefer small, explicit types and testable services.
-- Surface failures to the user instead of silently discarding them.
-- Preserve macOS 26 compatibility unless a deliberate platform change has been agreed upon.
+- Show failures to the user. Do not swallow them.
+- Keep macOS 26 compatibility unless a platform change has been agreed upon.
 
 By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).

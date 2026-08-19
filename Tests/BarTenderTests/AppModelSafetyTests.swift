@@ -59,6 +59,79 @@ final class AppModelSafetyTests: XCTestCase {
         XCTAssertNotNil(model.bannerMessage)
     }
 
+    func testConcurrentGenerateFailsLoudlyInsteadOfNoop() async {
+        let model = makeModel()
+        defer { model.shutdown() }
+        let session = GenerationSession(prompt: "already running", provider: .codex)
+        session.phase = .running
+        model.generation = session
+        model.composerText = "another tool"
+
+        await model.createFromPrompt()
+
+        XCTAssertEqual(session.phase, .running)
+        XCTAssertEqual(
+            model.bannerMessage,
+            "A generation is already running. Cancel it before starting another."
+        )
+    }
+
+    func testFirstRunRepairFailsLoudlyWhenAnotherGenerationStarts() async throws {
+        let store = AppletStore(
+            fileURL: temporaryDirectory.appendingPathComponent("repair-applets.json")
+        )
+        let approvals = ShellApprovalStore(
+            defaults: defaults,
+            storageKey: "repair-approvals"
+        )
+        let artifacts = GeneratedToolArtifactStore(
+            rootURL: temporaryDirectory.appendingPathComponent("repair-artifacts", isDirectory: true)
+        )
+        let model = AppModel(
+            store: store,
+            preferences: AppPreferences(defaults: defaults),
+            shellApprovals: approvals,
+            generatedTools: artifacts
+        )
+        defer { model.shutdown() }
+
+        let manifest = AppletManifest(
+            name: "Needs Repair",
+            iconSystemName: "wrench",
+            kind: .generatedTool,
+            titleTemplate: "{{value}}",
+            refreshIntervalSeconds: 30,
+            config: AppletConfig(
+                generatedSource: """
+                #!/bin/zsh
+                printf '%s\n' '{"title":"Broken","status":"Broken","details":[],"healthy":false,"values":{}}'
+                """
+            )
+        )
+        let saved = try store.upsert(manifest)
+        _ = try artifacts.install(saved)
+
+        model.setExecutionApproval(true, for: saved)
+        let session = GenerationSession(prompt: "user work", provider: .codex)
+        session.phase = .running
+        model.generation = session
+
+        let deadline = Date().addingTimeInterval(8)
+        while Date() < deadline {
+            if model.bannerMessage?.contains("Cancel the current generation") == true {
+                break
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        XCTAssertEqual(session.phase, .running)
+        XCTAssertEqual(
+            model.bannerMessage,
+            "“Needs Repair” still needs attention. Cancel the current generation to send the first-run result back to \(model.providers.selectedProvider.displayName)."
+        )
+        XCTAssertFalse(approvals.isApproved(saved))
+    }
+
     func testCancelDoesNotRewriteCompletedSession() {
         let model = makeModel()
         let session = GenerationSession(prompt: "done", provider: .codex)

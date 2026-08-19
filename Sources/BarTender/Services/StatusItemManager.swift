@@ -5,7 +5,7 @@ import Combine
 /// is owned separately by `ManagerStatusItemController`.
 @MainActor
 final class StatusItemManager: ObservableObject {
-    static let maximumIndividualItems = 8
+    nonisolated static let maximumIndividualItems = 8
 
     /// Initial attach defers the first registration to avoid racing Control
     /// Center's teardown of the previous instance (macOS 26). Tests set this

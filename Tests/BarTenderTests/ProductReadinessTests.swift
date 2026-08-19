@@ -27,6 +27,34 @@ final class ProductReadinessTests: XCTestCase {
         XCTAssertNil(environment["GITHUB_TOKEN"])
     }
 
+    func testApprovedCommandAndGitEnvironmentsReuseTheAllowlist() {
+        let inherited = [
+            "HOME": "/Users/fixture",
+            "PATH": "/usr/bin",
+            "GITHUB_TOKEN": "secret",
+            "OPENAI_API_KEY": "sk-test",
+            "GIT_SSH_COMMAND": "ssh -i /tmp/id"
+        ]
+        let shell = ShellEnvironment.restrict(inherited)
+        XCTAssertEqual(shell["HOME"], "/Users/fixture")
+        XCTAssertEqual(shell["PATH"], "/usr/bin")
+        XCTAssertNil(shell["GITHUB_TOKEN"])
+        XCTAssertNil(shell["OPENAI_API_KEY"])
+        XCTAssertNil(shell["GIT_SSH_COMMAND"])
+
+        let git = ShellEnvironment.restrict(
+            inherited,
+            additionalValues: [
+                "GIT_OPTIONAL_LOCKS": "0",
+                "GIT_TERMINAL_PROMPT": "0"
+            ]
+        )
+        XCTAssertEqual(git["GIT_OPTIONAL_LOCKS"], "0")
+        XCTAssertEqual(git["GIT_TERMINAL_PROMPT"], "0")
+        XCTAssertNil(git["GITHUB_TOKEN"])
+        XCTAssertNil(git["GIT_SSH_COMMAND"])
+    }
+
     @MainActor
     func testLongTitlesAndProviderLogsStayBounded() {
         let title = String(repeating: "Long menu title ", count: 20)
@@ -245,6 +273,44 @@ final class ProviderEndToEndMatrixTests: XCTestCase {
 
         do {
             _ = try await task.value
+            XCTFail("Cancelled generation unexpectedly succeeded")
+        } catch let error as ProviderGenerationError {
+            guard case .cancelled = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+    }
+
+    func testCancelDoesNotCancelTheNextGenerationRunner() async throws {
+        try installHealthyProviderFixtures(generationDelay: 5)
+        let service = makeService()
+        await service.refreshAvailability()
+        let launched = expectation(description: "First generation launched")
+
+        let first = Task {
+            try await service.generateManifest(
+                prompt: "Wait for cancellation",
+                provider: .agy,
+                onLog: { stream, message in
+                    if stream == .system, message.hasPrefix("Launching:") {
+                        launched.fulfill()
+                    }
+                }
+            )
+        }
+        await fulfillment(of: [launched], timeout: 2)
+        service.cancelGeneration()
+
+        try installHealthyProviderFixtures(generationDelay: 0)
+        let second = try await service.generateManifest(
+            prompt: "Should finish after the previous cancel",
+            provider: .agy,
+            onLog: { _, _ in }
+        )
+        XCTAssertEqual(second.name, "Matrix Tool")
+
+        do {
+            _ = try await first.value
             XCTFail("Cancelled generation unexpectedly succeeded")
         } catch let error as ProviderGenerationError {
             guard case .cancelled = error else {

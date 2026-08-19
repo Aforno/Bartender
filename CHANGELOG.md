@@ -1,6 +1,6 @@
 # Changelog
 
-All notable user-visible changes are recorded here. Bar Tender follows semantic versioning.
+User-visible changes go here. Bar Tender follows semantic versioning.
 
 ## Unreleased
 
@@ -8,23 +8,26 @@ All notable user-visible changes are recorded here. Bar Tender follows semantic 
 - Fixed GitHub update pagination to accumulate every `Link: rel="next"` page before semantic ranking.
 - Moved the update channel out of the version string into explicit `BarTenderUpdateChannel` bundle metadata (`prerelease` / `stable`).
 - Product version and release tags no longer include an `adhoc` suffix (`1.0.1`, `v1.0.1+build.N`).
+- Hardened HTTP, git, shell, approval, and update execution boundaries: re-validate probe URLs, treat 3xx as unhealthy unless an expected status is set, allowlist environments for approved shell and git probes, reject NUL in command/cwd fingerprints, and pin GitHub pagination and release-page hosts.
+- Cancelled generation now cancels the exact runner that was in flight, and first-run repair no longer silently skips when another generation is already active.
+- Removed unused bundled Inter fonts; the UI keeps compact system typography.
 
-## 1.0.1 — 2026-08-04
+## 1.0.1 (2026-08-04)
 
 - Diagnostic menu-bar release: only `AppDelegate` attaches status items; reattach is ignored while the delayed first registration is pending (avoids racing Control Center).
 - Default to one square, icon-only individual applet status item so clipping is less likely; raise the cap in Settings when needed.
 - Migrated bundle identifier to `io.github.aforno.bartender.v2` (build 2) so macOS 26 Control Center host tracking starts clean. Applet library under Application Support is unchanged; preferences and Launch at Login reset.
 - Removed unsupported `NSStatusItem Visible*` / `VisibleCC*` UserDefaults resets and `orderFrontRegardless()` workarounds.
 
-## 1.0.0 — 2026-07-24
+## 1.0.0 (2026-07-24)
 
-- Published the first downloadable universal ZIP/DMG as a prerelease (no Developer ID signature or notarization). Install requires a one-time Gatekeeper bypass (Control-click → Open).
+- Published the first downloadable universal ZIP/DMG as a prerelease, with no Developer ID signature or notarization. Install requires a one-time Gatekeeper bypass: Control-click, then Open.
 - Added an opt-in setting to automatically approve provider-written edits to previously approved generated tools. New tools, imports, and automatic repairs still require review.
-- Added Mac component temperature readings for generated tools. Tools can run `"$BARTENDER_CLI" --sensors` (key=value lines) or `"$BARTENDER_CLI" --sensors-json` (per-sensor detail) to get CPU, GPU, SoC, battery, ambient, memory, and storage temperatures in °C — no extra software or elevated privileges needed, on Apple silicon and Intel.
+- Added Mac component temperature readings for generated tools. Tools can run `"$BARTENDER_CLI" --sensors` (key=value lines) or `"$BARTENDER_CLI" --sensors-json` (per-sensor detail) to get CPU, GPU, SoC, battery, ambient, memory, and storage temperatures in °C. No extra software or elevated privileges. Works on Apple silicon and Intel.
 - Added generated menu bar tools through local Codex, Claude, and Grok CLIs, with provider and model selection.
-- Added bounded validation retries and first-run diagnostic feedback so providers can repair generated tools instead of leaving them at “Needs Attention.”
+- Added bounded validation retries and first-run diagnostic feedback so providers can repair generated tools instead of leaving them at "Needs Attention."
 - Fixed newly enabled tools showing stale placeholder data until their second scheduled refresh.
-- Fixed in-app notification banners remaining visible indefinitely; they now dismiss automatically after five seconds.
+- Fixed in-app notification banners remaining visible indefinitely; they now dismiss automatically after eight seconds.
 - Added exact-source approval, automatic approval invalidation on edits, generated-tool environment minimization, and explicit local-code trust disclosures.
 - Removed the AI generation timeout. Generation continues until the provider finishes or the user cancels it.
 - Added provider brand icons throughout setup and model selection, plus a dedicated Bar Tender application icon.

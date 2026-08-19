@@ -15,7 +15,7 @@ enum GitStatusProbe {
             return Result(ok: false, branch: "—", changedFiles: 0, message: "Path not found")
         }
 
-        let env = await ShellEnvironment.loginEnvironment()
+        let env = await ShellEnvironment.gitProbeEnvironment()
         guard let git = ShellEnvironment.which("git", environment: env) else {
             return Result(ok: false, branch: "—", changedFiles: 0, message: "git not found")
         }
@@ -24,7 +24,7 @@ enum GitStatusProbe {
         do {
             let branchResult = try await runner.run(
                 executable: git,
-                arguments: ["-C", expanded, "rev-parse", "--abbrev-ref", "HEAD"],
+                arguments: invocationArguments(repositoryPath: expanded, command: ["rev-parse", "--abbrev-ref", "HEAD"]),
                 environment: env,
                 timeout: 10
             )
@@ -39,7 +39,7 @@ enum GitStatusProbe {
 
             let statusResult = try await runner.run(
                 executable: git,
-                arguments: ["-C", expanded, "status", "--porcelain"],
+                arguments: invocationArguments(repositoryPath: expanded, command: ["status", "--porcelain"]),
                 environment: env,
                 timeout: 15
             )
@@ -68,6 +68,16 @@ enum GitStatusProbe {
                 message: Task.isCancelled ? "Cancelled" : error.localizedDescription
             )
         }
+    }
+
+    /// Disable repo-configured fsmonitor helpers and optional locks so
+    /// `git status` cannot launch unapproved watchers.
+    static func invocationArguments(repositoryPath: String, command: [String]) -> [String] {
+        [
+            "-c", "core.fsmonitor=",
+            "-c", "core.useBuiltinFSMonitor=false",
+            "-C", repositoryPath
+        ] + command
     }
 
     static func failureMessage(

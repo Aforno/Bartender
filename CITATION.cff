@@ -7,7 +7,7 @@ authors:
     given-names: Afonso
 repository-code: https://github.com/Aforno/Bartender
 url: https://github.com/Aforno/Bartender
-abstract: A native macOS app that turns natural-language descriptions into reviewable menu bar tools.
+abstract: A macOS menu bar app that turns a plain-language request into a reviewable local zsh tool using an already installed AI CLI.
 keywords:
   - macOS
   - menu bar

@@ -17,7 +17,11 @@ APP_RESOURCES="$APP_CONTENTS/Resources"
 VERSION="$(tr -d '[:space:]' < "$ROOT_DIR/VERSION")"
 BUILD_NUMBER="$(tr -d '[:space:]' < "$ROOT_DIR/BUILD_NUMBER")"
 
-pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+# Stop only the debug bundle we are about to replace. `pkill -x BarTender`
+# would also terminate a separately installed copy.
+if [[ -x "$APP_BINARY" ]]; then
+  pkill -f "$APP_BINARY" >/dev/null 2>&1 || true
+fi
 
 cd "$ROOT_DIR"
 swift build -c debug

@@ -312,6 +312,7 @@ enum ManifestValidator {
             }
             if let directory = config.workingDirectory {
                 try requireMaximumLength(directory, field: "Working directory", maximum: ManifestLimits.pathLength)
+                try rejectNUL(directory, field: "Working directory")
             }
 
         case .timer, .countdown:
@@ -367,9 +368,17 @@ enum ManifestValidator {
             try rejectUnexpected(config, allowed: [.command, .workingDirectory], kind: kind)
             guard let command = config.command else { throw ManifestValidationError.missingCommand }
             try requireMaximumLength(command, field: "Command", maximum: ManifestLimits.commandLength)
+            try rejectNUL(command, field: "Command")
             if let directory = config.workingDirectory {
                 try requireMaximumLength(directory, field: "Working directory", maximum: ManifestLimits.pathLength)
+                try rejectNUL(directory, field: "Working directory")
             }
+        }
+    }
+
+    private static func rejectNUL(_ value: String, field: String) throws {
+        guard !value.utf8.contains(0) else {
+            throw ManifestValidationError.configMismatch("\(field) may not contain null bytes.")
         }
     }
 

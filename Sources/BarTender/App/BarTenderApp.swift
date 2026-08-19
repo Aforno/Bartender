@@ -192,24 +192,30 @@ extension Notification.Name {
     static let bartenderOpenMainWindow = Notification.Name("io.github.aforno.bartender.v2.openMainWindow")
 }
 
-/// Registers `OpenWindowAction` when SwiftUI builds the command menu (at launch),
-/// so status-item actions can recreate the main window without it having been shown.
+/// Registers `OpenWindowAction` from a one-shot view task so command-menu
+/// evaluation does not mutate `AppActions` as a side effect of `body`.
 private struct RegisterOpenWindowCommands: Commands {
+    var body: some Commands {
+        CommandGroup(after: .windowArrangement) {
+            OpenBarTenderWindowCommand()
+        }
+    }
+}
+
+private struct OpenBarTenderWindowCommand: View {
     @Environment(\.openWindow) private var openWindow
 
-    var body: some Commands {
-        // `Commands` body is evaluated when the main menu is built at launch.
-        let captured = openWindow
-        AppActions.shared.installOpenWindowAction {
+    var body: some View {
+        Button("Open Bar Tender Window") {
             AppDelegate.prepareForMainWindow()
-            captured(id: "main")
+            openWindow(id: "main")
         }
-        return CommandGroup(after: .windowArrangement) {
-            Button("Open Bar Tender Window") {
+        .keyboardShortcut("o", modifiers: [.command, .option, .shift])
+        .task {
+            AppActions.shared.installOpenWindowAction {
                 AppDelegate.prepareForMainWindow()
                 openWindow(id: "main")
             }
-            .keyboardShortcut("o", modifiers: [.command, .option, .shift])
         }
     }
 }
