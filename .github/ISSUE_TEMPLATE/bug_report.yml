@@ -52,5 +52,5 @@ body:
   - type: textarea
     id: context
     attributes:
-      label: Additional context
-      description: Add sanitized logs or screenshots if useful.
+      label: Logs and screenshots
+      description: Sanitized logs or screenshots, if they help.

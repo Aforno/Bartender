@@ -1,4 +1,4 @@
-# Third-Party Notices
+# Third-party notices
 
 Bar Tender is distributed under the MIT License in [LICENSE](LICENSE).
 
