@@ -21,6 +21,17 @@ final class ShellApprovalStoreTests: XCTestCase {
         XCTAssertFalse(store.isApproved(changedDirectory))
     }
 
+    func testFingerprintRejectsNULInCommandAndWorkingDirectory() {
+        let commandWithNUL = "echo safe\u{0}extra"
+        let directoryWithNUL = "~/Projects\u{0}other"
+        XCTAssertNil(ShellApprovalStore.fingerprint(for: shellManifest(command: commandWithNUL, directory: "~/Projects")))
+        XCTAssertNil(ShellApprovalStore.fingerprint(for: shellManifest(command: "echo safe", directory: directoryWithNUL)))
+
+        let store = ShellApprovalStore(defaults: makeDefaults(), storageKey: "nul-approvals")
+        store.setApproved(true, for: shellManifest(command: commandWithNUL, directory: nil))
+        XCTAssertFalse(store.isApproved(shellManifest(command: commandWithNUL, directory: nil)))
+    }
+
     func testApprovalPersistsSeparatelyFromManifest() {
         let defaults = makeDefaults()
         let manifest = shellManifest(command: "printf ok", directory: nil)

@@ -164,6 +164,9 @@ final class UpdateService: ObservableObject {
         var pageURL = releasesURL
         var accumulated: [Release] = []
         var visited: Set<String> = []
+        guard isAllowedGitHubAPIURL(pageURL) else {
+            throw UpdateError.invalidResponse
+        }
 
         while true {
             let pageKey = pageURL.absoluteString
@@ -266,7 +269,7 @@ final class UpdateService: ObservableObject {
                 continue
             }
             let urlString = String(segment[segment.index(after: start)..<end])
-            if let url = URL(string: urlString) {
+            if let url = URL(string: urlString), isAllowedGitHubAPIURL(url) {
                 return url
             }
         }
@@ -384,15 +387,31 @@ final class UpdateService: ObservableObject {
         return value
     }
 
+    /// Pagination may only follow HTTPS `api.github.com` links.
+    nonisolated static func isAllowedGitHubAPIURL(_ url: URL) -> Bool {
+        url.scheme?.lowercased() == "https"
+            && url.host?.lowercased() == "api.github.com"
+            && url.user == nil
+            && url.password == nil
+    }
+
+    /// Release pages opened in the browser must be HTTPS GitHub hosts.
     nonisolated static func validatedReleaseURL(_ rawValue: String) -> URL? {
         guard let url = URL(string: rawValue),
-              let scheme = url.scheme?.lowercased(),
-              scheme == "https" || scheme == "http",
-              url.host != nil else {
+              url.scheme?.lowercased() == "https",
+              let host = url.host?.lowercased(),
+              allowedReleaseHosts.contains(host),
+              url.user == nil,
+              url.password == nil else {
             return nil
         }
         return url
     }
+
+    nonisolated private static let allowedReleaseHosts: Set<String> = [
+        "github.com",
+        "www.github.com"
+    ]
 
     nonisolated static func parseBuildNumber(from text: String?) -> Int? {
         guard let text, !text.isEmpty else { return nil }

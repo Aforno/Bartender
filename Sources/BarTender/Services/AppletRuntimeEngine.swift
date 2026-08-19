@@ -395,14 +395,14 @@ final class AppletRuntimeEngine: ObservableObject {
         let values: [String: String] = [
             "status": result.ok ? "Online" : "Offline",
             "value": result.statusCode.map(String.init) ?? "—",
-            "host": URL(string: url)?.host ?? url
+            "host": URL(string: result.displayURL)?.host ?? result.displayURL
         ]
         let title = TitleRenderer.render(template: manifest.titleTemplate, values: values, fallback: manifest.name)
         snapshots[manifest.id] = AppletSnapshot(
             statusText: result.message,
             title: title,
             detailLines: [
-                url,
+                result.displayURL,
                 "Latency \(result.latencyMS) ms",
                 result.ok ? "Healthy" : "Check failed"
             ],

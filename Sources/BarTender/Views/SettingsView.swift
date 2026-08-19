@@ -300,7 +300,7 @@ private struct LibrarySettingsPane: View {
             SettingsSection(title: "Local Library") {
                 SettingsControlRow(
                     title: "Library file",
-                    detail: preferences.libraryFileURL.path
+                    detail: store.storageURL.path
                 ) {
                     HStack(spacing: 8) {
                         Button("Add Samples") { model.addSampleLibrary() }

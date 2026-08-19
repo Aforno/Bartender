@@ -99,6 +99,26 @@ final class ManifestValidatorTests: XCTestCase {
         )))
     }
 
+    func testRejectsNULInShellCommandAndWorkingDirectory() {
+        XCTAssertThrowsError(try ManifestValidator.validate(makeManifest(
+            kind: .shellCommand,
+            config: AppletConfig(command: "echo safe\u{0}extra")
+        ))) { error in
+            guard case .configMismatch = error as? ManifestValidationError else {
+                return XCTFail("Expected configMismatch, got \(error)")
+            }
+        }
+
+        XCTAssertThrowsError(try ManifestValidator.validate(makeManifest(
+            kind: .shellCommand,
+            config: AppletConfig(command: "echo safe", workingDirectory: "/tmp\u{0}/evil")
+        ))) { error in
+            guard case .configMismatch = error as? ManifestValidationError else {
+                return XCTFail("Expected configMismatch, got \(error)")
+            }
+        }
+    }
+
     func testTimerRefreshIntervalIsStrippedBecauseTimersNeverPoll() throws {
         let timer = AppletManifest(
             name: "Timer",

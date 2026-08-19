@@ -22,7 +22,7 @@ enum ShellCommandProbe {
             )
         }
 
-        let env = await ShellEnvironment.loginEnvironment()
+        let env = await ShellEnvironment.approvedCommandEnvironment()
         let shell = env["SHELL"] ?? "/bin/zsh"
         let runner = ProcessRunner()
         let cwd = workingDirectory.map { ($0 as NSString).expandingTildeInPath }
