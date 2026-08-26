@@ -1,14 +1,15 @@
-# Bar Tender 1.0.1
+# Bar Tender 1.0.1 (build 4)
 
 Bar Tender turns a plain-language request into a dedicated macOS menu bar tool using an already installed Codex, Claude, Grok, Gemini, or Antigravity (`agy`) CLI.
 
-## Diagnostic focus (this build)
+## This build
 
-This prerelease is about whether menu bar items actually show up.
+Build 4 of the 1.0.1 prerelease. Same Gatekeeper path as earlier 1.0.1 builds.
 
-- Bundle identifier is `io.github.aforno.bartender.v2`, so Control Center starts from a clean host state.
-- At most one individual applet status item by default, rendered as a compact square icon.
-- Status items attach once from launch. The main window no longer forces an immediate re-registration.
+- Gemini CLI and Antigravity CLI (`agy`) are generation providers.
+- Update checks paginate GitHub releases fully and rank by semantic version.
+- Update channel lives in `BarTenderUpdateChannel` (`prerelease` / `stable`), not in the version string.
+- HTTP, git, shell, and approval boundaries are tighter; cancelled generation cancels the exact in-flight runner.
 
 ## Distribution notice (read this)
 

@@ -4,6 +4,8 @@ User-visible changes go here. Bar Tender follows semantic versioning.
 
 ## Unreleased
 
+## 1.0.1 (build 4) - 2026-08-26
+
 - Added Gemini CLI (`gemini`) and Antigravity CLI (`agy`) as generation providers, with install/auth probing, model catalogs, and branded icons.
 - Fixed GitHub update pagination to accumulate every `Link: rel="next"` page before semantic ranking.
 - Moved the update channel out of the version string into explicit `BarTenderUpdateChannel` bundle metadata (`prerelease` / `stable`).
