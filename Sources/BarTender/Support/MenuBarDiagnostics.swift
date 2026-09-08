@@ -154,11 +154,13 @@ struct MenuBarDiagnosticsSnapshot: Equatable, Sendable, Codable {
             if managedAppletItemCount < 1 {
                 failures.append("enabled applet present but no managed status item")
             }
-            for item in appletItems where !item.titleNonEmpty {
-                failures.append("applet item title unexpectedly empty for \(item.name)")
-            }
             for item in appletItems where !item.frame.appearsPaintable {
                 failures.append("applet item frame is not paintable for \(item.name): \(item.frame.description)")
+            }
+            // Compact square icon-only (empty title) is valid once the slot is
+            // paintable. Titles expand asynchronously after registration.
+            for item in appletItems where !item.titleNonEmpty && !item.frame.appearsPaintable {
+                failures.append("applet item title unexpectedly empty for \(item.name)")
             }
         }
         return failures

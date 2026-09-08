@@ -1,15 +1,14 @@
-# Bar Tender 1.0.1 (build 4)
+# Bar Tender 1.0.1 (build 5)
 
 Bar Tender turns a plain-language request into a dedicated macOS menu bar tool using an already installed Codex, Claude, Grok, Gemini, or Antigravity (`agy`) CLI.
 
 ## This build
 
-Build 4 of the 1.0.1 prerelease. Same Gatekeeper path as earlier 1.0.1 builds.
+Build 5 of the 1.0.1 prerelease. Same Gatekeeper path as earlier 1.0.1 builds.
 
-- Gemini CLI and Antigravity CLI (`agy`) are generation providers.
-- Update checks paginate GitHub releases fully and rank by semantic version.
-- Update channel lives in `BarTenderUpdateChannel` (`prerelease` / `stable`), not in the version string.
-- HTTP, git, shell, and approval boundaries are tighter; cancelled generation cancels the exact in-flight runner.
+- Enabled tools show as individual menu bar items (default visible cap 8).
+- Newly enabled tools get a bar slot at the cap; overflow is labeled Manager Only.
+- Compact square icons until a paintable slot exists, then titles expand.
 
 ## Distribution notice (read this)
 
