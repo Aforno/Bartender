@@ -4,6 +4,12 @@ User-visible changes go here. Bar Tender follows semantic versioning.
 
 ## Unreleased
 
+## 1.0.1 (build 5) - 2026-09-08
+
+- Show enabled tools as individual menu bar items (default visible cap 8).
+- Newly enabled tools get a bar slot at the cap; overflow is labeled Manager Only.
+- Compact square icons until a paintable slot exists, then expand titles.
+
 ## 1.0.1 (build 4) - 2026-08-26
 
 - Added Gemini CLI (`gemini`) and Antigravity CLI (`agy`) as generation providers, with install/auth probing, model catalogs, and branded icons.

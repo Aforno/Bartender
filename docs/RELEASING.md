@@ -6,9 +6,11 @@ Packaged binaries are not Developer ID signed or notarized. Gatekeeper will warn
 
 ## How releases ship
 
-Every push to `main` runs the `Release` workflow. It:
+The `Release` workflow runs only when a push to `main` changes `VERSION` or `BUILD_NUMBER`. Feature merges that leave those files alone do not start a release, so they cannot fail the immutable identity check.
 
-1. Validates that `VERSION` / `BUILD_NUMBER` are well-formed and that tag `v<VERSION>+build.<BUILD_NUMBER>` does not already exist
+When it does run, it:
+
+1. Validates that `VERSION` / `BUILD_NUMBER` are well-formed. If tag `v<VERSION>+build.<BUILD_NUMBER>` already exists, the job succeeds and skips packaging (no red failure).
 2. Packages a universal app with an ad-hoc code signature. That is a technical signing mode, not part of the product version.
 3. Writes `BarTenderUpdateChannel=prerelease` into the app's Info.plist so in-app update checks track GitHub prereleases
 4. Verifies the bundle and smoke-tests the DMG, including bounded menu-bar diagnostics and status-item frame validation
@@ -31,7 +33,7 @@ Do not encode the signing mode or update channel into the semantic version strin
 
 ## Checklist before merging to main
 
-1. Update `VERSION` when the release identity should change. Increment `BUILD_NUMBER` for each new binary, and refresh `CHANGELOG.md` / `RELEASE_NOTES.md`.
+1. When you intend to publish: increment `BUILD_NUMBER` (or bump `VERSION`), and refresh `CHANGELOG.md` / `RELEASE_NOTES.md`. Leave those files alone for ordinary feature merges so Release does not run.
 2. Run `swift test` and `swift build -c release` locally if you want a pre-push check.
 3. Optionally run the local universal packaging path:
 
