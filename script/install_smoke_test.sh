@@ -128,14 +128,15 @@ if int(data.get("enabledAppletCount") or 0) < 1:
 if int(data.get("managedAppletItemCount") or 0) < 1:
     failures.append("enabled applet present but no managed status item")
 for item in data.get("appletItems") or []:
-    if not item.get("titleNonEmpty"):
-        failures.append(f"applet item title unexpectedly empty for {item.get('name')}")
     frame = item.get("frame") or {}
     if not frame.get("appearsPaintable"):
         failures.append(
             f"applet item frame is not paintable for {item.get('name')}: "
             f"{frame.get('description', 'missing')}"
         )
+    # Compact square icon-only (empty title) is valid once the slot is paintable.
+    elif not item.get("titleNonEmpty"):
+        pass
 
 if failures:
     print("Menu-bar diagnostics failed:", "; ".join(failures), file=sys.stderr)

@@ -88,6 +88,29 @@ final class ManagerPopoverSizingTests: XCTestCase {
         XCTAssertTrue(snapshot.validationFailures(requireEnabledApplet: true).isEmpty)
     }
 
+    func testCompactIconOnlyPaintableSlotPasses() {
+        let snapshot = MenuBarDiagnosticsSnapshot(
+            bootstrapCompleted: true,
+            managerStatusItemInstalled: true,
+            managerItemCount: 1,
+            appletStatusItemManagerAttached: true,
+            enabledAppletCount: 1,
+            managedAppletItemCount: 1,
+            appletItems: [
+                .init(
+                    appletID: "x",
+                    name: "Focus Timer",
+                    titleNonEmpty: false,
+                    titlePreview: "",
+                    frame: .synthetic(paintable: true)
+                )
+            ],
+            managerHasVisibleTitleOrImage: true,
+            managerFrame: .synthetic(paintable: true)
+        )
+        XCTAssertTrue(snapshot.validationFailures(requireEnabledApplet: true).isEmpty)
+    }
+
     func testNonPaintableFrameFailsEvenWhenStatusItemExists() {
         let snapshot = MenuBarDiagnosticsSnapshot(
             bootstrapCompleted: true,
