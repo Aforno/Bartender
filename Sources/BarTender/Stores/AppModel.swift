@@ -307,7 +307,7 @@ final class AppModel: ObservableObject {
                         throw ProviderGenerationError.cancelled
                     }
                     switch error {
-                    case .cancelled, .notReady, .authenticationExpired, .noProvidersReady:
+                    case .cancelled, .timedOut, .notReady, .authenticationExpired, .noProvidersReady:
                         throw error
                     case .emptyPrompt, .invalidResponse, .missingCommandDependency:
                         guard attempt < maximumAttempts else { throw error }

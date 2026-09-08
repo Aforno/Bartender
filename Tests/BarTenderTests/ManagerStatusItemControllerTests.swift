@@ -17,6 +17,7 @@ final class ManagerStatusItemControllerTests: XCTestCase {
         defaultsSuiteName = "BarTender.ManagerStatusTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: defaultsSuiteName)!
         StatusItemManager.initialRegistrationDelay = 0
+        StatusItemRegistrationTiming.managerInitialDelay = 0
     }
 
     override func tearDownWithError() throws {

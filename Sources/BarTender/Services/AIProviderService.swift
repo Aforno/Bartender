@@ -48,6 +48,9 @@ final class AIProviderService: ObservableObject {
     private var generationSessionID: UUID?
     private var generationCancellationRequested = false
 
+    /// Bound each provider run; timeouts terminate generation without retrying.
+    static let generationTimeout: TimeInterval = 180
+
     private static let selectedProviderKey = "BarTender.selectedProvider"
     private static let selectedModelKey = "BarTender.selectedModel"
     private static let enabledProvidersKey = "BarTender.enabledProviders"
@@ -280,6 +283,7 @@ final class AIProviderService: ObservableObject {
         existingTool: AppletManifest? = nil,
         provider: AIProvider? = nil,
         iterationFeedback: String? = nil,
+        timeout: TimeInterval? = nil,
         onLog: @escaping @MainActor (ProviderLogLine.Stream, String) -> Void
     ) async throws -> AppletManifest {
         generationCancellationRequested = false
@@ -293,7 +297,15 @@ final class AIProviderService: ObservableObject {
             throw ProviderGenerationError.emptyPrompt
         }
 
-        let env = await environmentLoader()
+        var env = await environmentLoader()
+        env["CI"] = "1"
+        env["TERM"] = "dumb"
+        env["NO_COLOR"] = "1"
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        if chosen == .grok {
+            env["GROK_CLAUDE_HOOKS_ENABLED"] = "false"
+            env["GROK_CURSOR_HOOKS_ENABLED"] = "false"
+        }
         let tempRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("BarTender-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
@@ -327,6 +339,7 @@ final class AIProviderService: ObservableObject {
         }
         onLog(.system, "Prompt size: \(fullPrompt.count) characters")
 
+        let resolvedTimeout = timeout ?? Self.generationTimeout
         let localRunner = ProcessRunner()
         let sessionID = UUID()
         generationSessionID = sessionID
@@ -340,14 +353,25 @@ final class AIProviderService: ObservableObject {
             throw ProviderGenerationError.cancelled
         }
 
+        let progress = GrokGenerationProgress()
+        if chosen == .grok {
+            onLog(.progress, "Starting Grok…")
+        }
         let task = Task<AppletManifest, Error> {
             let result = try await localRunner.run(
                 executable: installation.executablePath,
                 arguments: invocation.arguments,
                 environment: env,
                 currentDirectory: invocation.currentDirectory,
+                timeout: resolvedTimeout,
                 onStdout: { chunk in
-                    Task { @MainActor in onLog(.stdout, chunk) }
+                    if chosen == .grok {
+                        for message in progress.consume(chunk) {
+                            Task { @MainActor in onLog(.progress, message) }
+                        }
+                    } else {
+                        Task { @MainActor in onLog(.stdout, chunk) }
+                    }
                 },
                 onStderr: { chunk in
                     Task { @MainActor in onLog(.stderr, chunk) }
@@ -356,6 +380,9 @@ final class AIProviderService: ObservableObject {
 
             if result.cancelled || Task.isCancelled {
                 throw ProviderGenerationError.cancelled
+            }
+            if result.timedOut {
+                throw ProviderGenerationError.timedOut(chosen, resolvedTimeout)
             }
             let message = try Self.resolveMessage(
                 provider: chosen,
@@ -395,6 +422,8 @@ final class AIProviderService: ObservableObject {
             throw ProviderGenerationError.cancelled
         } catch ProcessRunnerError.cancelled {
             throw ProviderGenerationError.cancelled
+        } catch ProcessRunnerError.timedOut {
+            throw ProviderGenerationError.timedOut(chosen, resolvedTimeout)
         } catch let error as ProviderGenerationError {
             if case .authenticationExpired(let provider) = error {
                 statuses[provider] = .unavailable(.notAuthenticated(
@@ -629,74 +658,60 @@ final class AIProviderService: ObservableObject {
         case .codex:
             // Documented: codex exec -m <model> --skip-git-repo-check --ephemeral --color never
             // --json --sandbox read-only --output-schema <file> --output-last-message <file> <prompt>
+            // Run against $HOME, not the ephemeral temp dir: a random untrusted
+            // workspace makes Codex wait on trust/approval instead of answering.
             let schemaURL = try ManifestGenerationSupport.writeSchema(to: tempRoot)
             let outputURL = tempRoot.appendingPathComponent("last-message.txt")
             return Invocation(
-                arguments: [
-                    "exec"
-                ] + modelArgs + [
-                    "--skip-git-repo-check",
-                    "--ephemeral",
-                    "--color", "never",
-                    "--json",
-                    "--sandbox", "read-only",
-                    "--output-schema", schemaURL.path,
-                    "--output-last-message", outputURL.path,
-                    prompt
-                ],
-                currentDirectory: tempRoot.path,
+                arguments: Self.codexExecArguments(
+                    modelArguments: modelArgs,
+                    schemaPath: schemaURL.path,
+                    outputPath: outputURL.path,
+                    workspace: homeDirectoryURL.path,
+                    prompt: prompt
+                ),
+                currentDirectory: homeDirectoryURL.path,
                 outputFile: outputURL
             )
 
         case .claude:
             // Documented: claude -p/--print --model <model> --output-format json --json-schema <schema>
-            // --tools "" disables tools for pure JSON generation (MVP safety).
-            // --permission-mode dontAsk avoids interactive prompts.
-            // --no-session-persistence for ephemeral runs.
+            // --permission-mode dontAsk and --permission-prompts none avoid a
+            // host that never answers. Do not pass `--tools ""`.
             let schema = try ManifestGenerationSupport.schemaJSONString()
-            // Compact schema for argv.
             let compactSchema = schema
                 .components(separatedBy: .newlines)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .joined(separator: " ")
             return Invocation(
-                arguments: [
-                    "-p"
-                ] + modelArgs + [
-                    "--output-format", "json",
-                    "--json-schema", compactSchema,
-                    "--tools", "",
-                    "--permission-mode", "dontAsk",
-                    "--no-session-persistence",
-                    prompt
-                ],
-                currentDirectory: tempRoot.path,
+                arguments: Self.claudePrintArguments(
+                    modelArguments: modelArgs,
+                    schemaJSON: compactSchema,
+                    prompt: prompt
+                ),
+                currentDirectory: homeDirectoryURL.path,
                 outputFile: nil
             )
 
         case .grok:
-            // Documented: grok -p/--single <prompt> -m <model> --json-schema <schema>
+            // Documented: grok --prompt-file <path> -m <model> --json-schema <schema>
             // --json-schema implies --output-format json.
             // --permission-mode dontAsk avoids interactive tool approval.
-            // --tools "" / empty allow-list keeps the run answer-only when supported.
+            // Stream progress while retaining the terminal result envelope.
             let schema = try ManifestGenerationSupport.schemaJSONString()
             let compactSchema = schema
                 .components(separatedBy: .newlines)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .joined(separator: " ")
+            let promptURL = tempRoot.appendingPathComponent("prompt.txt")
+            try prompt.write(to: promptURL, atomically: true, encoding: .utf8)
             return Invocation(
-                arguments: [
-                    "--single", prompt
-                ] + modelArgs + [
-                    "--json-schema", compactSchema,
-                    "--output-format", "json",
-                    "--permission-mode", "dontAsk",
-                    "--tools", "",
-                    "--max-turns", "2",
-                    "--no-subagents",
-                    "--disable-web-search"
-                ],
-                currentDirectory: tempRoot.path,
+                arguments: Self.grokHeadlessArguments(
+                    promptFilePath: promptURL.path,
+                    modelArguments: modelArgs,
+                    schemaJSON: compactSchema
+                ),
+                currentDirectory: homeDirectoryURL.path,
                 outputFile: nil
             )
 
@@ -713,7 +728,7 @@ final class AIProviderService: ObservableObject {
                     "--approval-mode", "plan",
                     "--skip-trust"
                 ],
-                currentDirectory: tempRoot.path,
+                currentDirectory: homeDirectoryURL.path,
                 outputFile: nil
             )
 
@@ -728,10 +743,50 @@ final class AIProviderService: ObservableObject {
                     prompt: prompt,
                     modelArguments: modelArgs
                 ),
-                currentDirectory: tempRoot.path,
+                currentDirectory: homeDirectoryURL.path,
                 outputFile: nil
             )
         }
+    }
+
+    nonisolated static func codexExecArguments(
+        modelArguments: [String],
+        schemaPath: String,
+        outputPath: String,
+        workspace: String,
+        prompt: String
+    ) -> [String] {
+        [
+            "exec"
+        ] + modelArguments + [
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--color", "never",
+            "--json",
+            "--sandbox", "read-only",
+            "--approve-for-me",
+            "--cd", workspace,
+            "--output-schema", schemaPath,
+            "--output-last-message", outputPath,
+            prompt
+        ]
+    }
+
+    nonisolated static func claudePrintArguments(
+        modelArguments: [String],
+        schemaJSON: String,
+        prompt: String
+    ) -> [String] {
+        [
+            "-p"
+        ] + modelArguments + [
+            "--output-format", "json",
+            "--json-schema", schemaJSON,
+            "--permission-mode", "dontAsk",
+            "--permission-prompts", "none",
+            "--no-session-persistence",
+            prompt
+        ]
     }
 
     static func antigravityPrintArguments(
@@ -744,6 +799,29 @@ final class AIProviderService: ObservableObject {
             "--print-timeout=0s",
             "--mode", "plan",
             "--sandbox"
+        ]
+    }
+
+    /// Headless Grok invocation. Prompt lives in a file so a huge revision
+    /// payload stays separate from flags. Tools are disabled for generation.
+    nonisolated static func grokHeadlessArguments(
+        promptFilePath: String,
+        modelArguments: [String],
+        schemaJSON: String
+    ) -> [String] {
+        [
+            "--prompt-file", promptFilePath
+        ] + modelArguments + [
+            "--json-schema", schemaJSON,
+            "--output-format", "streaming-messages-json",
+            "--include-partial-messages",
+            "--reasoning-effort", "medium",
+            "--tools", "",
+            "--permission-mode", "dontAsk",
+            "--max-turns", "1",
+            "--no-subagents",
+            "--disable-web-search",
+            "--verbatim"
         ]
     }
 

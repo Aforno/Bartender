@@ -49,8 +49,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         AppActions.shared.model = model
         // Manager item first (compact permanent anchor), then per-applet items
-        // with their delayed registration. Sole attach sites — do not re-attach
-        // from the main window `.task`.
+        // with delayed registration so they claim a slot after Control Center
+        // finishes teardown. Sole attach sites — do not re-attach from the
+        // main window `.task`.
         managerStatusItem.install()
         statusItems.attach(model: model)
 

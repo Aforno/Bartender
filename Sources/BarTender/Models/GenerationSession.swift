@@ -5,6 +5,7 @@ struct ProviderLogLine: Identifiable, Equatable, Sendable {
         case stdout
         case stderr
         case system
+        case progress
     }
 
     /// Soft cap so a single CLI chunk cannot become an unbounded SwiftUI row.
@@ -133,6 +134,7 @@ enum ProviderGenerationError: LocalizedError {
     case notReady(AIProvider)
     case emptyPrompt
     case cancelled
+    case timedOut(AIProvider, TimeInterval)
     case authenticationExpired(AIProvider)
     case invalidResponse(String)
     case missingCommandDependency(String)
@@ -146,6 +148,8 @@ enum ProviderGenerationError: LocalizedError {
             return "Describe the menu bar utility you want to create."
         case .cancelled:
             return "Generation was cancelled."
+        case .timedOut(let provider, let seconds):
+            return "\(provider.displayName) did not finish within \(Int(seconds)) seconds. Try again or choose another model."
         case .authenticationExpired(let provider):
             return "\(provider.displayName) rejected the saved authentication. \(provider.loginHint) Then recheck providers and try again."
         case .invalidResponse(let detail):

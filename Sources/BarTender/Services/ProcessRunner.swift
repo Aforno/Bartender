@@ -367,20 +367,29 @@ actor ProcessRunner {
         environment: [String: String]?,
         currentDirectory: String?
     ) throws -> SpawnedProcess {
+        var stdinDescriptors: [Int32] = [-1, -1]
         var stdoutDescriptors: [Int32] = [-1, -1]
         var stderrDescriptors: [Int32] = [-1, -1]
-        guard Darwin.pipe(&stdoutDescriptors) == 0 else {
+        guard Darwin.pipe(&stdinDescriptors) == 0 else {
             throw ProcessRunnerError.launchFailed(Self.posixError(errno))
+        }
+        guard Darwin.pipe(&stdoutDescriptors) == 0 else {
+            let error = errno
+            Self.closeDescriptor(stdinDescriptors[0])
+            Self.closeDescriptor(stdinDescriptors[1])
+            throw ProcessRunnerError.launchFailed(Self.posixError(error))
         }
         guard Darwin.pipe(&stderrDescriptors) == 0 else {
             let error = errno
+            Self.closeDescriptor(stdinDescriptors[0])
+            Self.closeDescriptor(stdinDescriptors[1])
             Self.closeDescriptor(stdoutDescriptors[0])
             Self.closeDescriptor(stdoutDescriptors[1])
             throw ProcessRunnerError.launchFailed(Self.posixError(error))
         }
 
         defer {
-            for descriptor in stdoutDescriptors + stderrDescriptors {
+            for descriptor in stdinDescriptors + stdoutDescriptors + stderrDescriptors {
                 Self.closeDescriptor(descriptor)
             }
         }
@@ -408,17 +417,19 @@ actor ProcessRunner {
             posix_spawn_file_actions_addclose(&fileActions, stderrDescriptors[0]),
             operation: "close child stderr reader"
         )
+        // A closed pipe (not /dev/null) is a real FIFO that emits EOF. Node-based
+        // CLIs treat a non-TTY /dev/null as "stdin is piped" and can wait forever.
         try checkPOSIX(
-            "/dev/null".withCString {
-                posix_spawn_file_actions_addopen(
-                    &fileActions,
-                    STDIN_FILENO,
-                    $0,
-                    O_RDONLY,
-                    0
-                )
-            },
+            posix_spawn_file_actions_adddup2(&fileActions, stdinDescriptors[0], STDIN_FILENO),
             operation: "connect process stdin"
+        )
+        try checkPOSIX(
+            posix_spawn_file_actions_addclose(&fileActions, stdinDescriptors[0]),
+            operation: "close child stdin reader copy"
+        )
+        try checkPOSIX(
+            posix_spawn_file_actions_addclose(&fileActions, stdinDescriptors[1]),
+            operation: "close child stdin writer"
         )
         if let currentDirectory {
             try checkPOSIX(
@@ -477,6 +488,10 @@ actor ProcessRunner {
         }
         try checkPOSIX(spawnResult, operation: "launch process")
 
+        Self.closeDescriptor(stdinDescriptors[0])
+        stdinDescriptors[0] = -1
+        Self.closeDescriptor(stdinDescriptors[1])
+        stdinDescriptors[1] = -1
         Self.closeDescriptor(stdoutDescriptors[1])
         stdoutDescriptors[1] = -1
         Self.closeDescriptor(stderrDescriptors[1])
