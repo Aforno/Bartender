@@ -31,6 +31,9 @@ final class AppPreferences: ObservableObject {
         }
     }
 
+    /// Fresh-install default: every enabled applet up to the hard cap.
+    static let defaultMaximumMenuBarItems = StatusItemManager.maximumIndividualItems
+
     /// How many enabled applets get their own menu bar item (1...8). Fewer
     /// items leave room on crowded menu bars; the rest stay in the manager menu.
     @Published var maximumMenuBarItems: Int {
@@ -67,11 +70,10 @@ final class AppPreferences: ObservableObject {
             autoApproveGeneratedToolEdits = defaults.bool(forKey: Keys.autoApproveGeneratedToolEdits)
         }
 
-        // Default to one individual item so the first reliable build is not
-        // clipped by eight variable-length icon+title entries. Users can raise
-        // the cap in Settings once a single square item paints reliably.
+        // Unset means the user has not opted into a lower cap: give every
+        // enabled applet an individual item up to the hard maximum.
         if defaults.object(forKey: Keys.maximumMenuBarItems) == nil {
-            maximumMenuBarItems = 1
+            maximumMenuBarItems = Self.defaultMaximumMenuBarItems
         } else {
             maximumMenuBarItems = min(
                 max(defaults.integer(forKey: Keys.maximumMenuBarItems), 1),

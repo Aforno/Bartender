@@ -9,7 +9,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// Per-tool `NSStatusItem`s; attached at launch, not only when WindowGroup mounts.
     let statusItems = StatusItemManager()
     /// Wine-glass manager item: left-click composer popover, right-click menu.
-    private(set) lazy var managerStatusItem = ManagerStatusItemController(model: model)
+    private(set) lazy var managerStatusItem = ManagerStatusItemController(
+        model: model,
+        appletStatusItems: statusItems
+    )
 
     /// Set when the user chooses Quit so automatic terminate attempts are ignored.
     private(set) var userRequestedTerminate = false
@@ -69,7 +72,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // Ensure smoke libraries have one enabled sample so applet items can be validated.
         if MenuBarDiagnosticsCLI.smokeLibraryPath != nil, model.store.applets.isEmpty {
             model.addSampleLibrary()
-            // Cap is often 1; ensure at least one enabled tool is visible.
             if let first = model.store.applets.first, !first.enabled {
                 model.toggleEnabled(first)
             }

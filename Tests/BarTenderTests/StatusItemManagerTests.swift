@@ -33,8 +33,6 @@ final class StatusItemManagerTests: XCTestCase {
         _ = try store.upsert(makeManifest(name: "Disabled", enabled: false))
 
         let model = makeModel(store: store)
-        // Default cap is 1; raise so both enabled tools get individual items.
-        model.preferences.maximumMenuBarItems = 2
         let manager = StatusItemManager()
 
         XCTAssertFalse(manager.isAttached)
@@ -47,20 +45,21 @@ final class StatusItemManagerTests: XCTestCase {
         XCTAssertEqual(manager.managedAppletIDs, [first.id, second.id])
     }
 
-    func testDefaultPreferenceCreatesOnlyOneIndividualItem() throws {
-        let store = AppletStore(fileURL: temporaryDirectory.appendingPathComponent("default-one.json"))
-        _ = try store.upsert(makeManifest(name: "One"))
-        _ = try store.upsert(makeManifest(name: "Two"))
-        _ = try store.upsert(makeManifest(name: "Three"))
+    func testDefaultPreferenceCreatesAnItemForEveryEnabledAppletUpToTheCap() throws {
+        let store = AppletStore(fileURL: temporaryDirectory.appendingPathComponent("default-all.json"))
+        let first = try store.upsert(makeManifest(name: "One"))
+        let second = try store.upsert(makeManifest(name: "Two"))
+        let third = try store.upsert(makeManifest(name: "Three"))
 
         let model = makeModel(store: store)
-        XCTAssertEqual(model.preferences.maximumMenuBarItems, 1)
+        XCTAssertEqual(model.preferences.maximumMenuBarItems, StatusItemManager.maximumIndividualItems)
+        XCTAssertEqual(model.preferences.maximumMenuBarItems, AppPreferences.defaultMaximumMenuBarItems)
 
         let manager = StatusItemManager()
         manager.attach(model: model)
 
-        XCTAssertEqual(manager.managedItemCount, 1)
-        XCTAssertEqual(manager.managedAppletIDs, Set([store.enabledApplets[0].id]))
+        XCTAssertEqual(manager.managedItemCount, 3)
+        XCTAssertEqual(manager.managedAppletIDs, [first.id, second.id, third.id])
     }
 
     func testReattachIsIdempotentAndRebuildsFromStore() throws {
@@ -173,6 +172,59 @@ final class StatusItemManagerTests: XCTestCase {
 
         model.preferences.maximumMenuBarItems = 99
         XCTAssertEqual(model.preferences.maximumMenuBarItems, StatusItemManager.maximumIndividualItems)
+    }
+
+    func testIndividuallyVisibleDoesNotDropWhenUnderTheCap() {
+        let applets = (0..<3).map { makeManifest(name: "Tool \($0)") }
+        let visible = StatusItemManager.individuallyVisible(
+            from: applets,
+            retaining: [],
+            limit: StatusItemManager.maximumIndividualItems
+        )
+        XCTAssertEqual(visible.map(\.id), applets.map(\.id))
+    }
+
+    func testIndividuallyVisibleGivesNewlyEnabledToolsASlotAtTheCap() {
+        let first = makeManifest(name: "First")
+        let second = makeManifest(name: "Second")
+        let third = makeManifest(name: "Third")
+        let visible = StatusItemManager.individuallyVisible(
+            from: [first, second, third],
+            retaining: [first.id, second.id],
+            limit: 2
+        )
+        XCTAssertEqual(visible.count, 2)
+        XCTAssertTrue(visible.contains(where: { $0.id == third.id }))
+        XCTAssertEqual(visible.map(\.id), [first.id, third.id])
+    }
+
+    func testNewlyEnabledToolTakesAMenuBarSlotWhenAtCap() throws {
+        let store = AppletStore(fileURL: temporaryDirectory.appendingPathComponent("new-slot.json"))
+        _ = try store.upsert(makeManifest(name: "Alpha"))
+        _ = try store.upsert(makeManifest(name: "Beta"))
+        var extra = try store.upsert(makeManifest(name: "Gamma", enabled: false))
+
+        let model = makeModel(store: store)
+        model.preferences.maximumMenuBarItems = 2
+        let manager = StatusItemManager()
+        manager.attach(model: model)
+        XCTAssertEqual(manager.managedItemCount, 2)
+        XCTAssertFalse(manager.managedAppletIDs.contains(extra.id))
+        let previouslyVisible = manager.managedAppletIDs
+
+        extra.enabled = true
+        _ = try store.upsert(extra)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+
+        XCTAssertEqual(manager.managedItemCount, 2)
+        XCTAssertTrue(manager.managedAppletIDs.contains(extra.id))
+        XCTAssertEqual(previouslyVisible.intersection(manager.managedAppletIDs).count, 1)
+    }
+
+    func testLiveTitleWaitsForAPaintableMenuBarSlot() {
+        XCTAssertFalse(StatusItemManager.shouldShowLiveTitle(alreadyExpanded: false, hasPaintableSlot: false))
+        XCTAssertTrue(StatusItemManager.shouldShowLiveTitle(alreadyExpanded: false, hasPaintableSlot: true))
+        XCTAssertTrue(StatusItemManager.shouldShowLiveTitle(alreadyExpanded: true, hasPaintableSlot: false))
     }
 
     func testAutosaveNamesAreStableAndUnique() {

@@ -18,6 +18,8 @@ final class StatusItemManager: ObservableObject {
 
     private weak var model: AppModel?
     private var items: [UUID: NSStatusItem] = [:]
+    /// Items that already earned a paintable slot and may show a live title.
+    private var expandedTitleIDs: Set<UUID> = []
     private var cancellables = Set<AnyCancellable>()
     /// Prevents a second `attach` (e.g. main-window `.task`) from forcing an
     /// immediate rebuild before the delayed first registration completes.
@@ -131,7 +133,7 @@ final class StatusItemManager: ObservableObject {
 
     /// Effective per-applet cap, derived from the user preference (clamped).
     private var individualItemLimit: Int {
-        guard let model else { return 1 }
+        guard let model else { return Self.maximumIndividualItems }
         return min(max(model.preferences.maximumMenuBarItems, 1), Self.maximumIndividualItems)
     }
 
@@ -140,10 +142,15 @@ final class StatusItemManager: ObservableObject {
     func rebuild(enabled currentEnabled: [AppletManifest], recreate: Bool = false) {
         guard model != nil else { return }
         let limit = individualItemLimit
-        let enabled = Self.individuallyVisible(from: currentEnabled, limit: limit)
+        let enabled = Self.individuallyVisible(
+            from: currentEnabled,
+            retaining: recreate ? [] : Set(items.keys),
+            limit: limit
+        )
         let enabledIDs = Set(enabled.map(\.id))
 
         if recreate {
+            expandedTitleIDs.removeAll()
             for id in items.keys {
                 if let item = items.removeValue(forKey: id) {
                     NSStatusBar.system.removeStatusItem(item)
@@ -152,6 +159,7 @@ final class StatusItemManager: ObservableObject {
             }
         } else {
             for id in items.keys where !enabledIDs.contains(id) {
+                expandedTitleIDs.remove(id)
                 if let item = items.removeValue(forKey: id) {
                     NSStatusBar.system.removeStatusItem(item)
                     let name = model?.store.applet(id: id)?.name ?? "removed applet"
@@ -174,8 +182,9 @@ final class StatusItemManager: ObservableObject {
             }
             // Enabled means present in the menu bar. Reassert after AppKit may
             // restore a prior "removed from menu bar" / overflow identity.
-            forceVisible(items[applet.id])
+            forceVisible(items[applet.id], compact: !expandedTitleIDs.contains(applet.id))
             refresh(appletID: applet.id)
+            scheduleTitleExpansion(for: applet.id)
         }
 
         if enabled.count < currentEnabled.count {
@@ -194,10 +203,45 @@ final class StatusItemManager: ObservableObject {
         AppLog.menuBar.info(
             "Reconciled \(self.items.count, privacy: .public) status items; \(reportedVisible, privacy: .public) isVisible=true (not space-proof); \(zeroSized, privacy: .public) zero-sized windows"
         )
+        objectWillChange.send()
     }
 
-    static func individuallyVisible(from enabled: [AppletManifest], limit: Int = maximumIndividualItems) -> [AppletManifest] {
-        Array(enabled.prefix(max(0, limit)))
+    /// Chooses which enabled applets get an `NSStatusItem`.
+    /// Newly enabled IDs take a slot first (evicting an older item when at the
+    /// cap) so Enable immediately appears on the bar. Remaining slots keep
+    /// currently visible items, then fill from store order. When `enabled`
+    /// fits in `limit`, nothing is dropped.
+    static func individuallyVisible(
+        from enabled: [AppletManifest],
+        retaining retainedIDs: Set<UUID> = [],
+        limit: Int = maximumIndividualItems
+    ) -> [AppletManifest] {
+        let capped = max(0, limit)
+        guard capped > 0 else { return [] }
+        if enabled.count <= capped {
+            return enabled
+        }
+
+        var chosenIDs = Set<UUID>()
+        chosenIDs.reserveCapacity(capped)
+        for applet in enabled where !retainedIDs.contains(applet.id) {
+            chosenIDs.insert(applet.id)
+            if chosenIDs.count == capped {
+                return enabled.filter { chosenIDs.contains($0.id) }
+            }
+        }
+        for applet in enabled where retainedIDs.contains(applet.id) {
+            chosenIDs.insert(applet.id)
+            if chosenIDs.count == capped {
+                return enabled.filter { chosenIDs.contains($0.id) }
+            }
+        }
+        return enabled.filter { chosenIDs.contains($0.id) }
+    }
+
+    /// Compact icon-only until Control Center gives the item a paintable slot.
+    static func shouldShowLiveTitle(alreadyExpanded: Bool, hasPaintableSlot: Bool) -> Bool {
+        alreadyExpanded || hasPaintableSlot
     }
 
     static func autosaveName(for appletID: UUID) -> String {
@@ -207,9 +251,9 @@ final class StatusItemManager: ObservableObject {
     }
 
     private func makeStatusItem(for appletID: UUID) -> NSStatusItem {
-        // The default cap is one item, so a compact icon + live value fits
-        // without returning to the previous eight-item clipping problem.
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        // Register compact until the item has a menu-bar slot. Variable-length
+        // titles are clipped off crowded bars while `isVisible` stays true.
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.autosaveName = Self.autosaveName(for: appletID)
         if let button = item.button {
             button.image = NSImage(
@@ -217,20 +261,23 @@ final class StatusItemManager: ObservableObject {
                 accessibilityDescription: "Bar Tender applet"
             )
             button.image?.isTemplate = true
-            button.imagePosition = .imageLeading
+            button.title = ""
+            button.imagePosition = .imageOnly
             button.imageHugsTitle = false
         }
-        forceVisible(item)
+        forceVisible(item, compact: true)
         let menu = NSMenu()
         menu.autoenablesItems = false
         item.menu = menu
         return item
     }
 
-    private func forceVisible(_ item: NSStatusItem?) {
+    private func forceVisible(_ item: NSStatusItem?, compact: Bool) {
         guard let item else { return }
         item.isVisible = true
-        if item.length == 0 {
+        if compact {
+            item.length = NSStatusItem.squareLength
+        } else if item.length == 0 {
             item.length = NSStatusItem.variableLength
         }
         if let button = item.button {
@@ -240,6 +287,19 @@ final class StatusItemManager: ObservableObject {
             button.appearsDisabled = false
             button.needsLayout = true
             button.needsDisplay = true
+        }
+    }
+
+    private func hasPaintableSlot(_ item: NSStatusItem) -> Bool {
+        MenuBarDiagnosticsSnapshot.StatusItemFrameDiagnostic.capture(button: item.button).appearsPaintable
+    }
+
+    private func scheduleTitleExpansion(for appletID: UUID) {
+        DispatchQueue.main.async { [weak self] in
+            self?.refresh(appletID: appletID)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            self?.refresh(appletID: appletID)
         }
     }
 
@@ -262,7 +322,14 @@ final class StatusItemManager: ObservableObject {
               let applet = model.store.applet(id: appletID) else { return }
 
         let snapshot = currentSnapshot ?? .placeholder(for: applet)
-        forceVisible(item)
+        let expandTitle = Self.shouldShowLiveTitle(
+            alreadyExpanded: expandedTitleIDs.contains(appletID),
+            hasPaintableSlot: hasPaintableSlot(item)
+        )
+        if expandTitle {
+            expandedTitleIDs.insert(appletID)
+        }
+        forceVisible(item, compact: !expandTitle)
         if let button = item.button {
             let runState = ToolRunState.resolve(
                 manifest: applet,
@@ -298,17 +365,23 @@ final class StatusItemManager: ObservableObject {
                 weight: .medium
             )
             button.image = image
-            button.title = "\u{00A0}\(label)"
-            button.imagePosition = .imageLeading
+            if expandTitle {
+                button.title = "\u{00A0}\(label)"
+                button.imagePosition = .imageLeading
+                item.length = NSStatusItem.variableLength
+            } else {
+                button.title = ""
+                button.imagePosition = .imageOnly
+                item.length = NSStatusItem.squareLength
+            }
             button.imageHugsTitle = false
             button.toolTip = "\(applet.name): \(snapshot.statusText)"
             button.setAccessibilityLabel(applet.name)
             button.setAccessibilityValue(label)
             button.setAccessibilityHelp(snapshot.statusText)
-            item.length = NSStatusItem.variableLength
             button.needsLayout = true
             button.needsDisplay = true
-            forceVisible(item)
+            forceVisible(item, compact: !expandTitle)
         } else {
             AppLog.menuBar.error(
                 "Status item button is nil for \(applet.name, privacy: .public); item will not render"

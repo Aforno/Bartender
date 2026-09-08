@@ -224,6 +224,36 @@ final class ManagerStatusItemControllerTests: XCTestCase {
         XCTAssertEqual(gammaTitle, "Gamma")
     }
 
+    func testMenuBlueprintMarksOverflowAsManagerOnly() {
+        let first = makeManifest(name: "Alpha")
+        let second = makeManifest(name: "Beta")
+        let third = makeManifest(name: "Gamma")
+
+        let entries = ManagerContextMenuBlueprint.entries(
+            enabledApplets: [first, second, third],
+            snapshots: [:],
+            menuBarIDs: [first.id]
+        )
+
+        XCTAssertEqual(entries.first, .sectionHeader("Running Tools"))
+        XCTAssertTrue(entries.contains(.sectionHeader("Manager Only")))
+
+        let runningIndex = entries.firstIndex(of: .sectionHeader("Running Tools"))!
+        let overflowIndex = entries.firstIndex(of: .sectionHeader("Manager Only"))!
+        XCTAssertLessThan(runningIndex, overflowIndex)
+
+        let runningIDs = entries[runningIndex..<overflowIndex].compactMap { entry -> UUID? in
+            if case .applet(let id, _) = entry { return id }
+            return nil
+        }
+        let overflowIDs = entries[overflowIndex...].compactMap { entry -> UUID? in
+            if case .applet(let id, _) = entry { return id }
+            return nil
+        }
+        XCTAssertEqual(Array(runningIDs), [first.id])
+        XCTAssertEqual(Array(overflowIDs), [second.id, third.id])
+    }
+
     func testMenuTitleIsConciseWithAndWithoutValue() {
         XCTAssertEqual(
             ManagerContextMenuBlueprint.menuTitle(name: "Clock", value: ""),
@@ -270,8 +300,6 @@ final class ManagerStatusItemControllerTests: XCTestCase {
         let first = try store.upsert(makeManifest(name: "One"))
         _ = try store.upsert(makeManifest(name: "Two"))
         let model = makeModel(store: store)
-        model.preferences.maximumMenuBarItems = 2
-
         let manager = ManagerStatusItemController(model: model)
         controller = manager
         manager.install()
@@ -288,6 +316,31 @@ final class ManagerStatusItemControllerTests: XCTestCase {
         manager.install()
         XCTAssertEqual(manager.managedStatusItemCount, 1)
         XCTAssertEqual(perApplet.managedItemCount, 2)
+    }
+
+    func testControllerMenuSeparatesOverflowFromMenuBarItems() throws {
+        let store = AppletStore(fileURL: temporaryDirectory.appendingPathComponent("overflow.json"))
+        _ = try store.upsert(makeManifest(name: "On Bar"))
+        _ = try store.upsert(makeManifest(name: "Overflow A"))
+        _ = try store.upsert(makeManifest(name: "Overflow B"))
+        let model = makeModel(store: store)
+        model.preferences.maximumMenuBarItems = 1
+
+        let perApplet = StatusItemManager()
+        perApplet.attach(model: model)
+        XCTAssertEqual(perApplet.managedItemCount, 1)
+
+        let manager = ManagerStatusItemController(model: model, appletStatusItems: perApplet)
+        controller = manager
+        manager.install()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+
+        XCTAssertTrue(manager.lastMenuEntries.contains(.sectionHeader("Manager Only")))
+        let appletEntries = manager.lastMenuEntries.filter {
+            if case .applet = $0 { return true }
+            return false
+        }
+        XCTAssertEqual(appletEntries.count, 3)
     }
 
     func testControllerRefreshesMenuBlueprintWhenAppletsChange() throws {

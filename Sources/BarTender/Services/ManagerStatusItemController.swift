@@ -41,19 +41,40 @@ enum ManagerContextMenuBlueprint {
     }
 
     /// Builds the ordered menu entries for the current library/runtime state.
+    /// `menuBarIDs` is the set that currently has an `NSStatusItem`; extras are
+    /// listed under Manager Only so they are not implied to be on the bar.
     static func entries(
         enabledApplets: [AppletManifest],
-        snapshots: [UUID: AppletSnapshot]
+        snapshots: [UUID: AppletSnapshot],
+        menuBarIDs: Set<UUID>? = nil
     ) -> [Entry] {
         var result: [Entry] = [.sectionHeader("Running Tools")]
 
         if enabledApplets.isEmpty {
             result.append(.emptyRunningTools)
         } else {
-            for applet in enabledApplets {
+            let onBar: [AppletManifest]
+            let overflow: [AppletManifest]
+            if let menuBarIDs {
+                onBar = enabledApplets.filter { menuBarIDs.contains($0.id) }
+                overflow = enabledApplets.filter { !menuBarIDs.contains($0.id) }
+            } else {
+                onBar = enabledApplets
+                overflow = []
+            }
+
+            for applet in onBar {
                 let value = snapshots[applet.id]?.title ?? ""
                 let title = menuTitle(name: applet.name, value: value)
                 result.append(.applet(id: applet.id, title: title))
+            }
+            if !overflow.isEmpty {
+                result.append(.sectionHeader("Manager Only"))
+                for applet in overflow {
+                    let value = snapshots[applet.id]?.title ?? ""
+                    let title = menuTitle(name: applet.name, value: value)
+                    result.append(.applet(id: applet.id, title: title))
+                }
             }
         }
 
@@ -86,6 +107,7 @@ final class ManagerStatusItemController: NSObject {
     static let tooltip = "Click to create · Right-click for options"
 
     private let model: AppModel
+    private weak var appletStatusItems: StatusItemManager?
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var hostingController: NSHostingController<ManagerComposerRoot>?
@@ -116,8 +138,9 @@ final class ManagerStatusItemController: NSObject {
         .capture(button: statusItem?.button)
     }
 
-    init(model: AppModel) {
+    init(model: AppModel, appletStatusItems: StatusItemManager? = nil) {
         self.model = model
+        self.appletStatusItems = appletStatusItems
         super.init()
     }
 
@@ -329,6 +352,16 @@ final class ManagerStatusItemController: NSObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.schedulePopoverResize() }
             .store(in: &cancellables)
+
+        model.preferences.$maximumMenuBarItems
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.refreshMenuBlueprint() }
+            .store(in: &cancellables)
+
+        appletStatusItems?.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.refreshMenuBlueprint() }
+            .store(in: &cancellables)
     }
 
     /// Observe phase / error / result / completion on the current session.
@@ -354,11 +387,20 @@ final class ManagerStatusItemController: NSObject {
     }
 
     private func refreshMenuBlueprint() {
-        let entries = ManagerContextMenuBlueprint.entries(
-            enabledApplets: model.store.enabledApplets,
-            snapshots: model.runtime.snapshots
+        let enabled = model.store.enabledApplets
+        lastMenuEntries = ManagerContextMenuBlueprint.entries(
+            enabledApplets: enabled,
+            snapshots: model.runtime.snapshots,
+            menuBarIDs: menuBarAppletIDs(from: enabled)
         )
-        lastMenuEntries = entries
+    }
+
+    private func menuBarAppletIDs(from enabled: [AppletManifest]) -> Set<UUID> {
+        if let manager = appletStatusItems, manager.hasCompletedInitialRegistration {
+            return manager.managedAppletIDs
+        }
+        let limit = min(max(model.preferences.maximumMenuBarItems, 1), StatusItemManager.maximumIndividualItems)
+        return Set(StatusItemManager.individuallyVisible(from: enabled, limit: limit).map(\.id))
     }
 
     private func makeNSMenu(from entries: [ManagerContextMenuBlueprint.Entry]) -> NSMenu {
