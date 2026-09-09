@@ -86,7 +86,7 @@ set -e
 APP_PID=""
 
 if [[ ! -s "$DIAG_JSON" ]]; then
-  printf '%s\n' 'Menu-bar diagnostics produced no JSON output.' >&2
+  printf 'Menu-bar diagnostics produced no JSON output (exit %s).\n' "$DIAG_STATUS" >&2
   if [[ -s "$DIAG_ERR" ]]; then
     cat "$DIAG_ERR" >&2
   fi
