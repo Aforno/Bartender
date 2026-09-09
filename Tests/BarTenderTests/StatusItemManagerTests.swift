@@ -221,10 +221,26 @@ final class StatusItemManagerTests: XCTestCase {
         XCTAssertEqual(previouslyVisible.intersection(manager.managedAppletIDs).count, 1)
     }
 
-    func testLiveTitleWaitsForAPaintableMenuBarSlot() {
-        XCTAssertFalse(StatusItemManager.shouldShowLiveTitle(alreadyExpanded: false, hasPaintableSlot: false))
-        XCTAssertTrue(StatusItemManager.shouldShowLiveTitle(alreadyExpanded: false, hasPaintableSlot: true))
-        XCTAssertTrue(StatusItemManager.shouldShowLiveTitle(alreadyExpanded: true, hasPaintableSlot: false))
+    func testLiveTitleWaitsForAPaintableMenuBarSlotAndDoesNotRetryAfterClipping() {
+        XCTAssertFalse(StatusItemManager.shouldShowLiveTitle(hasPaintableSlot: false, expansionPreviouslyClipped: false))
+        XCTAssertTrue(StatusItemManager.shouldShowLiveTitle(hasPaintableSlot: true, expansionPreviouslyClipped: false))
+        XCTAssertFalse(StatusItemManager.shouldShowLiveTitle(hasPaintableSlot: true, expansionPreviouslyClipped: true))
+        XCTAssertFalse(StatusItemManager.shouldShowLiveTitle(hasPaintableSlot: false, expansionPreviouslyClipped: true))
+    }
+
+    func testPersistVisibleWritesAppKitStatusItemKeys() {
+        let name = "io.github.aforno.bartender.v2.test.\(UUID().uuidString)"
+        let visibleKey = "NSStatusItem Visible \(name)"
+        let visibleCCKey = "NSStatusItem VisibleCC \(name)"
+        defer {
+            UserDefaults.standard.removeObject(forKey: visibleKey)
+            UserDefaults.standard.removeObject(forKey: visibleCCKey)
+        }
+
+        StatusItemRegistrationTiming.persistVisible(autosaveName: name)
+
+        XCTAssertEqual(UserDefaults.standard.bool(forKey: visibleKey), true)
+        XCTAssertEqual(UserDefaults.standard.bool(forKey: visibleCCKey), true)
     }
 
     func testAutosaveNamesAreStableAndUnique() {

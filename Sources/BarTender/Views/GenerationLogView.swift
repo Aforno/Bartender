@@ -42,7 +42,10 @@ struct GenerationLogView: View {
             HStack(spacing: 9) {
                 ProgressView()
                     .controlSize(.small)
-                Text(session.phase.displayName(for: session.provider))
+                Text(session.phase == .running
+                     ? session.logs.last(where: { $0.stream == .progress })?.text
+                        ?? session.phase.displayName(for: session.provider)
+                     : session.phase.displayName(for: session.provider))
                     .font(.inter(.callout))
                 Spacer()
             }
@@ -136,7 +139,7 @@ struct GenerationLogView: View {
         switch stream {
         case .stdout: return .secondary
         case .stderr: return .orange
-        case .system: return PremiumStyle.brand
+        case .system, .progress: return PremiumStyle.brand
         }
     }
 }

@@ -61,8 +61,31 @@ final class ManagerPopoverSizingTests: XCTestCase {
         XCTAssertTrue(failures.contains(where: { $0.contains("manager status item") }))
         XCTAssertTrue(failures.contains(where: { $0.contains("manager status item frame") }))
         XCTAssertTrue(failures.contains(where: { $0.contains("no managed status item") }))
-        XCTAssertTrue(failures.contains(where: { $0.contains("title unexpectedly empty") }))
         XCTAssertTrue(failures.contains(where: { $0.contains("applet item frame") }))
+        XCTAssertTrue(failures.contains(where: { $0.contains("title unexpectedly empty") }))
+    }
+
+    func testPaintableIconOnlyAppletPassesWithoutATitle() {
+        let snapshot = MenuBarDiagnosticsSnapshot(
+            bootstrapCompleted: true,
+            managerStatusItemInstalled: true,
+            managerItemCount: 1,
+            appletStatusItemManagerAttached: true,
+            enabledAppletCount: 1,
+            managedAppletItemCount: 1,
+            appletItems: [
+                .init(
+                    appletID: "x",
+                    name: "Clock",
+                    titleNonEmpty: false,
+                    titlePreview: "",
+                    frame: .synthetic(paintable: true)
+                )
+            ],
+            managerHasVisibleTitleOrImage: true,
+            managerFrame: .synthetic(paintable: true)
+        )
+        XCTAssertTrue(snapshot.validationFailures(requireEnabledApplet: true).isEmpty)
     }
 
     func testHealthyDiagnosticsPass() {
@@ -88,27 +111,30 @@ final class ManagerPopoverSizingTests: XCTestCase {
         XCTAssertTrue(snapshot.validationFailures(requireEnabledApplet: true).isEmpty)
     }
 
-    func testCompactIconOnlyPaintableSlotPasses() {
-        let snapshot = MenuBarDiagnosticsSnapshot(
-            bootstrapCompleted: true,
-            managerStatusItemInstalled: true,
-            managerItemCount: 1,
-            appletStatusItemManagerAttached: true,
-            enabledAppletCount: 1,
-            managedAppletItemCount: 1,
-            appletItems: [
-                .init(
-                    appletID: "x",
-                    name: "Focus Timer",
-                    titleNonEmpty: false,
-                    titlePreview: "",
-                    frame: .synthetic(paintable: true)
-                )
-            ],
-            managerHasVisibleTitleOrImage: true,
-            managerFrame: .synthetic(paintable: true)
+    func testOffscreenMenuBarFramesNeedRecoveryButHorizontalOverflowDoesNot() {
+        XCTAssertFalse(MenuBarDiagnosticsSnapshot.StatusItemFrameDiagnostic.missing.needsOffscreenRecovery)
+
+        let hidden = MenuBarDiagnosticsSnapshot.StatusItemFrameDiagnostic(
+            windowPresent: true,
+            width: 38,
+            height: 22,
+            centerOnScreen: false,
+            nearScreenTop: false,
+            appearsPaintable: false,
+            description: "y=-18"
         )
-        XCTAssertTrue(snapshot.validationFailures(requireEnabledApplet: true).isEmpty)
+        XCTAssertTrue(hidden.needsOffscreenRecovery)
+
+        let overflow = MenuBarDiagnosticsSnapshot.StatusItemFrameDiagnostic(
+            windowPresent: true,
+            width: 81,
+            height: 22,
+            centerOnScreen: false,
+            nearScreenTop: true,
+            appearsPaintable: false,
+            description: "right-edge overflow"
+        )
+        XCTAssertFalse(overflow.needsOffscreenRecovery)
     }
 
     func testNonPaintableFrameFailsEvenWhenStatusItemExists() {

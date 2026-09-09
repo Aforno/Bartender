@@ -208,6 +208,36 @@ final class ProviderEndToEndMatrixTests: XCTestCase {
         }
     }
 
+    func testGenerationTimesOutInsteadOfHanging() async throws {
+        try installFixture(
+            named: "grok",
+            source: """
+            #!/bin/sh
+            if [ "$1" = "--version" ]; then printf 'grok fixture\\n'; exit 0; fi
+            if [ "$1" = "models" ]; then printf 'Available models: fixture-model\\n'; exit 0; fi
+            trap '' TERM
+            while :; do sleep 1; done
+            """
+        )
+        let service = makeService()
+        await service.refreshAvailability()
+
+        do {
+            _ = try await service.generateManifest(
+                prompt: "This fixture ignores SIGTERM and never exits",
+                provider: .grok,
+                timeout: 0.4,
+                onLog: { _, _ in }
+            )
+            XCTFail("Hung generation unexpectedly succeeded")
+        } catch let error as ProviderGenerationError {
+            guard case .timedOut(.grok, let seconds) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(seconds, 0.4)
+        }
+    }
+
     func testMalformedProviderOutputFailsClosed() async throws {
         try installHealthyProviderFixtures(generationOutput: "not-json")
         let service = makeService()

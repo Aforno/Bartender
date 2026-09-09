@@ -75,15 +75,26 @@ struct MenuBarDiagnosticsSnapshot: Equatable, Sendable, Codable {
                 nearScreenTop = false
             }
             let nonZero = frame.width >= 1 && frame.height >= 1
-            let paintable = nonZero && centerOnScreen && nearScreenTop
+            let horizontallyOnScreen: Bool
+            if let screen {
+                horizontallyOnScreen = frame.minX >= screen.frame.minX - 1
+                    && frame.maxX <= screen.frame.maxX + 1
+            } else {
+                horizontallyOnScreen = false
+            }
+            // Midpoint-on-screen is not enough: an 81px title at the right edge
+            // can have a visible origin and still overflow the display.
+            let paintable = nonZero && nearScreenTop && horizontallyOnScreen
             let description = String(
-                format: "x=%.1f y=%.1f w=%.1f h=%.1f centerOnScreen=%@ nearTop=%@",
+                format: "x=%.1f y=%.1f w=%.1f h=%.1f maxX=%.1f centerOnScreen=%@ nearTop=%@ horizontal=%@",
                 Double(frame.origin.x),
                 Double(frame.origin.y),
                 Double(frame.width),
                 Double(frame.height),
+                Double(frame.maxX),
                 centerOnScreen ? "true" : "false",
-                nearScreenTop ? "true" : "false"
+                nearScreenTop ? "true" : "false",
+                horizontallyOnScreen ? "true" : "false"
             )
             return StatusItemFrameDiagnostic(
                 windowPresent: true,
@@ -96,6 +107,14 @@ struct MenuBarDiagnosticsSnapshot: Equatable, Sendable, Codable {
             )
         }
         #endif
+
+        /// Host window exists but is not in the menu-bar strip (typical y≈-18).
+        /// Missing windows are still laying out — do not recreate yet.
+        /// Horizontal overflow of a top-aligned item is not recovery: shrink
+        /// the title instead.
+        var needsOffscreenRecovery: Bool {
+            windowPresent && (width < 1 || height < 1 || !nearScreenTop)
+        }
     }
 
     /// Machine-readable one-line JSON for CLI / smoke harnesses.

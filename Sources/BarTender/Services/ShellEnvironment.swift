@@ -127,6 +127,14 @@ enum ShellEnvironment {
 
     fileprivate static func buildLoginEnvironment() async -> [String: String] {
         var env = ProcessInfo.processInfo.environment
+        // GUI launches do not source ~/.zshrc. Overlay the login shell env so
+        // CLIs that wrap auth in shell functions (OpenRouter, etc.) still see
+        // the keys a terminal session would. PATH is merged separately.
+        if let login = await captureLoginPrintenv() {
+            for (key, value) in login where !Self.loginOverlayExcludedKeys.contains(key) {
+                env[key] = value
+            }
+        }
         env["PATH"] = await resolveLoginPATH() ?? safeFallbackPATH()
         if env["HOME"] == nil {
             env["HOME"] = NSHomeDirectory()
@@ -134,10 +142,50 @@ enum ShellEnvironment {
         if env["USER"] == nil {
             env["USER"] = NSUserName()
         }
-        // Prefer non-interactive color for tooling.
-        env["TERM"] = env["TERM"] ?? "dumb"
+        env["TERM"] = "dumb"
         env["NO_COLOR"] = "1"
+        env["CI"] = "1"
+        env["GIT_TERMINAL_PROMPT"] = "0"
         return env
+    }
+
+    private static let loginOverlayExcludedKeys: Set<String> = [
+        "PATH", "TERM", "PS1", "PS2", "PS3", "PS4", "_", "SHLVL", "OLDPWD", "PWD"
+    ]
+
+    static func parsePrintenv(_ output: String) -> [String: String] {
+        var result: [String: String] = [:]
+        for line in output.split(separator: "\n", omittingEmptySubsequences: true) {
+            guard let separator = line.firstIndex(of: "=") else { continue }
+            let key = String(line[..<separator])
+            guard !key.isEmpty else { continue }
+            result[key] = String(line[line.index(after: separator)...])
+        }
+        return result
+    }
+
+    private static func captureLoginPrintenv() async -> [String: String]? {
+        let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+        let runner = ProcessRunner()
+        do {
+            let result = try await runner.run(
+                executable: shell,
+                arguments: ["-l", "-c", "/usr/bin/printenv"],
+                environment: [
+                    "HOME": NSHomeDirectory(),
+                    "USER": NSUserName(),
+                    "LOGNAME": NSUserName()
+                ],
+                timeout: loginShellTimeout
+            )
+            guard !result.timedOut, !result.cancelled, result.exitCode == 0 else {
+                return nil
+            }
+            let parsed = parsePrintenv(result.stdout)
+            return parsed.isEmpty ? nil : parsed
+        } catch {
+            return nil
+        }
     }
 
     static func resolveLoginPATH() async -> String? {

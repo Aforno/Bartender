@@ -115,6 +115,7 @@ final class ManagerStatusItemController: NSObject {
     private var generationCancellables = Set<AnyCancellable>()
     private var resizeWorkItem: DispatchWorkItem?
     private var didInstall = false
+    private var recoveredWithoutAutosave = false
 
     /// Snapshot of the last menu blueprint used for refresh bookkeeping / tests.
     private(set) var lastMenuEntries: [ManagerContextMenuBlueprint.Entry] = []
@@ -166,54 +167,94 @@ final class ManagerStatusItemController: NSObject {
         // Re-check in case uninstall raced a delayed install.
         guard didInstall, statusItem == nil else { return }
 
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.autosaveName = Self.autosaveName
-        if let button = item.button {
-            let image = NSImage(
-                systemSymbolName: "wineglass",
-                accessibilityDescription: "Bar Tender"
-            )
-            image?.isTemplate = true
-            button.image = image
-            button.title = ""
-            button.imagePosition = .imageOnly
-            button.toolTip = Self.tooltip
-            button.setAccessibilityLabel("Bar Tender")
-            button.setAccessibilityHelp(Self.tooltip)
-            button.target = self
-            button.action = #selector(statusItemActivated(_:))
-            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        }
-        item.isVisible = true
-        statusItem = item
-
-        let hosting = NSHostingController(rootView: ManagerComposerRoot(model: model))
-        hosting.sizingOptions = [.intrinsicContentSize]
-        hostingController = hosting
-
-        let pop = NSPopover()
-        pop.behavior = .transient
-        pop.animates = true
-        pop.contentViewController = hosting
-        pop.delegate = self
-        // Compact default before first layout.
-        pop.contentSize = CGSize(
-            width: ManagerPopoverSizing.minimumWidth,
-            height: ManagerPopoverSizing.defaultCompactHeight
-        )
-        popover = pop
-
+        statusItem = makeStatusItem(useAutosave: true)
+        configureButton()
+        installPopoverIfNeeded()
         installSubscriptions()
         observeGenerationSession(model.generation)
         refreshMenuBlueprint()
+        scheduleOffscreenRecovery()
 
-        let frame = item.button?.window?.frame
+        let frame = statusItem?.button?.window?.frame
         StatusItemRegistrationTiming.logManagerInstall(
             createdAt: Date(),
             autosaveName: Self.autosaveName,
             frame: frame
         )
         AppLog.menuBar.info("Installed manager status item (wineglass)")
+    }
+
+    private func makeStatusItem(useAutosave: Bool) -> NSStatusItem {
+        if useAutosave {
+            StatusItemRegistrationTiming.persistVisible(autosaveName: Self.autosaveName)
+        }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        if useAutosave {
+            item.autosaveName = Self.autosaveName
+        }
+        item.isVisible = true
+        return item
+    }
+
+    private func scheduleOffscreenRecovery() {
+        DispatchQueue.main.async { [weak self] in
+            self?.recoverIfOffscreen()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            self?.recoverIfOffscreen()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            self?.recoverIfOffscreen()
+        }
+    }
+
+    private func recoverIfOffscreen() {
+        guard didInstall, let item = statusItem else { return }
+        guard frameDiagnostic.needsOffscreenRecovery else { return }
+        guard !recoveredWithoutAutosave else { return }
+        recoveredWithoutAutosave = true
+        AppLog.menuBar.info(
+            "Manager status item not on the menu bar (\(self.frameDiagnostic.description, privacy: .public)); recreating without autosave"
+        )
+        NSStatusBar.system.removeStatusItem(item)
+        statusItem = makeStatusItem(useAutosave: false)
+        configureButton()
+    }
+
+    private func configureButton() {
+        guard let button = statusItem?.button else { return }
+        let image = NSImage(
+            systemSymbolName: "wineglass",
+            accessibilityDescription: "Bar Tender"
+        )
+        image?.isTemplate = true
+        button.image = image
+        button.title = ""
+        button.imagePosition = .imageOnly
+        button.toolTip = Self.tooltip
+        button.setAccessibilityLabel("Bar Tender")
+        button.setAccessibilityHelp(Self.tooltip)
+        button.target = self
+        button.action = #selector(statusItemActivated(_:))
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    }
+
+    private func installPopoverIfNeeded() {
+        guard popover == nil else { return }
+        let hosting = NSHostingController(rootView: ManagerComposerRoot(model: model))
+        hosting.sizingOptions = [.intrinsicContentSize]
+        hostingController = hosting
+
+        let pop = NSPopover()
+        pop.behavior = .semitransient
+        pop.animates = true
+        pop.contentViewController = hosting
+        pop.delegate = self
+        pop.contentSize = CGSize(
+            width: ManagerPopoverSizing.minimumWidth,
+            height: ManagerPopoverSizing.defaultCompactHeight
+        )
+        popover = pop
     }
 
     /// Removes the manager item and tears down popover/subscriptions (tests / shutdown).
@@ -231,6 +272,7 @@ final class ManagerStatusItemController: NSObject {
             statusItem = nil
         }
         didInstall = false
+        recoveredWithoutAutosave = false
         lastMenuEntries = []
     }
 

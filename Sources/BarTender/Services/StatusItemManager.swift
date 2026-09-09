@@ -20,6 +20,10 @@ final class StatusItemManager: ObservableObject {
     private var items: [UUID: NSStatusItem] = [:]
     /// Items that already earned a paintable slot and may show a live title.
     private var expandedTitleIDs: Set<UUID> = []
+    /// Titles that overflowed the screen after expansion; stay compact.
+    private var clippedTitleIDs: Set<UUID> = []
+    /// Items already recreated without an autosave identity.
+    private var recoveredWithoutAutosave: Set<UUID> = []
     private var cancellables = Set<AnyCancellable>()
     /// Prevents a second `attach` (e.g. main-window `.task`) from forcing an
     /// immediate rebuild before the delayed first registration completes.
@@ -151,6 +155,8 @@ final class StatusItemManager: ObservableObject {
 
         if recreate {
             expandedTitleIDs.removeAll()
+            clippedTitleIDs.removeAll()
+            recoveredWithoutAutosave.removeAll()
             for id in items.keys {
                 if let item = items.removeValue(forKey: id) {
                     NSStatusBar.system.removeStatusItem(item)
@@ -160,6 +166,8 @@ final class StatusItemManager: ObservableObject {
         } else {
             for id in items.keys where !enabledIDs.contains(id) {
                 expandedTitleIDs.remove(id)
+                clippedTitleIDs.remove(id)
+                recoveredWithoutAutosave.remove(id)
                 if let item = items.removeValue(forKey: id) {
                     NSStatusBar.system.removeStatusItem(item)
                     let name = model?.store.applet(id: id)?.name ?? "removed applet"
@@ -184,7 +192,7 @@ final class StatusItemManager: ObservableObject {
             // restore a prior "removed from menu bar" / overflow identity.
             forceVisible(items[applet.id], compact: !expandedTitleIDs.contains(applet.id))
             refresh(appletID: applet.id)
-            scheduleTitleExpansion(for: applet.id)
+            scheduleLayoutPass(for: applet.id)
         }
 
         if enabled.count < currentEnabled.count {
@@ -239,9 +247,10 @@ final class StatusItemManager: ObservableObject {
         return enabled.filter { chosenIDs.contains($0.id) }
     }
 
-    /// Compact icon-only until Control Center gives the item a paintable slot.
-    static func shouldShowLiveTitle(alreadyExpanded: Bool, hasPaintableSlot: Bool) -> Bool {
-        alreadyExpanded || hasPaintableSlot
+    /// Live titles only while the item still has a paintable slot. Once an
+    /// expansion has clipped off-screen, stay compact so the icon remains.
+    static func shouldShowLiveTitle(hasPaintableSlot: Bool, expansionPreviouslyClipped: Bool) -> Bool {
+        hasPaintableSlot && !expansionPreviouslyClipped
     }
 
     static func autosaveName(for appletID: UUID) -> String {
@@ -250,11 +259,17 @@ final class StatusItemManager: ObservableObject {
         "io.github.aforno.bartender.v2.applet.\(appletID.uuidString.lowercased())"
     }
 
-    private func makeStatusItem(for appletID: UUID) -> NSStatusItem {
+    private func makeStatusItem(for appletID: UUID, useAutosave: Bool = true) -> NSStatusItem {
         // Register compact until the item has a menu-bar slot. Variable-length
         // titles are clipped off crowded bars while `isVisible` stays true.
+        let name = Self.autosaveName(for: appletID)
+        if useAutosave {
+            StatusItemRegistrationTiming.persistVisible(autosaveName: name)
+        }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.autosaveName = Self.autosaveName(for: appletID)
+        if useAutosave {
+            item.autosaveName = name
+        }
         if let button = item.button {
             button.image = NSImage(
                 systemSymbolName: "circle.fill",
@@ -287,20 +302,50 @@ final class StatusItemManager: ObservableObject {
             button.appearsDisabled = false
             button.needsLayout = true
             button.needsDisplay = true
+            if let window = button.window {
+                window.alphaValue = 1
+                window.isOpaque = false
+            }
         }
+    }
+
+    private func frameDiagnostic(_ item: NSStatusItem) -> MenuBarDiagnosticsSnapshot.StatusItemFrameDiagnostic {
+        .capture(button: item.button)
     }
 
     private func hasPaintableSlot(_ item: NSStatusItem) -> Bool {
-        MenuBarDiagnosticsSnapshot.StatusItemFrameDiagnostic.capture(button: item.button).appearsPaintable
+        frameDiagnostic(item).appearsPaintable
     }
 
-    private func scheduleTitleExpansion(for appletID: UUID) {
+    private func scheduleLayoutPass(for appletID: UUID) {
         DispatchQueue.main.async { [weak self] in
             self?.refresh(appletID: appletID)
+            self?.recoverIfOffscreen(appletID: appletID)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
             self?.refresh(appletID: appletID)
+            self?.recoverIfOffscreen(appletID: appletID)
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            self?.refresh(appletID: appletID)
+            self?.recoverIfOffscreen(appletID: appletID)
+        }
+    }
+
+    private func recoverIfOffscreen(appletID: UUID) {
+        guard let item = items[appletID] else { return }
+        let frame = frameDiagnostic(item)
+        guard frame.needsOffscreenRecovery else { return }
+        guard !recoveredWithoutAutosave.contains(appletID) else { return }
+        recoveredWithoutAutosave.insert(appletID)
+        let name = model?.store.applet(id: appletID)?.name ?? appletID.uuidString
+        AppLog.menuBar.info(
+            "Applet status item '\(name, privacy: .public)' not on the menu bar (\(frame.description, privacy: .public)); recreating without autosave"
+        )
+        NSStatusBar.system.removeStatusItem(item)
+        expandedTitleIDs.remove(appletID)
+        items[appletID] = makeStatusItem(for: appletID, useAutosave: false)
+        refresh(appletID: appletID)
     }
 
     /// Uses the value delivered by `@Published` directly. Its publisher emits in
@@ -322,13 +367,10 @@ final class StatusItemManager: ObservableObject {
               let applet = model.store.applet(id: appletID) else { return }
 
         let snapshot = currentSnapshot ?? .placeholder(for: applet)
-        let expandTitle = Self.shouldShowLiveTitle(
-            alreadyExpanded: expandedTitleIDs.contains(appletID),
-            hasPaintableSlot: hasPaintableSlot(item)
+        var expandTitle = Self.shouldShowLiveTitle(
+            hasPaintableSlot: hasPaintableSlot(item),
+            expansionPreviouslyClipped: clippedTitleIDs.contains(appletID)
         )
-        if expandTitle {
-            expandedTitleIDs.insert(appletID)
-        }
         forceVisible(item, compact: !expandTitle)
         if let button = item.button {
             let runState = ToolRunState.resolve(
@@ -369,7 +411,21 @@ final class StatusItemManager: ObservableObject {
                 button.title = "\u{00A0}\(label)"
                 button.imagePosition = .imageLeading
                 item.length = NSStatusItem.variableLength
+                button.imageHugsTitle = false
+                button.layoutSubtreeIfNeeded()
+                button.window?.layoutIfNeeded()
+                if !hasPaintableSlot(item) {
+                    clippedTitleIDs.insert(appletID)
+                    expandTitle = false
+                }
+            }
+            if expandTitle {
+                expandedTitleIDs.insert(appletID)
             } else {
+                if expandedTitleIDs.contains(appletID) {
+                    clippedTitleIDs.insert(appletID)
+                }
+                expandedTitleIDs.remove(appletID)
                 button.title = ""
                 button.imagePosition = .imageOnly
                 item.length = NSStatusItem.squareLength

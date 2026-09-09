@@ -244,6 +244,66 @@ final class ProcessAndProviderTests: XCTestCase {
         XCTAssertEqual(grok, "--single <prompt redacted> --model grok-3")
     }
 
+    func testProcessRunnerClosedStdinDoesNotHangCat() async throws {
+        let runner = ProcessRunner()
+        let started = Date()
+        let result = try await runner.run(
+            executable: "/bin/cat",
+            arguments: [],
+            timeout: 2
+        )
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertEqual(result.stdout, "")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 1.5)
+    }
+
+    func testCodexExecArgumentsAvoidInteractiveApprovals() {
+        let arguments = AIProviderService.codexExecArguments(
+            modelArguments: ["--model", "gpt-5"],
+            schemaPath: "/tmp/schema.json",
+            outputPath: "/tmp/out.txt",
+            workspace: "/Users/fixture",
+            prompt: "Build a tool"
+        )
+        XCTAssertEqual(arguments.first, "exec")
+        XCTAssertTrue(arguments.contains("--approve-for-me"))
+        XCTAssertTrue(arguments.contains("--cd"))
+        XCTAssertTrue(arguments.contains("/Users/fixture"))
+        XCTAssertTrue(arguments.contains("--ephemeral"))
+        XCTAssertFalse(arguments.contains("--tools"))
+    }
+
+    func testClaudePrintArgumentsOmitEmptyToolsAndDenyHostPrompts() {
+        let arguments = AIProviderService.claudePrintArguments(
+            modelArguments: ["--model", "opus"],
+            schemaJSON: #"{"type":"object"}"#,
+            prompt: "Build a tool"
+        )
+        XCTAssertEqual(arguments.first, "-p")
+        XCTAssertTrue(arguments.contains("--permission-prompts"))
+        XCTAssertEqual(arguments[arguments.firstIndex(of: "--permission-prompts")! + 1], "none")
+        XCTAssertFalse(arguments.contains("--tools"))
+        XCTAssertFalse(arguments.contains(""))
+    }
+
+    func testGrokHeadlessArgumentsStreamWithBoundedReasoningAndNoTools() {
+        let arguments = AIProviderService.grokHeadlessArguments(
+            promptFilePath: "/tmp/prompt.txt",
+            modelArguments: ["--model", "grok-4.6"],
+            schemaJSON: #"{"type":"object"}"#
+        )
+        XCTAssertEqual(arguments.first, "--prompt-file")
+        XCTAssertTrue(arguments.contains("/tmp/prompt.txt"))
+        XCTAssertTrue(arguments.contains("--verbatim"))
+        XCTAssertTrue(arguments.contains("--max-turns"))
+        XCTAssertEqual(arguments[arguments.firstIndex(of: "--max-turns")! + 1], "1")
+        XCTAssertEqual(arguments[arguments.firstIndex(of: "--tools")! + 1], "")
+        XCTAssertEqual(arguments[arguments.firstIndex(of: "--reasoning-effort")! + 1], "medium")
+        XCTAssertTrue(arguments.contains("streaming-messages-json"))
+        XCTAssertTrue(arguments.contains("--include-partial-messages"))
+        XCTAssertFalse(arguments.contains("--single"))
+    }
+
     func testExtractsManifestFromProviderEnvelope() {
         let envelope = #"{"type":"result","result":"{\"name\":\"Timer\",\"kind\":\"timer\",\"iconSystemName\":\"timer\",\"titleTemplate\":\"{{remaining}}\",\"config\":{\"durationSeconds\":60}}"}"#
         let payload = ManifestGenerationSupport.extractMessagePayload(from: envelope)

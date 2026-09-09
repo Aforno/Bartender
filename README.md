@@ -110,7 +110,7 @@ Documented `codex exec` flags only: `--json`, `--sandbox read-only`, `--output-s
 Documented print mode: `claude -p --output-format json --json-schema … --tools "" --permission-mode dontAsk --no-session-persistence`
 
 ### Grok
-Documented single-turn mode: `grok --single … --json-schema … --output-format json --permission-mode dontAsk --tools "" --max-turns 2`
+Single-turn generation uses `--prompt-file`, `--json-schema`, `--output-format streaming-messages-json`, `--include-partial-messages`, and `--reasoning-effort medium`. Tools are disabled with `--tools ""`. The app displays progress without exposing reasoning text. Imported Claude/Cursor hooks are disabled only in the child process; native Grok hooks still run.
 
 ### Gemini
 Documented headless mode: `gemini --prompt … --output-format json --approval-mode plan --skip-trust`
@@ -118,7 +118,7 @@ Documented headless mode: `gemini --prompt … --output-format json --approval-m
 ### Antigravity (`agy`)
 Documented print mode: `agy --print … --mode plan --sandbox`
 
-All runs go through `Process` with stdout/stderr capture and cancellation. Generation has no time limit. It continues until the provider finishes or you cancel. Auth is never requested as an API key inside the app.
+All runs capture stdout/stderr and support cancellation. Each generation attempt has a 180-second limit. A timeout stops generation immediately; only invalid output and validation failures are retried. Auth is never requested as an API key inside the app.
 
 Saved applets are normalized and validated again before startup. Invalid entries are skipped and copied to a recovery sidecar. They are not executed, and they do not wipe the rest of the library.
 

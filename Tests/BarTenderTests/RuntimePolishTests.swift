@@ -18,6 +18,21 @@ final class RuntimePolishTests: XCTestCase {
         XCTAssertNil(ShellEnvironment.extractLoginPATH(from: "Welcome only"))
     }
 
+    func testPrintenvParserKeepsValuesAndIgnoresMalformedLines() {
+        let parsed = ShellEnvironment.parsePrintenv("""
+        HOME=/Users/fixture
+        OPENROUTER_API_KEY=sk-test
+        not-a-pair
+        EMPTY=
+        PATH=/bin
+        """)
+        XCTAssertEqual(parsed["HOME"], "/Users/fixture")
+        XCTAssertEqual(parsed["OPENROUTER_API_KEY"], "sk-test")
+        XCTAssertEqual(parsed["EMPTY"], "")
+        XCTAssertEqual(parsed["PATH"], "/bin")
+        XCTAssertNil(parsed["not-a-pair"])
+    }
+
     func testSensorWrapperRepairsExecutablePermissionsWhenContentsMatch() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("BarTender-Wrapper-\(UUID().uuidString)", isDirectory: true)
