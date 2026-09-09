@@ -197,6 +197,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             try? await Task.sleep(nanoseconds: 200_000_000)
         }
 
+        // CI runners often leave some autosaved applet items at y≈-22 until they
+        // are recreated without autosave. Settle before taking the snapshot.
+        await statusItems.settleMenuBarForDiagnostics()
+
         let snapshot = menuBarDiagnosticsSnapshot()
         if let line = try? snapshot.jsonLine() {
             FileHandle.standardOutput.write(Data((line + "\n").utf8))

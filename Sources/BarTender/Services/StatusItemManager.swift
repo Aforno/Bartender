@@ -348,6 +348,32 @@ final class StatusItemManager: ObservableObject {
         refresh(appletID: appletID)
     }
 
+    /// Smoke/diagnostics helper: keep recreating offscreen applet items without
+    /// autosave until they land on the menu bar (or rounds are exhausted).
+    func settleMenuBarForDiagnostics(maxRounds: Int = 6) async {
+        for round in 0..<maxRounds {
+            var pending = false
+            for id in Array(items.keys) {
+                guard let item = items[id] else { continue }
+                let frame = frameDiagnostic(item)
+                if frame.appearsPaintable { continue }
+                pending = true
+                let name = model?.store.applet(id: id)?.name ?? id.uuidString
+                AppLog.menuBar.info(
+                    "Diagnostics settle round \(round, privacy: .public): recreating '\(name, privacy: .public)' (\(frame.description, privacy: .public))"
+                )
+                NSStatusBar.system.removeStatusItem(item)
+                expandedTitleIDs.remove(id)
+                clippedTitleIDs.remove(id)
+                recoveredWithoutAutosave.insert(id)
+                items[id] = makeStatusItem(for: id, useAutosave: false)
+                refresh(appletID: id)
+            }
+            if !pending { return }
+            try? await Task.sleep(nanoseconds: 350_000_000)
+        }
+    }
+
     /// Uses the value delivered by `@Published` directly. Its publisher emits in
     /// `willSet`, so re-reading `model.runtime.snapshots` in that callback would
     /// refresh every status item with the previous value until the next poll.
