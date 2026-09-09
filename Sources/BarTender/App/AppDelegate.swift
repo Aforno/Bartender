@@ -98,9 +98,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         if shouldAllowTerminate {
             return .terminateNow
         }
-        // Diagnostics mode always terminates when requested.
+        // Diagnostics must reach Foundation.exit after printing JSON. Allowing
+        // SwiftUI's auto-quit here races bootstrap and leaves smoke with an
+        // empty diagnostics file.
         if MenuBarDiagnosticsCLI.wantsDiagnosticsRun {
-            return .terminateNow
+            AppLog.app.info("Ignoring terminate until menu-bar diagnostics finish")
+            return .terminateCancel
         }
         AppLog.app.info("Ignoring automatic terminate; menu bar tools stay running")
         return .terminateCancel
@@ -120,10 +123,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         // Back to regular so status items keep a proper layout slot.
         NSApp.setActivationPolicy(.regular)
-        // Diagnostics runs as a short-lived process.
-        if MenuBarDiagnosticsCLI.wantsDiagnosticsRun {
-            return true
-        }
+        // Always keep running after the last window closes. Diagnostics exits
+        // explicitly after printing JSON; normal launches keep menu-bar tools.
         return false
     }
 
@@ -196,11 +197,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             try? await Task.sleep(nanoseconds: 200_000_000)
         }
 
+        // CI runners often leave some autosaved applet items at y≈-22 until they
+        // are recreated without autosave. Settle before taking the snapshot.
+        await statusItems.settleMenuBarForDiagnostics()
+
         let snapshot = menuBarDiagnosticsSnapshot()
         if let line = try? snapshot.jsonLine() {
             FileHandle.standardOutput.write(Data((line + "\n").utf8))
+            try? FileHandle.standardOutput.synchronize()
         } else {
             FileHandle.standardError.write(Data("Failed to encode menu-bar diagnostics.\n".utf8))
+            try? FileHandle.standardError.synchronize()
         }
 
         let requireApplet = MenuBarDiagnosticsCLI.smokeLibraryPath != nil
@@ -210,6 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         if !failures.isEmpty {
             let message = "Menu-bar diagnostics failed: \(failures.joined(separator: "; "))\n"
             FileHandle.standardError.write(Data(message.utf8))
+            try? FileHandle.standardError.synchronize()
         }
 
         userRequestedTerminate = true
