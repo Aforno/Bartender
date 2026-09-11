@@ -4,6 +4,8 @@ User-visible changes go here. Bar Tender follows semantic versioning.
 
 ## Unreleased
 
+## 1.0.1 (build 6) - 2026-09-11
+
 - Render Codex and Grok provider icons as white glyphs so they stay visible on the black canvas.
 
 ## 1.0.1 (build 5) - 2026-09-08
