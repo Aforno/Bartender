@@ -18,19 +18,21 @@ struct ProviderIcon: View {
                 .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
                 .accessibilityHidden(true)
         } else {
+            // Monochrome marks are pre-rendered white. Draw the bitmap as-is so
+            // SwiftUI/AppKit cannot re-tint them with `.primary` / label color,
+            // which is black when the Mac is in light appearance.
             sourceImage
-                .renderingMode(.template)
+                .renderingMode(.original)
                 .resizable()
                 .interpolation(.high)
                 .scaledToFit()
-                .foregroundStyle(.primary)
                 .padding(size * (provider == .codex ? 0.10 : 0))
                 .frame(width: size, height: size)
                 .accessibilityHidden(true)
         }
     }
 
-    /// Claude, Gemini, and Antigravity ship multicolor product artwork; Codex/Grok are monochrome templates.
+    /// Claude, Gemini, and Antigravity ship multicolor product artwork; Codex/Grok are monochrome glyphs.
     private var usesFullColorIcon: Bool {
         switch provider {
         case .claude, .gemini, .agy:
@@ -41,7 +43,11 @@ struct ProviderIcon: View {
     }
 
     private var sourceImage: Image {
-        Image(nsImage: Self.image(for: provider, logicalSize: size))
+        let nsImage = Self.image(for: provider, logicalSize: size)
+        if !usesFullColorIcon {
+            nsImage.isTemplate = false
+        }
+        return Image(nsImage: nsImage)
     }
 
     /// Returns a sized **copy** of the cached base image so AppKit controls can
@@ -107,50 +113,62 @@ struct ProviderIcon: View {
                 preconditionFailure("Missing bundled provider icon: \(name).png")
             }
 
-            let image: NSImage
-            if provider == .grok,
-               let source = CIImage(contentsOf: url),
-               let template = grokTemplateImage(from: source) {
-                image = template
-            } else if let source = NSImage(contentsOf: url),
-                      let copy = source.copy() as? NSImage {
-                image = copy
-                switch provider {
-                case .codex, .grok:
-                    image.isTemplate = true
-                case .claude, .gemini, .agy:
-                    image.isTemplate = false
+            switch provider {
+            case .codex, .grok:
+                if let source = CIImage(contentsOf: url),
+                   let glyph = lightGlyphImage(from: source, for: provider) {
+                    return glyph
                 }
-            } else {
+                if let source = NSImage(contentsOf: url),
+                   let tiff = source.tiffRepresentation,
+                   let ciImage = CIImage(data: tiff),
+                   let glyph = lightGlyphImage(from: ciImage, for: provider) {
+                    return glyph
+                }
                 preconditionFailure("Could not decode bundled provider icon: \(name).png")
+            case .claude, .gemini, .agy:
+                guard let source = NSImage(contentsOf: url),
+                      let copy = source.copy() as? NSImage else {
+                    preconditionFailure("Could not decode bundled provider icon: \(name).png")
+                }
+                copy.isTemplate = false
+                return copy
             }
-            return image
         }
 
-        /// The bundled Grok artwork is white. Build a black alpha-mask and then
-        /// rasterize it into a bitmap-backed NSImage before marking it as a template.
-        private func grokTemplateImage(from source: CIImage) -> NSImage? {
-            let mask = source.applyingFilter("CIMaskToAlpha")
-            // The source PNG includes generous canvas whitespace. Cropping 20% on
-            // each edge gives Grok the same apparent scale as the other provider
-            // marks while retaining enough breathing room around the glyph.
-            let cropInsetFraction: CGFloat = 0.20
-            let crop = mask.extent.insetBy(
-                dx: mask.extent.width * cropInsetFraction,
-                dy: mask.extent.height * cropInsetFraction
-            )
-            guard !crop.isEmpty else { return nil }
+        /// Codex is a black blossom on transparency; Grok is a white mark on an
+        /// opaque black square. Both become white-on-transparent bitmaps so they
+        /// stay visible on Bar Tender's black canvas when template tinting is skipped.
+        private func lightGlyphImage(from source: CIImage, for provider: AIProvider) -> NSImage? {
+            let mask: CIImage
+            switch provider {
+            case .grok:
+                let luminanceMask = source.applyingFilter("CIMaskToAlpha")
+                // The source PNG includes generous canvas whitespace. Cropping 20% on
+                // each edge gives Grok the same apparent scale as the other provider
+                // marks while retaining enough breathing room around the glyph.
+                let cropInsetFraction: CGFloat = 0.20
+                let crop = luminanceMask.extent.insetBy(
+                    dx: luminanceMask.extent.width * cropInsetFraction,
+                    dy: luminanceMask.extent.height * cropInsetFraction
+                )
+                guard !crop.isEmpty else { return nil }
+                mask = luminanceMask.cropped(to: crop)
+            case .codex:
+                mask = source
+            case .claude, .gemini, .agy:
+                return nil
+            }
 
-            let croppedMask = mask.cropped(to: crop)
-            let black = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 1))
-                .cropped(to: crop)
-            let blackGlyph = black.applyingFilter(
+            let white = CIImage(color: CIColor(red: 1, green: 1, blue: 1, alpha: 1))
+                .cropped(to: mask.extent)
+            let glyph = white.applyingFilter(
                 "CISourceInCompositing",
-                parameters: [kCIInputBackgroundImageKey: croppedMask]
+                parameters: [kCIInputBackgroundImageKey: mask]
             )
-            let normalized = blackGlyph
-                .cropped(to: crop)
-                .transformed(by: CGAffineTransform(translationX: -crop.minX, y: -crop.minY))
+            let normalized = glyph
+                .cropped(to: mask.extent)
+                .transformed(by: CGAffineTransform(translationX: -mask.extent.minX, y: -mask.extent.minY))
             let extent = normalized.extent.integral
             let context = CIContext(options: [.cacheIntermediates: false])
 
