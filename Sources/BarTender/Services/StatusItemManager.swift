@@ -448,10 +448,10 @@ final class StatusItemManager: ObservableObject {
             runState: runState,
             showsLiveTitle: expandTitle
         )
+        forceVisible(item, compact: !expandTitle)
         if lastRefreshIdentities[appletID] == identity {
             return
         }
-        forceVisible(item, compact: !expandTitle)
         if let button = item.button {
             let title = TitleRenderer.statusItemTitle(snapshot.title, runState: runState)
             let label = title.isEmpty ? applet.name : title

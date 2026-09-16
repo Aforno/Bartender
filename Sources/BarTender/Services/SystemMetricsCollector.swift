@@ -5,18 +5,13 @@ final class SystemMetricsCollector {
     private var previousCPUInfo: host_cpu_load_info?
 
     func cpuUsagePercent() -> Double {
-        var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info_data_t>.size / MemoryLayout<integer_t>.size)
-        var info = host_cpu_load_info()
-        let result = withUnsafeMutablePointer(to: &info) { pointer in
-            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebound in
-                host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, rebound, &count)
-            }
-        }
-        guard result == KERN_SUCCESS else { return 0 }
+        guard let info = Self.currentCPUInfo() else { return 0 }
+        return consumeCPUInfo(info)
+    }
 
+    func consumeCPUInfo(_ info: host_cpu_load_info) -> Double {
         defer { previousCPUInfo = info }
         guard let previous = previousCPUInfo else { return 0 }
-
         return Self.cpuUsagePercent(
             previous: [
                 previous.cpu_ticks.0,
@@ -31,6 +26,18 @@ final class SystemMetricsCollector {
                 info.cpu_ticks.3
             ]
         )
+    }
+
+    static func currentCPUInfo() -> host_cpu_load_info? {
+        var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info_data_t>.size / MemoryLayout<integer_t>.size)
+        var info = host_cpu_load_info()
+        let result = withUnsafeMutablePointer(to: &info) { pointer in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebound in
+                host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, rebound, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return nil }
+        return info
     }
 
     static func cpuUsagePercent(previous: [UInt32], current: [UInt32]) -> Double {
@@ -96,13 +103,24 @@ final class SharedSystemMetricsSampler: @unchecked Sendable {
 
     func sample(cpu: Bool, memory: Bool, now: Date = Date()) -> SystemMetricsSample {
         lock.lock()
+        let needCPU = cpu && !isFresh(cpuCache, now: now)
+        let needMemory = memory && !isFresh(memoryCache, now: now)
+        lock.unlock()
+
+        // Mach syscalls stay outside the lock so a metrics tick on the main
+        // actor does not block other callers on host_statistics.
+        let cpuInfo = needCPU ? SystemMetricsCollector.currentCPUInfo() : nil
+        let memorySample = needMemory ? SystemMetricsCollector.memoryUsage() : nil
+
+        lock.lock()
         defer { lock.unlock() }
-        let cpuValue = cpu ? cachedCPU(now: now) : 0
-        let memoryValue = memory ? cachedMemory(now: now) : (0, 0, 0)
-        return SystemMetricsSample(cpu: cpuValue, memory: memoryValue)
+        return SystemMetricsSample(
+            cpu: cpu ? publishedCPU(now: now, info: cpuInfo) : 0,
+            memory: memory ? publishedMemory(now: now, sample: memorySample) : (0, 0, 0)
+        )
     }
 
-    func resetForTesting() {
+    func reset() {
         lock.lock()
         defer { lock.unlock() }
         collector = SystemMetricsCollector()
@@ -112,24 +130,33 @@ final class SharedSystemMetricsSampler: @unchecked Sendable {
         memorySampleCount = 0
     }
 
-    private func cachedCPU(now: Date) -> Double {
-        if let cpuCache, now.timeIntervalSince(cpuCache.at) < reuseWindow {
+    private func isFresh<T>(_ cache: (at: Date, value: T)?, now: Date) -> Bool {
+        guard let cache else { return false }
+        return now.timeIntervalSince(cache.at) < reuseWindow
+    }
+
+    private func publishedCPU(now: Date, info: host_cpu_load_info?) -> Double {
+        if isFresh(cpuCache, now: now), let cpuCache {
             return cpuCache.value
         }
+        guard let info else { return cpuCache?.value ?? 0 }
         cpuSampleCount += 1
-        let value = collector.cpuUsagePercent()
+        let value = collector.consumeCPUInfo(info)
         cpuCache = (now, value)
         return value
     }
 
-    private func cachedMemory(now: Date) -> (usedBytes: UInt64, totalBytes: UInt64, percent: Double) {
-        if let memoryCache, now.timeIntervalSince(memoryCache.at) < reuseWindow {
+    private func publishedMemory(
+        now: Date,
+        sample: (usedBytes: UInt64, totalBytes: UInt64, percent: Double)?
+    ) -> (usedBytes: UInt64, totalBytes: UInt64, percent: Double) {
+        if isFresh(memoryCache, now: now), let memoryCache {
             return memoryCache.value
         }
+        guard let sample else { return memoryCache?.value ?? (0, 0, 0) }
         memorySampleCount += 1
-        let value = SystemMetricsCollector.memoryUsage()
-        memoryCache = (now, value)
-        return value
+        memoryCache = (now, sample)
+        return sample
     }
 }
 

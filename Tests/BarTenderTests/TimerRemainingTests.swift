@@ -98,4 +98,36 @@ final class TimerRemainingTests: XCTestCase {
             90
         )
     }
+
+    @MainActor
+    func testAutoRestartPublishesFullDurationOnTheNextTick() async {
+        let runtime = AppletRuntimeEngine()
+        defer { runtime.stopAll() }
+        let timer = AppletManifest(
+            name: "Loop",
+            iconSystemName: "timer",
+            kind: .timer,
+            titleTemplate: "{{remaining}}",
+            enabled: true,
+            config: AppletConfig(durationSeconds: 1, autoRestart: true)
+        )
+        runtime.sync(with: [timer])
+        XCTAssertEqual(runtime.snapshots[timer.id]?.isRunning, true)
+        XCTAssertEqual(runtime.snapshots[timer.id]?.values["remaining"], "0:01")
+
+        let started = Date()
+        var observed: AppletSnapshot?
+        while Date().timeIntervalSince(started) < 2.5 {
+            try? await Task.sleep(nanoseconds: 30_000_000)
+            guard Date().timeIntervalSince(started) >= 1.15 else { continue }
+            observed = runtime.snapshots[timer.id]
+            if observed?.isRunning == true, observed?.values["remaining"] == "0:01" {
+                break
+            }
+        }
+
+        XCTAssertEqual(observed?.isRunning, true)
+        XCTAssertEqual(observed?.values["remaining"], "0:01")
+        XCTAssertEqual(observed?.statusText, "Running")
+    }
 }

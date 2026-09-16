@@ -158,6 +158,7 @@ final class AppletRuntimeEngine: ObservableObject {
         timerEnds[id] = nil
         timerPausedRemaining[id] = nil
         failureTransitions.remove(id: id)
+        resetMetricsSamplerIfIdle()
         // Emit even when the title is unchanged so status items recompute
         // validation/approval chrome (e.g. first-run check just started).
         scheduleSnapshotPublish()
@@ -264,7 +265,12 @@ final class AppletRuntimeEngine: ObservableObject {
 
     private func start(_ manifest: AppletManifest) {
         AppLog.runtime.info("Starting applet \(manifest.name, privacy: .public) (\(manifest.kind.rawValue, privacy: .public))")
+        let shouldResetMetrics = manifest.kind == .systemMetrics
+            && !startedManifests.values.contains(where: { $0.kind == .systemMetrics })
         startedManifests[manifest.id] = manifest
+        if shouldResetMetrics {
+            SystemMetricsSampler.shared.reset()
+        }
 
         switch manifest.kind {
         case .timer, .countdown:
@@ -326,15 +332,20 @@ final class AppletRuntimeEngine: ObservableObject {
                 if manifest.notifyOnComplete {
                     notify(title: manifest.name, body: "Timer finished.")
                 }
-                if manifest.config.autoRestart == true {
-                    let duration = max(1, manifest.config.durationSeconds ?? 1)
-                    timerEnds[manifest.id] = Date().addingTimeInterval(TimeInterval(duration))
-                } else {
+                guard manifest.config.autoRestart == true else {
                     timerEnds[manifest.id] = nil
                     timerPausedRemaining[manifest.id] = 0
                     finishTimerLoopIfCurrent(manifest: manifest, epoch: epoch)
                     return
                 }
+                let duration = max(1, manifest.config.durationSeconds ?? 1)
+                timerEnds[manifest.id] = Date().addingTimeInterval(TimeInterval(duration))
+                timerPausedRemaining[manifest.id] = nil
+                // Publish the restarted duration before sleeping; otherwise
+                // quantization waits on the new deadline while the snapshot
+                // still says Completed and skips the first displayed second.
+                updateTimerSnapshot(manifest: manifest, remaining: duration, running: true)
+                continue
 
             case .running(let remaining):
                 guard canPublish(manifest: manifest, epoch: epoch) else { return }
@@ -377,6 +388,11 @@ final class AppletRuntimeEngine: ObservableObject {
                 return
             }
         }
+    }
+
+    private func resetMetricsSamplerIfIdle() {
+        guard !startedManifests.values.contains(where: { $0.kind == .systemMetrics }) else { return }
+        SystemMetricsSampler.shared.reset()
     }
 
     private func canPublish(

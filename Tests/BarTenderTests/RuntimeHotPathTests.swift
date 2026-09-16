@@ -72,6 +72,56 @@ final class RuntimeHotPathTests: XCTestCase {
         XCTAssertEqual(sampler.memorySampleCount, 1)
     }
 
+    func testSharedSamplerResetDropsCPUBaseline() {
+        let sampler = SharedSystemMetricsSampler()
+        sampler.reuseWindow = 0
+        XCTAssertEqual(sampler.sample(cpu: true, memory: false).cpu, 0)
+        _ = sampler.sample(cpu: true, memory: false)
+        XCTAssertEqual(sampler.cpuSampleCount, 2)
+        sampler.reset()
+        XCTAssertEqual(sampler.cpuSampleCount, 0)
+        XCTAssertEqual(sampler.sample(cpu: true, memory: false).cpu, 0)
+        XCTAssertEqual(sampler.cpuSampleCount, 1)
+    }
+
+    @MainActor
+    func testReenablingMetricsAppletsDropsCPUBaseline() async {
+        SystemMetricsSampler.shared.reset()
+        defer { SystemMetricsSampler.shared.reset() }
+        let runtime = AppletRuntimeEngine()
+        defer { runtime.stopAll() }
+        var metrics = AppletManifest(
+            name: "CPU",
+            iconSystemName: "cpu",
+            kind: .systemMetrics,
+            titleTemplate: "{{cpu}}",
+            refreshIntervalSeconds: 60,
+            enabled: true,
+            config: AppletConfig(metrics: [.cpu])
+        )
+        runtime.sync(with: [metrics])
+        let firstDeadline = Date().addingTimeInterval(1)
+        while Date() < firstDeadline, runtime.snapshots[metrics.id]?.values["cpu"] == nil {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertNotNil(runtime.snapshots[metrics.id]?.values["cpu"])
+
+        metrics.enabled = false
+        runtime.sync(with: [metrics])
+        await Self.drainMainQueue()
+
+        metrics.enabled = true
+        runtime.sync(with: [metrics])
+        let restartDeadline = Date().addingTimeInterval(1)
+        var cpu: String?
+        while Date() < restartDeadline {
+            cpu = runtime.snapshots[metrics.id]?.values["cpu"]
+            if cpu == "0%" { break }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertEqual(cpu, "0%")
+    }
+
     @MainActor
     func testUnchangedSnapshotsDoNotRepublish() async {
         let runtime = AppletRuntimeEngine()

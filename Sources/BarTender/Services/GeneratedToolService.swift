@@ -320,7 +320,9 @@ enum GeneratedToolRunner {
             guard !Task.isCancelled else {
                 throw ProcessRunnerError.cancelled
             }
-            try artifactStore.validateApprovedExecution(manifest, executable: executable)
+            try await Task.detached(priority: .utility) {
+                try artifactStore.validateApprovedExecution(manifest, executable: executable)
+            }.value
             let process = try await ProcessRunner().run(
                 executable: executable.path,
                 arguments: [],
