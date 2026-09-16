@@ -90,7 +90,6 @@ final class ManagerStatusItemControllerTests: XCTestCase {
         XCTAssertEqual(manager.managedStatusItemCount, 0)
         XCTAssertFalse(manager.isInstalled)
 
-        // Safe to uninstall twice.
         manager.uninstall()
         XCTAssertEqual(manager.managedStatusItemCount, 0)
         controller = nil
@@ -114,7 +113,6 @@ final class ManagerStatusItemControllerTests: XCTestCase {
     }
 
     func testUnrelatedEventIsIgnored() {
-        // Key events are not manager status-item interactions.
         let event = NSEvent.keyEvent(
             with: .keyDown,
             location: .zero,
@@ -279,7 +277,6 @@ final class ManagerStatusItemControllerTests: XCTestCase {
             openedWithSelection = model.selection
         }
 
-        // Simulate the menu action path used by the controller.
         model.selection = nil
         AppActions.shared.openMainWindow(selecting: tool.id)
 
@@ -313,7 +310,6 @@ final class ManagerStatusItemControllerTests: XCTestCase {
         XCTAssertEqual(perApplet.managedAppletIDs, Set(store.enabledApplets.map(\.id)))
         XCTAssertTrue(perApplet.managedAppletIDs.contains(first.id))
 
-        // Re-install manager must not affect per-applet items.
         manager.install()
         XCTAssertEqual(manager.managedStatusItemCount, 1)
         XCTAssertEqual(perApplet.managedItemCount, 2)

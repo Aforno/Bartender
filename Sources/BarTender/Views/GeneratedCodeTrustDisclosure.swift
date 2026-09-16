@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Plain-language disclosure for the app's deliberate trusted power-user model.
 struct GeneratedCodeTrustDisclosure: View {
     var compact = false
 

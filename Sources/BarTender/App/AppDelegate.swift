@@ -6,9 +6,7 @@ import Foundation
 final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// App-owned model so menu-bar tools work without a main window.
     let model: AppModel
-    /// Per-tool `NSStatusItem`s; attached at launch, not only when WindowGroup mounts.
     let statusItems: StatusItemManager
-    /// Wine-glass manager item: left-click composer popover, right-click menu.
     private(set) lazy var managerStatusItem = ManagerStatusItemController(
         model: model,
         appletStatusItems: statusItems
@@ -17,7 +15,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// Set when the user chooses Quit so automatic terminate attempts are ignored.
     private(set) var userRequestedTerminate = false
 
-    /// True once `performBootstrap` (via `model.bootstrap`) has finished for diagnostics.
     private(set) var bootstrapCompleted = false
 
     private var cancellables = Set<AnyCancellable>()
@@ -89,7 +86,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        // Dock click / explicit reopen after a silent login launch.
         if !flag || NSApp.windows.allSatisfy({ !MainWindowRouter.isMainWindow($0) || !$0.isVisible }) {
             _ = MainWindowRouter.openMainWindow()
         }
@@ -126,10 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        // Back to regular so status items keep a proper layout slot.
         NSApp.setActivationPolicy(.regular)
-        // Always keep running after the last window closes. Diagnostics exits
-        // explicitly after printing JSON; normal launches keep menu-bar tools.
         return false
     }
 
@@ -142,7 +135,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     static func requestQuit() {
-        // Reach the shared adaptor instance through the running app delegate.
         if let delegate = NSApp.delegate as? AppDelegate {
             delegate.userRequestedTerminate = true
         }
@@ -151,7 +143,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     // MARK: - Menu bar diagnostics
 
-    /// Builds a diagnostics snapshot from the live manager + per-applet items.
     func menuBarDiagnosticsSnapshot() -> MenuBarDiagnosticsSnapshot {
         MenuBarDiagnosticsSnapshot(
             bootstrapCompleted: bootstrapCompleted,
@@ -193,10 +184,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let ns = UInt64(max(0.1, delay) * 1_000_000_000)
         try? await Task.sleep(nanoseconds: ns)
 
-        // If the library is still empty in smoke mode, seed a sample once more.
         if MenuBarDiagnosticsCLI.smokeLibraryPath != nil, model.store.enabledApplets.isEmpty {
             model.addSampleLibrary()
-            // Rebuild after sample install.
             statusItems.rebuild(enabled: model.store.enabledApplets)
             statusItems.refreshAll(snapshots: model.runtime.snapshots)
             try? await Task.sleep(nanoseconds: 200_000_000)
@@ -226,7 +215,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
 
         userRequestedTerminate = true
-        // Exit the process after printing — do not leave a headless instance running.
         Foundation.exit(exitCode)
     }
 

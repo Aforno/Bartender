@@ -10,7 +10,6 @@ final class AIProviderService: ObservableObject {
         }
     }
 
-    /// Concrete model used for generation (shown in the composer model selector).
     @Published var selectedModel: AIModelOption {
         didSet {
             defaults.set(selectedModel.id, forKey: Self.selectedModelKey)
@@ -25,7 +24,6 @@ final class AIProviderService: ObservableObject {
         .agy: .checking
     ]
 
-    /// User preference: which providers appear in the model selector and may be used for generation.
     @Published private(set) var enabledProviders: Set<AIProvider> = Set(AIProvider.allCases) {
         didSet {
             let raw = enabledProviders.map(\.rawValue).sorted()
@@ -33,7 +31,6 @@ final class AIProviderService: ObservableObject {
         }
     }
 
-    /// Cached catalog of models grouped for the picker.
     @Published private(set) var availableModels: [AIModelOption] = []
 
     private let runner = ProcessRunner()
@@ -80,7 +77,6 @@ final class AIProviderService: ObservableObject {
             provider = .codex
         }
 
-        // Initialize stored properties, then refine from disk catalogs.
         selectedProvider = provider
         selectedModel = AIModelOption(
             provider: provider,
@@ -124,7 +120,6 @@ final class AIProviderService: ObservableObject {
         enabledReadyProviders.contains { statuses[$0]?.isReady == true }
     }
 
-    /// Providers that are both user-enabled and CLI-ready.
     var readyProviders: [AIProvider] {
         enabledReadyProviders
     }
@@ -135,7 +130,6 @@ final class AIProviderService: ObservableObject {
         }
     }
 
-    /// Models from enabled + ready providers. Falls back to enabled providers' catalogs.
     var selectableModels: [AIModelOption] {
         let enabled = AIProvider.allCases.filter { enabledProviders.contains($0) }
         let ready = enabledReadyProviders
@@ -158,7 +152,6 @@ final class AIProviderService: ObservableObject {
         AIProvider.allCases.first(where: enabledProviders.contains)
     }
 
-    /// Turns a provider on/off in Settings. At least one provider must stay enabled.
     func setProviderEnabled(_ provider: AIProvider, enabled: Bool) {
         var next = enabledProviders
         if enabled {
@@ -169,13 +162,11 @@ final class AIProviderService: ObservableObject {
         }
         enabledProviders = next
 
-        // If the active provider was disabled, hop to another enabled one.
         if !enabledProviders.contains(selectedProvider),
            let fallback = firstEnabledProvider {
             selectProvider(fallback)
         }
 
-        // Drop selected model if its provider is now off.
         if !enabledProviders.contains(selectedModel.provider),
            let fallback = selectableModels.first ?? firstEnabledProvider.map({ preferredModel(for: $0) }) {
             selectModel(fallback)
@@ -184,11 +175,6 @@ final class AIProviderService: ObservableObject {
         objectWillChange.send()
     }
 
-    func models(for provider: AIProvider) -> [AIModelOption] {
-        availableModels.filter { $0.provider == provider }
-    }
-
-    /// Picks a concrete model and switches the active provider to match.
     func selectModel(_ model: AIModelOption) {
         guard enabledProviders.contains(model.provider) else { return }
         selectedModel = model
@@ -197,7 +183,6 @@ final class AIProviderService: ObservableObject {
         }
     }
 
-    /// Picks a provider and lands on its preferred model.
     func selectProvider(_ provider: AIProvider) {
         guard enabledProviders.contains(provider) else { return }
         selectedProvider = provider
@@ -227,8 +212,6 @@ final class AIProviderService: ObservableObject {
         }
 
         let environment = await environmentLoader()
-        // Probe providers concurrently. Each probe awaits ProcessRunner (an actor),
-        // so independent CLIs progress in parallel; status is published as each finishes.
         await withTaskGroup(of: (AIProvider, ProviderAvailability).self) { group in
             for provider in AIProvider.allCases {
                 group.addTask { @MainActor in
@@ -243,7 +226,6 @@ final class AIProviderService: ObservableObject {
 
         refreshModelCatalog()
 
-        // Prefer keeping the user's selection if ready; otherwise fall back to first ready provider/model.
         if !isProviderEnabled(selectedProvider) || !availability.isReady,
            let fallback = readyProviders.first {
             selectProvider(fallback)
@@ -446,7 +428,7 @@ final class AIProviderService: ObservableObject {
         }
 
         do {
-            let version = try await readVersion(provider: provider, path: path, env: environment)
+            let version = try await readVersion(path: path, env: environment)
             let auth = try await readAuth(provider: provider, path: path, env: environment)
             if let auth, auth.ok == false {
                 return .unavailable(.notAuthenticated(auth.summary))
@@ -494,15 +476,8 @@ final class AIProviderService: ObservableObject {
         case unsupported
     }
 
-    private func readVersion(provider: AIProvider, path: String, env: [String: String]) async throws -> String {
-        // Documented version flags:
-        // codex/claude/grok/gemini/agy --version
-        let args: [String]
-        switch provider {
-        case .codex, .claude, .grok, .gemini, .agy:
-            args = ["--version"]
-        }
-        let result = try await runner.run(executable: path, arguments: args, environment: env, timeout: 15)
+    private func readVersion(path: String, env: [String: String]) async throws -> String {
+        let result = try await runner.run(executable: path, arguments: ["--version"], environment: env, timeout: 15)
         guard !result.timedOut, result.exitCode == 0 else {
             let detail = (result.stderr.isEmpty ? result.stdout : result.stderr)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -651,7 +626,6 @@ final class AIProviderService: ObservableObject {
         prompt: String,
         tempRoot: URL
     ) throws -> Invocation {
-        // All supported CLIs document `-m` / `--model <MODEL>`.
         let modelArgs = modelFlag(for: provider, modelID: model.modelID)
 
         switch provider {

@@ -238,6 +238,32 @@ final class RuntimeHotPathTests: XCTestCase {
         try artifacts.validateApprovedExecution(manifest, executable: second)
     }
 
+    func testFailureNotificationsAreEdgeTriggeredAndResetAfterRecovery() {
+        let id = UUID()
+        var tracker = FailureTransitionTracker()
+
+        XCTAssertTrue(tracker.record(id: id, healthy: false))
+        XCTAssertFalse(tracker.record(id: id, healthy: false))
+        XCTAssertFalse(tracker.record(id: id, healthy: true))
+        XCTAssertTrue(tracker.record(id: id, healthy: false))
+    }
+
+    func testCPUUsageCalculationAndIndependentCollectors() {
+        XCTAssertEqual(
+            SystemMetricsCollector.cpuUsagePercent(
+                previous: [100, 100, 100, 0],
+                current: [150, 150, 200, 0]
+            ),
+            50,
+            accuracy: 0.001
+        )
+
+        let first = SystemMetricsCollector()
+        let second = SystemMetricsCollector()
+        XCTAssertEqual(first.cpuUsagePercent(), 0)
+        XCTAssertEqual(second.cpuUsagePercent(), 0)
+    }
+
     private static func drainMainQueue() async {
         await withCheckedContinuation { continuation in
             DispatchQueue.main.async {

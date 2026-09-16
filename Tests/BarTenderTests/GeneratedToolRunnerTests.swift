@@ -1,65 +1,23 @@
 import XCTest
 @testable import BarTender
 
-final class RuntimeRegressionTests: XCTestCase {
-    func testFailureNotificationsAreEdgeTriggeredAndResetAfterRecovery() {
-        let id = UUID()
-        var tracker = FailureTransitionTracker()
-
-        XCTAssertTrue(tracker.record(id: id, healthy: false))
-        XCTAssertFalse(tracker.record(id: id, healthy: false))
-        XCTAssertFalse(tracker.record(id: id, healthy: true))
-        XCTAssertTrue(tracker.record(id: id, healthy: false))
-    }
-
-    func testGitInvocationDisablesFsmonitorHelpers() {
-        let arguments = GitStatusProbe.invocationArguments(
-            repositoryPath: "/tmp/repo",
-            command: ["status", "--porcelain"]
-        )
-        XCTAssertEqual(
-            arguments,
-            [
-                "-c", "core.fsmonitor=",
-                "-c", "core.useBuiltinFSMonitor=false",
-                "-C", "/tmp/repo",
-                "status", "--porcelain"
-            ]
-        )
-    }
-
-    func testPortProbeCancelsTheConnectionWhenTheTaskIsCancelled() async {
-        let task = Task {
-            await PortProbe.isOpen(host: "192.0.2.1", port: 81, timeout: 8)
-        }
-        try? await Task.sleep(nanoseconds: 80_000_000)
-        let started = Date()
-        task.cancel()
-        _ = await task.value
-        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
-    }
-
-    func testInvalidPortIsRejectedWithoutIntegerConversionTrap() async {
-        let tooHigh = await PortProbe.isOpen(host: "localhost", port: 70000, timeout: 0.1)
-        let negative = await PortProbe.isOpen(host: "localhost", port: -1, timeout: 0.1)
-        XCTAssertFalse(tooHigh)
-        XCTAssertFalse(negative)
-    }
-
-    func testCPUUsageCalculationAndIndependentCollectors() {
-        XCTAssertEqual(
-            SystemMetricsCollector.cpuUsagePercent(
-                previous: [100, 100, 100, 0],
-                current: [150, 150, 200, 0]
-            ),
-            50,
-            accuracy: 0.001
+final class GeneratedToolRunnerTests: XCTestCase {
+    func testGeneratedSourceValidationUsesBashForBashShebang() async throws {
+        let manifest = AppletManifest(
+            name: "Bash Syntax",
+            iconSystemName: "terminal",
+            kind: .generatedTool,
+            titleTemplate: "{{value}}",
+            config: AppletConfig(
+                generatedSource: """
+                #!/bin/bash
+                value=HELLO
+                echo "${value,,}"
+                """
+            )
         )
 
-        let first = SystemMetricsCollector()
-        let second = SystemMetricsCollector()
-        XCTAssertEqual(first.cpuUsagePercent(), 0)
-        XCTAssertEqual(second.cpuUsagePercent(), 0)
+        try await GeneratedToolSourceValidator.validate(manifest)
     }
 
     func testGeneratedToolInstallsAndProducesStructuredMenuOutput() async throws {

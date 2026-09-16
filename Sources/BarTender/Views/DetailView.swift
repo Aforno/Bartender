@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Each tool is presented as a Notion-style document: title, property rows,
-/// then the menu bar preview, review request and build receipt as plain page content.
 struct DetailView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var store: AppletStore
@@ -55,7 +53,7 @@ struct DetailView: View {
         }
 
         if applet.kind == .shellCommand {
-            pageSection(model.isShellApproved(applet) ? "Command approval" : "Review")
+            pageSection(model.isExecutionApproved(applet) ? "Command approval" : "Review")
             shellCommandApprovalCallout(applet)
         }
 
@@ -232,12 +230,12 @@ struct DetailView: View {
 
             if !applet.enabled {
                 Text("Enable this tool to use timer controls")
-                    .font(.inter(.caption))
+                    .font(BarTenderFont.caption)
                     .foregroundStyle(.tertiary)
                     .padding(.leading, PremiumStyle.space4)
             } else if applet.notifyOnComplete {
                 Text("Notification fires on completion")
-                    .font(.inter(.caption))
+                    .font(BarTenderFont.caption)
                     .foregroundStyle(.tertiary)
                     .padding(.leading, PremiumStyle.space4)
             }
@@ -259,13 +257,13 @@ struct DetailView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(isValidating ? "Testing this exact source" : "Read the source, then allow and test it")
-                        .font(.inter(.callout, weight: .semibold))
+                        .font(BarTenderFont.body.weight(.semibold))
                     Text(
                         isValidating
                             ? "Bar Tender is running the first-run check. Approval becomes active only after this exact code returns a healthy result."
                             : "Approval binds to this exact code and working directory. The first run is tested, and failures go back to your selected provider for repair; changed code requires review again."
                     )
-                        .font(.inter(.caption))
+                        .font(BarTenderFont.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -293,7 +291,7 @@ struct DetailView: View {
                 )
 
                 Text("zsh")
-                    .font(.inter(size: 10.5))
+                    .font(BarTenderFont.footnote)
                     .foregroundStyle(.tertiary)
                     .padding(.top, PremiumStyle.space8)
                     .padding(.trailing, PremiumStyle.space12)
@@ -301,7 +299,7 @@ struct DetailView: View {
 
             HStack(spacing: 6) {
                 Label("\(sourceLineCount(applet)) lines · any edit revokes approval", systemImage: "checkmark.shield")
-                    .font(.inter(.caption))
+                    .font(BarTenderFont.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
                 if isValidating {
@@ -309,7 +307,7 @@ struct DetailView: View {
                         ProgressView()
                             .controlSize(.small)
                         Text("Testing…")
-                            .font(.inter(.callout, weight: .medium))
+                            .font(BarTenderFont.bodyEmphasis)
                     }
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Testing generated source")
@@ -339,7 +337,7 @@ struct DetailView: View {
     // MARK: - Shell command approval
 
     private func shellCommandApprovalCallout(_ applet: AppletManifest) -> some View {
-        let approved = model.isShellApproved(applet)
+        let approved = model.isExecutionApproved(applet)
         let command = applet.config.command ?? "No command configured"
         let workingDirectory = applet.config.workingDirectory
             ?? "Not set — inherits Bar Tender’s process directory"
@@ -353,9 +351,9 @@ struct DetailView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(approved ? "This exact command is approved" : "Review this command before it runs")
-                        .font(.inter(.callout, weight: .semibold))
+                        .font(BarTenderFont.body.weight(.semibold))
                     Text("Approval is bound to the exact command and working directory below. Any edit revokes approval.")
-                        .font(.inter(.caption))
+                        .font(BarTenderFont.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -369,7 +367,7 @@ struct DetailView: View {
             )
 
             Text("Approved commands run through your login shell with your user privileges and can read or change files, use the network, and launch commands or apps.")
-                .font(.inter(.caption))
+                .font(BarTenderFont.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -378,19 +376,19 @@ struct DetailView: View {
                     approved ? "Approval current" : "Approval required",
                     systemImage: approved ? "checkmark.circle" : "exclamationmark.triangle"
                 )
-                .font(.inter(.caption))
+                .font(BarTenderFont.caption)
                 .foregroundStyle(approved ? Color.green : Color.orange)
 
                 Spacer()
 
                 if approved {
                     Button("Revoke Approval", role: .destructive) {
-                        model.setShellApproval(false, for: applet)
+                        model.setExecutionApproval(false, for: applet)
                     }
                     .accessibilityIdentifier("revoke-shell-command.\(applet.id.uuidString)")
                 } else {
                     Button {
-                        model.setShellApproval(true, for: applet)
+                        model.setExecutionApproval(true, for: applet)
                     } label: {
                         Label(applet.enabled ? "Allow & Run" : "Allow Command", systemImage: "play.fill")
                     }
@@ -410,7 +408,7 @@ struct DetailView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: PremiumStyle.space4) {
             Text(label)
-                .font(.inter(.caption, weight: .semibold))
+                .font(BarTenderFont.sectionLabel)
                 .foregroundStyle(.secondary)
 
             ScrollView(.horizontal) {
@@ -562,8 +560,6 @@ struct DetailView: View {
 
 // MARK: - Property row
 
-/// Notion-style label/value row with a hover wash. Read-only values;
-/// interactive values (like the Enabled switch) handle themselves.
 private struct PropertyRow<Content: View>: View {
     let label: String
     let systemImage: String

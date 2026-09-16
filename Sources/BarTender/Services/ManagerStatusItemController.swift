@@ -4,7 +4,6 @@ import SwiftUI
 
 // MARK: - Click classification (testable without AppKit event delivery)
 
-/// Classifies status-item mouse events into primary (left) vs secondary (right).
 enum ManagerStatusItemClick: Equatable, Sendable {
     case primary
     case secondary
@@ -27,7 +26,6 @@ enum ManagerStatusItemClick: Equatable, Sendable {
 
 // MARK: - Right-click menu blueprint (pure, testable)
 
-/// Declarative description of the manager context menu. Built into an `NSMenu` at click time.
 enum ManagerContextMenuBlueprint {
     enum Entry: Equatable {
         case sectionHeader(String)
@@ -87,7 +85,6 @@ enum ManagerContextMenuBlueprint {
         return result
     }
 
-    /// Concise row label: name alone, or "Name  shortValue" when a value is available.
     static func menuTitle(name: String, value: String) -> String {
         let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedValue.isEmpty {
@@ -117,16 +114,12 @@ final class ManagerStatusItemController: NSObject {
     private var didInstall = false
     private var recoveredWithoutAutosave = false
 
-    /// Snapshot of the last menu blueprint used for refresh bookkeeping / tests.
     private(set) var lastMenuEntries: [ManagerContextMenuBlueprint.Entry] = []
 
-    /// Whether `install()` has completed successfully.
     var isInstalled: Bool { didInstall && statusItem != nil }
 
-    /// Number of manager status items owned (0 or 1).
     var managedStatusItemCount: Int { statusItem == nil ? 0 : 1 }
 
-    /// Whether the manager button has a non-empty title or a template image.
     var hasVisibleTitleOrImage: Bool {
         guard let button = statusItem?.button else { return false }
         let hasImage = button.image != nil
@@ -134,7 +127,6 @@ final class ManagerStatusItemController: NSObject {
         return hasImage || hasTitle
     }
 
-    /// Live window geometry used by packaged-app diagnostics.
     var frameDiagnostic: MenuBarDiagnosticsSnapshot.StatusItemFrameDiagnostic {
         .capture(button: statusItem?.button)
     }
@@ -145,7 +137,6 @@ final class ManagerStatusItemController: NSObject {
         super.init()
     }
 
-    /// Creates the status item and subscriptions once. Subsequent calls are no-ops.
     func install() {
         guard !didInstall else {
             AppLog.menuBar.debug("Manager status item already installed; ignoring re-install")
@@ -257,7 +248,6 @@ final class ManagerStatusItemController: NSObject {
         popover = pop
     }
 
-    /// Removes the manager item and tears down popover/subscriptions (tests / shutdown).
     func uninstall() {
         resizeWorkItem?.cancel()
         resizeWorkItem = nil
@@ -284,7 +274,6 @@ final class ManagerStatusItemController: NSObject {
         handle(click)
     }
 
-    /// Routes a classified click. Exposed for tests without synthesizing NSEvents.
     func handle(_ click: ManagerStatusItemClick) {
         switch click {
         case .primary:
@@ -304,7 +293,6 @@ final class ManagerStatusItemController: NSObject {
         // Composer interaction needs activation even after a silent login launch.
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        // Size after SwiftUI completes the first layout pass.
         schedulePopoverResize(immediate: true)
         AppLog.menuBar.info("Opened manager composer popover")
     }
@@ -319,7 +307,6 @@ final class ManagerStatusItemController: NSObject {
         closePopover()
         refreshMenuBlueprint()
         let menu = makeNSMenu(from: lastMenuEntries)
-        // Position just below the status item button.
         let location = NSPoint(x: 0, y: button.bounds.height + 2)
         menu.popUp(positioning: nil, at: location, in: button)
         AppLog.menuBar.info("Opened manager context menu (\(self.lastMenuEntries.count, privacy: .public) entries)")
@@ -335,7 +322,6 @@ final class ManagerStatusItemController: NSObject {
             fitting: fitting,
             screenVisibleHeight: screenHeight
         )
-        // Apply only when the size actually changes to avoid layout thrash.
         if abs(popover.contentSize.width - size.width) > 0.5
             || abs(popover.contentSize.height - size.height) > 0.5 {
             popover.contentSize = size
@@ -389,7 +375,6 @@ final class ManagerStatusItemController: NSObject {
             }
             .store(in: &cancellables)
 
-        // Model selector visibility changes composer height.
         model.preferences.$showProviderInComposer
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.schedulePopoverResize() }
@@ -406,8 +391,6 @@ final class ManagerStatusItemController: NSObject {
             .store(in: &cancellables)
     }
 
-    /// Observe phase / error / result / completion on the current session.
-    /// Replaces any previous session subscriptions to avoid duplicates and leaks.
     private func observeGenerationSession(_ session: GenerationSession?) {
         generationCancellables.removeAll()
         guard let session else {
@@ -548,14 +531,9 @@ final class ManagerStatusItemController: NSObject {
 // MARK: - NSPopoverDelegate
 
 extension ManagerStatusItemController: NSPopoverDelegate {
-    nonisolated func popoverDidClose(_ notification: Notification) {
-        // No-op: transient popover; size is recalculated on next open.
-    }
+    nonisolated func popoverDidClose(_ notification: Notification) {}
 }
 
-// MARK: - SwiftUI root for the hosting controller
-
-/// Environment-injected wrapper so the hosting controller has a stable root type.
 struct ManagerComposerRoot: View {
     @ObservedObject var model: AppModel
 
@@ -567,6 +545,6 @@ struct ManagerComposerRoot: View {
             .environmentObject(model.runtime)
             .environmentObject(model.preferences)
             .tint(PremiumStyle.brand)
-            .font(.inter(.body))
+            .font(BarTenderFont.body)
     }
 }

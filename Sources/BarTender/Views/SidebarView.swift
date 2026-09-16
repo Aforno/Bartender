@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Compact AgentNotch-style library: deep black, quiet rows, and state-first values.
 struct SidebarView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var store: AppletStore
@@ -92,8 +91,6 @@ struct SidebarView: View {
         .deepBlackWindowSurface()
     }
 
-    // MARK: - Header
-
     private var header: some View {
         HStack(spacing: 8) {
             Text("Bar Tender")
@@ -132,8 +129,6 @@ struct SidebarView: View {
         }
     }
 
-    // MARK: - Search
-
     private var searchRow: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
@@ -164,8 +159,6 @@ struct SidebarView: View {
         .padding(.horizontal, PremiumStyle.sidebarInset)
     }
 
-    // MARK: - Row value
-
     private func value(for applet: AppletManifest) -> String {
         if !applet.enabled { return "off" }
         if model.isValidatingExecution(applet) { return "testing" }
@@ -182,9 +175,6 @@ struct SidebarView: View {
     }
 }
 
-// MARK: - Tool row
-
-/// A single library row: icon, name, live value; hover reveals a ••• menu.
 private struct ToolRow: View {
     let applet: AppletManifest
     let value: String
@@ -266,8 +256,6 @@ private struct ToolRow: View {
         }
     }
 }
-
-// MARK: - Footer action row
 
 private struct SidebarActionRow: View {
     let title: String

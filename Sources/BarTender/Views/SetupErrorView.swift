@@ -92,33 +92,33 @@ struct SetupErrorView: View {
                 }
                 if !enabled {
                     Text("Disabled in Settings")
-                        .font(.inter(.caption))
+                        .font(BarTenderFont.caption)
                         .foregroundStyle(PremiumStyle.secondaryText)
                     Text("Enable this provider in Settings → Providers to use it for generation.")
-                        .font(.inter(.caption2))
+                        .font(BarTenderFont.footnote)
                         .foregroundStyle(PremiumStyle.secondaryText)
                         .lineLimit(2)
                 } else {
                     switch status {
                     case .checking:
                         Text("Checking…")
-                            .font(.inter(.caption))
+                            .font(BarTenderFont.caption)
                             .foregroundStyle(PremiumStyle.secondaryText)
                     case .ready(let install):
                         Text(install.version)
-                            .font(.inter(.caption))
+                            .font(BarTenderFont.caption)
                             .foregroundStyle(PremiumStyle.secondaryText)
                             .lineLimit(1)
                         Text(install.authSummary)
-                            .font(.inter(.caption2))
+                            .font(BarTenderFont.footnote)
                             .foregroundStyle(PremiumStyle.secondaryText)
                             .lineLimit(1)
                     case .unavailable(let issue):
                         Text(issue.title(for: provider))
-                            .font(.inter(.caption))
+                            .font(BarTenderFont.caption)
                             .foregroundStyle(PremiumStyle.secondaryText)
                         Text(issue.recoverySuggestion(for: provider))
-                            .font(.inter(.caption2))
+                            .font(BarTenderFont.footnote)
                             .foregroundStyle(PremiumStyle.secondaryText)
                             .lineLimit(2)
                     }
@@ -141,7 +141,7 @@ struct SetupErrorView: View {
             }
         }()
         return Text(text)
-            .font(.inter(.caption, weight: .semibold))
+            .font(BarTenderFont.sectionLabel)
             .foregroundStyle(color)
     }
 }

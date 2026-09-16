@@ -3,8 +3,6 @@ import Foundation
 /// Discovers concrete model IDs available to each local CLI.
 /// Prefers on-disk CLI caches (no network), with small built-in fallbacks.
 enum ModelCatalog {
-    /// Models available for a provider. Ready providers get cache-backed lists;
-    /// others still receive fallbacks so the UI can show options when possible.
     static func models(for provider: AIProvider) -> [AIModelOption] {
         models(
             for: provider,
@@ -12,8 +10,6 @@ enum ModelCatalog {
         )
     }
 
-    /// Injectable home directory keeps cache/config compatibility covered by
-    /// deterministic tests as provider CLIs evolve their local schemas.
     static func models(for provider: AIProvider, homeDirectoryURL: URL) -> [AIModelOption] {
         let discovered: [AIModelOption]
         switch provider {
@@ -68,7 +64,6 @@ enum ModelCatalog {
             )
         }
 
-        // Mark default from cache / config if present.
         if let defaultID = readGrokDefaultModelID(homeDirectoryURL: homeDirectoryURL) {
             options = options.map {
                 var copy = $0

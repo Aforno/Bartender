@@ -193,12 +193,10 @@ final class AppModel: ObservableObject {
         bannerMessage = nil
     }
 
-    /// Revises the selected tool in place, or creates one when the New Tool page is active.
     func createFromPrompt(_ prompt: String? = nil) async {
         await generateTool(from: prompt, replacing: selectedApplet)
     }
 
-    /// Creates a tool without inheriting the main window's current library selection.
     func createNewToolFromPrompt(_ prompt: String? = nil) async {
         await generateTool(from: prompt, replacing: nil)
     }
@@ -568,10 +566,6 @@ final class AppModel: ObservableObject {
 
     // MARK: - Execution approval
 
-    func isShellApproved(_ manifest: AppletManifest) -> Bool {
-        shellApprovals.isApproved(manifest)
-    }
-
     func isExecutionApproved(_ manifest: AppletManifest) -> Bool {
         shellApprovals.isApproved(manifest)
     }
@@ -599,10 +593,6 @@ final class AppModel: ObservableObject {
 
         return ShellApprovalStore.fingerprint(for: existingTool)
             != ShellApprovalStore.fingerprint(for: savedTool)
-    }
-
-    func setShellApproval(_ approved: Bool, for manifest: AppletManifest) {
-        setExecutionApproval(approved, for: manifest)
     }
 
     func setExecutionApproval(_ approved: Bool, for manifest: AppletManifest) {
@@ -834,7 +824,6 @@ final class AppModel: ObservableObject {
             } catch {
                 let importError = error
                 var rollbackErrors: [String] = []
-                // Roll back library, approvals, and generated-tool artifacts.
                 do {
                     try store.replaceAll(previousApplets)
                 } catch {

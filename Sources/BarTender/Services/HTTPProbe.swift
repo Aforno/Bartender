@@ -80,7 +80,6 @@ enum HTTPProbe {
         return url
     }
 
-    /// 2xx is healthy unless the applet configured an exact status code.
     static func isHealthy(statusCode: Int, expectedStatusCode: Int?) -> Bool {
         if let expected = expectedStatusCode {
             return statusCode == expected

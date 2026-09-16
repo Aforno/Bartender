@@ -45,19 +45,14 @@ final class StatusItemManager: ObservableObject {
     /// immediate rebuild before the delayed first registration completes.
     private var didCompleteInitialRegistration = false
 
-    /// Whether `attach(model:)` has installed store/runtime subscriptions.
     var isAttached: Bool { model != nil && !cancellables.isEmpty }
 
-    /// Live AppKit status items currently managed (tests / diagnostics).
     var managedItemCount: Int { items.count }
 
-    /// Applet IDs that currently have an individual status item.
     var managedAppletIDs: Set<UUID> { Set(items.keys) }
 
-    /// Whether the delayed first registration has finished.
     var hasCompletedInitialRegistration: Bool { didCompleteInitialRegistration }
 
-    /// Diagnostic rows for each managed status item (titles and geometry for smoke tests).
     func appletItemDiagnostics() -> [MenuBarDiagnosticsSnapshot.AppletItemDiagnostic] {
         guard let model else { return [] }
         return items.keys.sorted { $0.uuidString < $1.uuidString }.compactMap { id in
@@ -96,8 +91,6 @@ final class StatusItemManager: ObservableObject {
         didCompleteInitialRegistration = false
         cancellables.removeAll()
 
-        // A lower cap frees menu-bar space; rebuilding here keeps the live
-        // items in sync with the preference without touching the main window.
         model.preferences.$maximumMenuBarItems
             .dropFirst()
             .receive(on: RunLoop.main)
@@ -150,7 +143,6 @@ final class StatusItemManager: ObservableObject {
         )
     }
 
-    /// Effective per-applet cap, derived from the user preference (clamped).
     private var individualItemLimit: Int {
         guard let model else { return Self.maximumIndividualItems }
         return min(max(model.preferences.maximumMenuBarItems, 1), Self.maximumIndividualItems)
@@ -270,7 +262,6 @@ final class StatusItemManager: ObservableObject {
         hasPaintableSlot && !expansionPreviouslyClipped
     }
 
-    /// Inputs that change the extra's title, tooltip, symbol, or menu copy.
     static func refreshIdentity(
         applet: AppletManifest,
         snapshot: AppletSnapshot,
@@ -590,86 +581,5 @@ final class StatusItemManager: ObservableObject {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.isEnabled = false
         return item
-    }
-}
-
-@MainActor
-final class AppActions: NSObject {
-    static let shared = AppActions()
-    weak var model: AppModel?
-    /// Set by the main window when it mounts so a closed window can be recreated.
-    var openWindowAction: (() -> Void)?
-
-    /// Installs the SwiftUI `openWindow` recreation path (main window, commands).
-    func installOpenWindowAction(_ action: @escaping () -> Void) {
-        openWindowAction = action
-    }
-
-    /// Clears process-wide action state between tests.
-    func resetForTesting() {
-        model = nil
-        openWindowAction = nil
-    }
-
-    @objc func toggleTimer(_ sender: NSMenuItem) {
-        guard let id = uuid(from: sender),
-              let model,
-              let applet = model.store.applet(id: id) else { return }
-        model.runtime.toggleTimer(id: id, manifest: applet)
-    }
-
-    @objc func resetTimer(_ sender: NSMenuItem) {
-        guard let id = uuid(from: sender),
-              let model,
-              let applet = model.store.applet(id: id) else { return }
-        model.runtime.resetTimer(id: id, manifest: applet)
-    }
-
-    @objc func openApplet(_ sender: NSMenuItem) {
-        guard let id = uuid(from: sender) else { return }
-        openMainWindow(selecting: id)
-    }
-
-    func openMainWindow(selecting id: UUID? = nil) {
-        if let id {
-            model?.selection = id
-        }
-        AppDelegate.prepareForMainWindow()
-        // Prefer the canonical router (focus existing, else stored OpenWindowAction).
-        if MainWindowRouter.openMainWindow() {
-            return
-        }
-        // Fallback when router could not open (first open after a silent launch).
-        if let openWindowAction {
-            openWindowAction()
-            return
-        }
-        // Last resort: ask any mounted SwiftUI host to open the main window.
-        NotificationCenter.default.post(name: .bartenderOpenMainWindow, object: nil)
-    }
-
-    /// Opens the SwiftUI `Settings` scene via the standard AppKit selector.
-    func openSettings() {
-        NSApp.activate(ignoringOtherApps: true)
-        // SwiftUI Settings scene responds to showSettingsWindow: (macOS 13+).
-        let settingsSelector = Selector(("showSettingsWindow:"))
-        if NSApp.sendAction(settingsSelector, to: nil, from: nil) {
-            return
-        }
-        // Older spelling used by some system builds.
-        let prefsSelector = Selector(("showPreferencesWindow:"))
-        _ = NSApp.sendAction(prefsSelector, to: nil, from: nil)
-    }
-
-    @objc func toggleEnabled(_ sender: NSMenuItem) {
-        guard let id = uuid(from: sender),
-              let model,
-              let applet = model.store.applet(id: id) else { return }
-        model.toggleEnabled(applet)
-    }
-
-    private func uuid(from sender: NSMenuItem) -> UUID? {
-        guard let raw = sender.representedObject as? String else { return nil }
-        return UUID(uuidString: raw)
     }
 }

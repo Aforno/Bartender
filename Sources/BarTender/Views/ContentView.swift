@@ -37,16 +37,10 @@ struct ContentView: View {
                 .environmentObject(providers)
         }
         .toolbar {
-            if #available(macOS 26.0, *) {
-                ToolbarItem(placement: .navigation) {
-                    titlebarNavigationControls
-                }
-                .sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .navigation) {
-                    titlebarNavigationControls
-                }
+            ToolbarItem(placement: .navigation) {
+                titlebarNavigationControls
             }
+            .sharedBackgroundVisibility(.hidden)
         }
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .onChange(of: model.selection) { oldSelection, newSelection in

@@ -42,13 +42,10 @@ final class UpdateService: ObservableObject {
 
     @Published private(set) var state: State = .idle
 
-    /// Injectable for tests; production uses the shared session.
     nonisolated let session: URLSession
     nonisolated let releasesURL: URL
-    /// Info dictionary override for tests (short version / build / channel).
     nonisolated let infoDictionary: [String: Any]?
 
-    /// Default page size for GitHub Releases listing.
     nonisolated static let releasesPerPage = 100
 
     nonisolated private static let defaultReleasesURL = URL(
@@ -138,7 +135,6 @@ final class UpdateService: ObservableObject {
         case noneCompatible
     }
 
-    /// Decoded release fields used by the update checker.
     struct Release: Equatable, Sendable {
         var tagName: String
         var htmlURL: String
@@ -254,7 +250,6 @@ final class UpdateService: ObservableObject {
         return nextPageURL(fromLinkHeader: linkHeader)
     }
 
-    /// Pure Link-header parser for production and unit tests.
     nonisolated static func nextPageURL(fromLinkHeader header: String) -> URL? {
         // Example: <https://api.github.com/...?page=2>; rel="next", <...>; rel="last"
         let parts = header.split(separator: ",")
@@ -339,15 +334,12 @@ final class UpdateService: ObservableObject {
         if release.draft { return false }
         switch channel {
         case .prerelease:
-            // Prerelease app builds track GitHub prereleases only.
             return release.prerelease
         case .stable:
-            // Stable app builds track non-prerelease GitHub releases only.
             return !release.prerelease
         }
     }
 
-    /// True when `release` should be offered as an update over the installed identity.
     nonisolated static func isRelease(
         _ release: Release,
         newerThanVersion currentVersion: String,
