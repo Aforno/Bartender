@@ -5,9 +5,9 @@ import Foundation
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// App-owned model so menu-bar tools work without a main window.
-    let model = AppModel()
+    let model: AppModel
     /// Per-tool `NSStatusItem`s; attached at launch, not only when WindowGroup mounts.
-    let statusItems = StatusItemManager()
+    let statusItems: StatusItemManager
     /// Wine-glass manager item: left-click composer popover, right-click menu.
     private(set) lazy var managerStatusItem = ManagerStatusItemController(
         model: model,
@@ -25,6 +25,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private var diagnosticsExitTask: Task<Void, Never>?
 
     override init() {
+        if let exitCode = HardwareSensorsCLI.handledExitCode() {
+            Foundation.exit(Int32(exitCode))
+        }
+        self.model = AppModel()
+        self.statusItems = StatusItemManager()
         super.init()
         // Forward model changes so Scene commands (Quit, New Tool, …) re-evaluate
         // `.disabled` / titles after the model moved out of `@StateObject`.

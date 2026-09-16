@@ -22,6 +22,18 @@ struct AppletSnapshot: Equatable, Sendable {
             progress: nil
         )
     }
+
+    /// Visible menu-bar / library state. `updatedAt` is excluded so identical
+    /// titles do not republish on every poll or timer wake.
+    func hasSamePublishedState(as other: AppletSnapshot) -> Bool {
+        statusText == other.statusText
+            && title == other.title
+            && detailLines == other.detailLines
+            && isHealthy == other.isHealthy
+            && values == other.values
+            && isRunning == other.isRunning
+            && progress == other.progress
+    }
 }
 
 enum ToolRunState: Equatable, Sendable {

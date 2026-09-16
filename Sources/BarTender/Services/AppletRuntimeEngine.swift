@@ -54,7 +54,16 @@ enum AppletTimerLoopDisposition: Equatable {
 /// Interprets validated applet manifests and produces live menu bar snapshots.
 @MainActor
 final class AppletRuntimeEngine: ObservableObject {
-    @Published private(set) var snapshots: [UUID: AppletSnapshot] = [:]
+    private(set) var snapshots: [UUID: AppletSnapshot] = [:]
+    private let snapshotsSubject = PassthroughSubject<[UUID: AppletSnapshot], Never>()
+    private var snapshotPublishScheduled = false
+
+    /// Emits after coalesced snapshot mutations. Unlike `@Published`, identical
+    /// visible state does not produce a value, and multiple writes in one turn
+    /// collapse to a single main-queue delivery.
+    var snapshotsPublisher: AnyPublisher<[UUID: AppletSnapshot], Never> {
+        snapshotsSubject.eraseToAnyPublisher()
+    }
 
     private let shellApprovals: ShellApprovalStore
     private let generatedTools: GeneratedToolArtifactStore
@@ -64,7 +73,6 @@ final class AppletRuntimeEngine: ObservableObject {
     private var startedManifests: [UUID: AppletManifest] = [:]
     private var timerEnds: [UUID: Date] = [:]
     private var timerPausedRemaining: [UUID: Int] = [:]
-    private var metricCollectors: [UUID: SystemMetricsCollector] = [:]
     private var failureTransitions = FailureTransitionTracker()
     private var executionEpochs = AppletExecutionEpochs()
 
@@ -92,17 +100,17 @@ final class AppletRuntimeEngine: ObservableObject {
         }
 
         for manifest in manifests where !manifest.enabled {
-            snapshots[manifest.id] = .placeholder(for: manifest)
+            publishSnapshot(.placeholder(for: manifest), for: manifest.id)
         }
 
         for id in Array(snapshots.keys) where !manifestIDs.contains(id) {
-            snapshots.removeValue(forKey: id)
+            removeSnapshot(id: id)
             failureTransitions.remove(id: id)
         }
 
         for manifest in enabled {
             if snapshots[manifest.id] == nil {
-                snapshots[manifest.id] = .placeholder(for: manifest)
+                publishSnapshot(.placeholder(for: manifest), for: manifest.id)
             }
             if startedManifests[manifest.id] == nil {
                 start(manifest)
@@ -116,7 +124,7 @@ final class AppletRuntimeEngine: ObservableObject {
 
     func restart(manifest: AppletManifest) {
         stop(id: manifest.id)
-        snapshots[manifest.id] = .placeholder(for: manifest)
+        publishSnapshot(.placeholder(for: manifest), for: manifest.id)
         guard manifest.enabled else {
             return
         }
@@ -131,7 +139,7 @@ final class AppletRuntimeEngine: ObservableObject {
     ) {
         stop(id: manifest.id)
         guard manifest.enabled else {
-            snapshots[manifest.id] = .placeholder(for: manifest)
+            publishSnapshot(.placeholder(for: manifest), for: manifest.id)
             return
         }
         startedManifests[manifest.id] = manifest
@@ -149,13 +157,11 @@ final class AppletRuntimeEngine: ObservableObject {
         startedManifests[id] = nil
         timerEnds[id] = nil
         timerPausedRemaining[id] = nil
-        metricCollectors[id] = nil
         failureTransitions.remove(id: id)
-        // Re-publish so status items refresh validation/approval chrome even when
-        // the title text is unchanged (e.g. first-run check just started).
-        if let current = snapshots[id] {
-            snapshots[id] = current
-        }
+        resetMetricsSamplerIfIdle()
+        // Emit even when the title is unchanged so status items recompute
+        // validation/approval chrome (e.g. first-run check just started).
+        scheduleSnapshotPublish()
     }
 
     func stopAll() {
@@ -165,7 +171,10 @@ final class AppletRuntimeEngine: ObservableObject {
         for id in trackedIDs {
             stop(id: id)
         }
-        snapshots.removeAll()
+        if !snapshots.isEmpty {
+            snapshots.removeAll()
+            scheduleSnapshotPublish()
+        }
     }
 
     func toggleTimer(id: UUID, manifest: AppletManifest) {
@@ -228,6 +237,21 @@ final class AppletRuntimeEngine: ObservableObject {
         return max(0, Int(ceil(interval)))
     }
 
+    /// Sleep until the displayed remaining seconds would change, capped at 1s.
+    /// Visible timer fields are quantized to whole seconds, so a 500ms poll
+    /// only duplicated snapshot publishes.
+    nonisolated static func nanosecondsUntilNextTimerDisplayChange(
+        timerEnd: Date,
+        now: Date
+    ) -> UInt64 {
+        let remaining = remainingSeconds(until: timerEnd, now: now)
+        guard remaining > 0 else { return 0 }
+        let interval = timerEnd.timeIntervalSince(now)
+        let sleep = interval - TimeInterval(remaining - 1)
+        let clamped = min(max(sleep, 0.001), 1.0)
+        return UInt64((clamped * 1_000_000_000).rounded())
+    }
+
     nonisolated static func timerLoopDisposition(
         timerEnd: Date?,
         now: Date
@@ -241,7 +265,12 @@ final class AppletRuntimeEngine: ObservableObject {
 
     private func start(_ manifest: AppletManifest) {
         AppLog.runtime.info("Starting applet \(manifest.name, privacy: .public) (\(manifest.kind.rawValue, privacy: .public))")
+        let shouldResetMetrics = manifest.kind == .systemMetrics
+            && !startedManifests.values.contains(where: { $0.kind == .systemMetrics })
         startedManifests[manifest.id] = manifest
+        if shouldResetMetrics {
+            SystemMetricsSampler.shared.reset()
+        }
 
         switch manifest.kind {
         case .timer, .countdown:
@@ -251,9 +280,6 @@ final class AppletRuntimeEngine: ObservableObject {
             updateTimerSnapshot(manifest: manifest, remaining: duration, running: true)
             scheduleTimerLoop(manifest)
         default:
-            if manifest.kind == .systemMetrics {
-                metricCollectors[manifest.id] = SystemMetricsCollector()
-            }
             let epoch = executionEpochs.begin(for: manifest.id)
             tasks[manifest.id] = Task { [weak self] in
                 await self?.runPollingLoop(manifest, epoch: epoch)
@@ -306,23 +332,34 @@ final class AppletRuntimeEngine: ObservableObject {
                 if manifest.notifyOnComplete {
                     notify(title: manifest.name, body: "Timer finished.")
                 }
-                if manifest.config.autoRestart == true {
-                    let duration = max(1, manifest.config.durationSeconds ?? 1)
-                    timerEnds[manifest.id] = Date().addingTimeInterval(TimeInterval(duration))
-                } else {
+                guard manifest.config.autoRestart == true else {
                     timerEnds[manifest.id] = nil
                     timerPausedRemaining[manifest.id] = 0
                     finishTimerLoopIfCurrent(manifest: manifest, epoch: epoch)
                     return
                 }
+                let duration = max(1, manifest.config.durationSeconds ?? 1)
+                timerEnds[manifest.id] = Date().addingTimeInterval(TimeInterval(duration))
+                timerPausedRemaining[manifest.id] = nil
+                // Publish the restarted duration before sleeping; otherwise
+                // quantization waits on the new deadline while the snapshot
+                // still says Completed and skips the first displayed second.
+                updateTimerSnapshot(manifest: manifest, remaining: duration, running: true)
+                continue
 
             case .running(let remaining):
                 guard canPublish(manifest: manifest, epoch: epoch) else { return }
                 updateTimerSnapshot(manifest: manifest, remaining: remaining, running: true)
             }
 
+            guard canPublish(manifest: manifest, epoch: epoch) else { return }
+            guard let end = timerEnds[manifest.id] else {
+                finishTimerLoopIfCurrent(manifest: manifest, epoch: epoch)
+                return
+            }
+            let sleepNS = Self.nanosecondsUntilNextTimerDisplayChange(timerEnd: end, now: .now)
             do {
-                try await Task.sleep(nanoseconds: 500_000_000)
+                try await Task.sleep(nanoseconds: sleepNS == 0 ? 1_000_000 : sleepNS)
             } catch {
                 return
             }
@@ -351,6 +388,11 @@ final class AppletRuntimeEngine: ObservableObject {
                 return
             }
         }
+    }
+
+    private func resetMetricsSamplerIfIdle() {
+        guard !startedManifests.values.contains(where: { $0.kind == .systemMetrics }) else { return }
+        SystemMetricsSampler.shared.reset()
     }
 
     private func canPublish(
@@ -398,19 +440,22 @@ final class AppletRuntimeEngine: ObservableObject {
             "host": URL(string: result.displayURL)?.host ?? result.displayURL
         ]
         let title = TitleRenderer.render(template: manifest.titleTemplate, values: values, fallback: manifest.name)
-        snapshots[manifest.id] = AppletSnapshot(
-            statusText: result.message,
-            title: title,
-            detailLines: [
-                result.displayURL,
-                "Latency \(result.latencyMS) ms",
-                result.ok ? "Healthy" : "Check failed"
-            ],
-            isHealthy: result.ok,
-            values: values,
-            updatedAt: .now,
-            isRunning: true,
-            progress: nil
+        publishSnapshot(
+            AppletSnapshot(
+                statusText: result.message,
+                title: title,
+                detailLines: [
+                    result.displayURL,
+                    "Latency \(result.latencyMS) ms",
+                    result.ok ? "Healthy" : "Check failed"
+                ],
+                isHealthy: result.ok,
+                values: values,
+                updatedAt: .now,
+                isRunning: true,
+                progress: nil
+            ),
+            for: manifest.id
         )
         maybeNotifyFailure(manifest: manifest, healthy: result.ok, body: result.message)
     }
@@ -428,15 +473,18 @@ final class AppletRuntimeEngine: ObservableObject {
             "port": String(port)
         ]
         let title = TitleRenderer.render(template: manifest.titleTemplate, values: values, fallback: manifest.name)
-        snapshots[manifest.id] = AppletSnapshot(
-            statusText: open ? "Port \(port) open" : "Port \(port) closed",
-            title: title,
-            detailLines: ["\(host):\(port)", open ? "Accepting connections" : "Unreachable"],
-            isHealthy: open,
-            values: values,
-            updatedAt: .now,
-            isRunning: true,
-            progress: nil
+        publishSnapshot(
+            AppletSnapshot(
+                statusText: open ? "Port \(port) open" : "Port \(port) closed",
+                title: title,
+                detailLines: ["\(host):\(port)", open ? "Accepting connections" : "Unreachable"],
+                isHealthy: open,
+                values: values,
+                updatedAt: .now,
+                isRunning: true,
+                progress: nil
+            ),
+            for: manifest.id
         )
         maybeNotifyFailure(manifest: manifest, healthy: open, body: "\(host):\(port) is offline")
     }
@@ -444,33 +492,36 @@ final class AppletRuntimeEngine: ObservableObject {
     private func tickMetrics(_ manifest: AppletManifest, epoch: UInt64) {
         guard canPublish(manifest: manifest, epoch: epoch) else { return }
         let metrics = manifest.config.metrics ?? [.cpu, .memory]
-        let collector = metricCollectors[manifest.id] ?? SystemMetricsCollector()
-        metricCollectors[manifest.id] = collector
-        let cpu = collector.cpuUsagePercent()
-        let memory = SystemMetricsCollector.memoryUsage()
+        let sample = SystemMetricsSampler.shared.sample(
+            cpu: metrics.contains(.cpu),
+            memory: metrics.contains(.memory)
+        )
         var values: [String: String] = [:]
         var details: [String] = []
         if metrics.contains(.cpu) {
-            values["cpu"] = TitleRenderer.formatPercent(cpu)
-            details.append("CPU \(TitleRenderer.formatPercent(cpu))")
+            values["cpu"] = TitleRenderer.formatPercent(sample.cpu)
+            details.append("CPU \(TitleRenderer.formatPercent(sample.cpu))")
         }
         if metrics.contains(.memory) {
-            values["memory"] = TitleRenderer.formatPercent(memory.percent)
-            values["value"] = TitleRenderer.formatBytes(memory.usedBytes)
-            details.append("Memory \(TitleRenderer.formatPercent(memory.percent))")
-            details.append(TitleRenderer.formatBytes(memory.usedBytes) + " used")
+            values["memory"] = TitleRenderer.formatPercent(sample.memory.percent)
+            values["value"] = TitleRenderer.formatBytes(sample.memory.usedBytes)
+            details.append("Memory \(TitleRenderer.formatPercent(sample.memory.percent))")
+            details.append(TitleRenderer.formatBytes(sample.memory.usedBytes) + " used")
         }
         values["status"] = "Live"
         let title = TitleRenderer.render(template: manifest.titleTemplate, values: values, fallback: manifest.name)
-        snapshots[manifest.id] = AppletSnapshot(
-            statusText: details.joined(separator: " · "),
-            title: title,
-            detailLines: details,
-            isHealthy: true,
-            values: values,
-            updatedAt: .now,
-            isRunning: true,
-            progress: nil
+        publishSnapshot(
+            AppletSnapshot(
+                statusText: details.joined(separator: " · "),
+                title: title,
+                detailLines: details,
+                isHealthy: true,
+                values: values,
+                updatedAt: .now,
+                isRunning: true,
+                progress: nil
+            ),
+            for: manifest.id
         )
     }
 
@@ -485,19 +536,22 @@ final class AppletRuntimeEngine: ObservableObject {
             "value": String(result.changedFiles)
         ]
         let title = TitleRenderer.render(template: manifest.titleTemplate, values: values, fallback: manifest.name)
-        snapshots[manifest.id] = AppletSnapshot(
-            statusText: result.message,
-            title: title,
-            detailLines: [
-                (path as NSString).expandingTildeInPath,
-                "Branch \(result.branch)",
-                "\(result.changedFiles) changed files"
-            ],
-            isHealthy: result.ok,
-            values: values,
-            updatedAt: .now,
-            isRunning: true,
-            progress: nil
+        publishSnapshot(
+            AppletSnapshot(
+                statusText: result.message,
+                title: title,
+                detailLines: [
+                    (path as NSString).expandingTildeInPath,
+                    "Branch \(result.branch)",
+                    "\(result.changedFiles) changed files"
+                ],
+                isHealthy: result.ok,
+                values: values,
+                updatedAt: .now,
+                isRunning: true,
+                progress: nil
+            ),
+            for: manifest.id
         )
         maybeNotifyFailure(manifest: manifest, healthy: result.ok, body: result.message)
     }
@@ -516,19 +570,22 @@ final class AppletRuntimeEngine: ObservableObject {
             "value": result.message
         ]
         let title = TitleRenderer.render(template: manifest.titleTemplate, values: values, fallback: manifest.name)
-        snapshots[manifest.id] = AppletSnapshot(
-            statusText: result.message,
-            title: title,
-            detailLines: [
-                command,
-                result.ok ? "Exit \(result.exitCode)" : result.message,
-                approved ? "Approved" : "Awaiting approval"
-            ],
-            isHealthy: result.ok,
-            values: values,
-            updatedAt: .now,
-            isRunning: approved,
-            progress: nil
+        publishSnapshot(
+            AppletSnapshot(
+                statusText: result.message,
+                title: title,
+                detailLines: [
+                    command,
+                    result.ok ? "Exit \(result.exitCode)" : result.message,
+                    approved ? "Approved" : "Awaiting approval"
+                ],
+                isHealthy: result.ok,
+                values: values,
+                updatedAt: .now,
+                isRunning: approved,
+                progress: nil
+            ),
+            for: manifest.id
         )
         maybeNotifyFailure(manifest: manifest, healthy: result.ok || !approved, body: result.message)
     }
@@ -546,18 +603,21 @@ final class AppletRuntimeEngine: ObservableObject {
             applyGeneratedToolOutput(output, manifest: manifest)
         } else {
             let title = result.approved ? "Issue" : "Review"
-            snapshots[manifest.id] = AppletSnapshot(
-                statusText: result.message,
-                title: title,
-                detailLines: [
-                    result.approved ? "Generated code could not refresh" : "Generated code is installed",
-                    result.approved ? result.message : "Open Bar Tender to review and allow it"
-                ],
-                isHealthy: !result.approved,
-                values: ["status": result.approved ? "Error" : "Ready", "value": title],
-                updatedAt: .now,
-                isRunning: false,
-                progress: nil
+            publishSnapshot(
+                AppletSnapshot(
+                    statusText: result.message,
+                    title: title,
+                    detailLines: [
+                        result.approved ? "Generated code could not refresh" : "Generated code is installed",
+                        result.approved ? result.message : "Open Bar Tender to review and allow it"
+                    ],
+                    isHealthy: !result.approved,
+                    values: ["status": result.approved ? "Error" : "Ready", "value": title],
+                    updatedAt: .now,
+                    isRunning: false,
+                    progress: nil
+                ),
+                for: manifest.id
             )
             maybeNotifyFailure(manifest: manifest, healthy: !result.approved, body: result.message)
         }
@@ -570,15 +630,18 @@ final class AppletRuntimeEngine: ObservableObject {
         var values = output.values
         values["status"] = values["status"] ?? output.status
         values["value"] = values["value"] ?? output.title
-        snapshots[manifest.id] = AppletSnapshot(
-            statusText: output.status,
-            title: output.title,
-            detailLines: output.details.isEmpty ? ["Generated tool is running"] : output.details,
-            isHealthy: output.healthy,
-            values: values,
-            updatedAt: .now,
-            isRunning: true,
-            progress: nil
+        publishSnapshot(
+            AppletSnapshot(
+                statusText: output.status,
+                title: output.title,
+                detailLines: output.details.isEmpty ? ["Generated tool is running"] : output.details,
+                isHealthy: output.healthy,
+                values: values,
+                updatedAt: .now,
+                isRunning: true,
+                progress: nil
+            ),
+            for: manifest.id
         )
         maybeNotifyFailure(manifest: manifest, healthy: output.healthy, body: output.status)
     }
@@ -591,19 +654,49 @@ final class AppletRuntimeEngine: ObservableObject {
             "value": TitleRenderer.formatDuration(remaining)
         ]
         let title = TitleRenderer.render(template: manifest.titleTemplate, values: values, fallback: manifest.name)
-        snapshots[manifest.id] = AppletSnapshot(
-            statusText: running ? "Running" : (remaining == 0 ? "Completed" : "Paused"),
-            title: title,
-            detailLines: [
-                "Duration \(TitleRenderer.formatDuration(duration))",
-                "Remaining \(TitleRenderer.formatDuration(remaining))"
-            ],
-            isHealthy: true,
-            values: values,
-            updatedAt: .now,
-            isRunning: running,
-            progress: 1.0 - (Double(remaining) / Double(duration))
+        publishSnapshot(
+            AppletSnapshot(
+                statusText: running ? "Running" : (remaining == 0 ? "Completed" : "Paused"),
+                title: title,
+                detailLines: [
+                    "Duration \(TitleRenderer.formatDuration(duration))",
+                    "Remaining \(TitleRenderer.formatDuration(remaining))"
+                ],
+                isHealthy: true,
+                values: values,
+                updatedAt: .now,
+                isRunning: running,
+                progress: 1.0 - (Double(remaining) / Double(duration))
+            ),
+            for: manifest.id
         )
+    }
+
+    private func publishSnapshot(_ snapshot: AppletSnapshot, for id: UUID) {
+        if let existing = snapshots[id], existing.hasSamePublishedState(as: snapshot) {
+            return
+        }
+        snapshots[id] = snapshot
+        scheduleSnapshotPublish()
+    }
+
+    private func removeSnapshot(id: UUID) {
+        guard snapshots.removeValue(forKey: id) != nil else { return }
+        scheduleSnapshotPublish()
+    }
+
+    private func scheduleSnapshotPublish() {
+        guard !snapshotPublishScheduled else { return }
+        snapshotPublishScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            self?.flushSnapshotPublish()
+        }
+    }
+
+    private func flushSnapshotPublish() {
+        snapshotPublishScheduled = false
+        objectWillChange.send()
+        snapshotsSubject.send(snapshots)
     }
 
     private func maybeNotifyFailure(manifest: AppletManifest, healthy: Bool, body: String) {

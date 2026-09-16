@@ -93,4 +93,97 @@ final class HardwareSensorsTests: XCTestCase {
         XCTAssertFalse(errors.isEmpty)
     }
 
+    func testCLIIgnoresNormalAppArguments() {
+        let code = HardwareSensorsCLI.handledExitCode(
+            arguments: ["/App/BarTender"],
+            readings: { XCTFail("must not read sensors"); return [] },
+            printLine: { _ in },
+            printError: { _ in }
+        )
+        XCTAssertNil(code)
+    }
+
+    func testTemperatureKeyCacheRoundTripsValidKeysAndDropsOthers() throws {
+        let record = SMCTemperatureKeyCache.Record(
+            keys: ["Tp09", "NOPE", "Tg0f", "T"],
+            smcKeyCount: 400,
+            hardwareIdentifier: "Mac16,1",
+            savedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let encoded = try XCTUnwrap(SMCTemperatureKeyCache.encoded(record))
+        let decoded = try XCTUnwrap(SMCTemperatureKeyCache.decodedRecord(from: encoded))
+        XCTAssertEqual(decoded.keys, ["Tp09", "Tg0f"])
+        XCTAssertEqual(decoded.smcKeyCount, 400)
+        XCTAssertEqual(decoded.hardwareIdentifier, "Mac16,1")
+        XCTAssertNil(SMCTemperatureKeyCache.encoded(SMCTemperatureKeyCache.Record(
+            keys: ["NOPE", "T"],
+            smcKeyCount: 1,
+            hardwareIdentifier: "Mac16,1",
+            savedAt: Date()
+        )))
+        XCTAssertNil(SMCTemperatureKeyCache.decodedRecord(from: Data("{".utf8)))
+        XCTAssertNil(SMCTemperatureKeyCache.decodedRecord(from: try JSONEncoder().encode(["Tp09"])))
+    }
+
+    func testTemperatureKeyCacheRejectsStaleOrMismatchedRecords() {
+        let now = Date(timeIntervalSince1970: 2_000)
+        let record = SMCTemperatureKeyCache.Record(
+            keys: ["Tp09"],
+            smcKeyCount: 100,
+            hardwareIdentifier: "Mac16,1",
+            savedAt: now.addingTimeInterval(-60)
+        )
+        XCTAssertTrue(SMCTemperatureKeyCache.isValid(
+            record,
+            smcKeyCount: 100,
+            hardwareIdentifier: "Mac16,1",
+            now: now
+        ))
+        XCTAssertFalse(SMCTemperatureKeyCache.isValid(
+            record,
+            smcKeyCount: 120,
+            hardwareIdentifier: "Mac16,1",
+            now: now
+        ))
+        XCTAssertFalse(SMCTemperatureKeyCache.isValid(
+            record,
+            smcKeyCount: 100,
+            hardwareIdentifier: "Mac15,1",
+            now: now
+        ))
+        XCTAssertFalse(SMCTemperatureKeyCache.isValid(
+            record,
+            smcKeyCount: 100,
+            hardwareIdentifier: "Mac16,1",
+            now: now,
+            ttl: 30
+        ))
+        XCTAssertTrue(SMCTemperatureKeyCache.isValid(
+            record,
+            smcKeyCount: 0,
+            hardwareIdentifier: "Mac16,1",
+            now: now
+        ))
+    }
+
+    func testTemperatureKeyCachePersistsToDisk() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BarTender-SMCKeys-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let record = SMCTemperatureKeyCache.Record(
+            keys: ["Tp09", "Te05"],
+            smcKeyCount: 250,
+            hardwareIdentifier: "Mac16,1",
+            savedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        SMCTemperatureKeyCache.save(record, to: url)
+        XCTAssertEqual(SMCTemperatureKeyCache.load(from: url)?.keys, ["Tp09", "Te05"])
+        XCTAssertEqual(SMCTemperatureKeyCache.load(from: url)?.smcKeyCount, 250)
+    }
+
+    func testHardwareIdentifierIsNonempty() {
+        XCTAssertFalse(SMCTemperatureKeyCache.hardwareIdentifier().isEmpty)
+    }
+
 }

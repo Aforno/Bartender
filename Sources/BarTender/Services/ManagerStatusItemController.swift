@@ -369,7 +369,7 @@ final class ManagerStatusItemController: NSObject {
             .sink { [weak self] _ in self?.refreshMenuBlueprint() }
             .store(in: &cancellables)
 
-        model.runtime.$snapshots
+        model.runtime.snapshotsPublisher
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.refreshMenuBlueprint() }
             .store(in: &cancellables)

@@ -1,6 +1,19 @@
 import AppKit
 import Combine
 
+struct StatusItemRefreshIdentity: Equatable {
+    var title: String
+    var statusText: String
+    var detailLines: [String]
+    var isRunning: Bool
+    var isHealthy: Bool
+    var runState: ToolRunState
+    var iconSystemName: String
+    var name: String
+    var enabled: Bool
+    var showsLiveTitle: Bool
+}
+
 /// Creates one `NSStatusItem` per enabled applet. The wine-glass manager item
 /// is owned separately by `ManagerStatusItemController`.
 @MainActor
@@ -24,6 +37,9 @@ final class StatusItemManager: ObservableObject {
     private var clippedTitleIDs: Set<UUID> = []
     /// Items already recreated without an autosave identity.
     private var recoveredWithoutAutosave: Set<UUID> = []
+    /// Last AppKit presentation applied per extra; skip layout/menu rebuilds
+    /// when title, run state, and compact/expanded mode are unchanged.
+    private var lastRefreshIdentities: [UUID: StatusItemRefreshIdentity] = [:]
     private var cancellables = Set<AnyCancellable>()
     /// Prevents a second `attach` (e.g. main-window `.task`) from forcing an
     /// immediate rebuild before the delayed first registration completes.
@@ -102,8 +118,7 @@ final class StatusItemManager: ObservableObject {
             }
             .store(in: &cancellables)
 
-        model.runtime.$snapshots
-            .dropFirst()
+        model.runtime.snapshotsPublisher
             .receive(on: RunLoop.main)
             .sink { [weak self] snapshots in
                 guard let self, self.didCompleteInitialRegistration else { return }
@@ -157,6 +172,7 @@ final class StatusItemManager: ObservableObject {
             expandedTitleIDs.removeAll()
             clippedTitleIDs.removeAll()
             recoveredWithoutAutosave.removeAll()
+            lastRefreshIdentities.removeAll()
             for id in items.keys {
                 if let item = items.removeValue(forKey: id) {
                     NSStatusBar.system.removeStatusItem(item)
@@ -168,6 +184,7 @@ final class StatusItemManager: ObservableObject {
                 expandedTitleIDs.remove(id)
                 clippedTitleIDs.remove(id)
                 recoveredWithoutAutosave.remove(id)
+                lastRefreshIdentities.removeValue(forKey: id)
                 if let item = items.removeValue(forKey: id) {
                     NSStatusBar.system.removeStatusItem(item)
                     let name = model?.store.applet(id: id)?.name ?? "removed applet"
@@ -251,6 +268,27 @@ final class StatusItemManager: ObservableObject {
     /// expansion has clipped off-screen, stay compact so the icon remains.
     static func shouldShowLiveTitle(hasPaintableSlot: Bool, expansionPreviouslyClipped: Bool) -> Bool {
         hasPaintableSlot && !expansionPreviouslyClipped
+    }
+
+    /// Inputs that change the extra's title, tooltip, symbol, or menu copy.
+    static func refreshIdentity(
+        applet: AppletManifest,
+        snapshot: AppletSnapshot,
+        runState: ToolRunState,
+        showsLiveTitle: Bool
+    ) -> StatusItemRefreshIdentity {
+        StatusItemRefreshIdentity(
+            title: snapshot.title,
+            statusText: snapshot.statusText,
+            detailLines: Array(snapshot.detailLines.prefix(5)),
+            isRunning: snapshot.isRunning,
+            isHealthy: snapshot.isHealthy,
+            runState: runState,
+            iconSystemName: applet.iconSystemName,
+            name: applet.name,
+            enabled: applet.enabled,
+            showsLiveTitle: showsLiveTitle
+        )
     }
 
     static func autosaveName(for appletID: UUID) -> String {
@@ -344,6 +382,7 @@ final class StatusItemManager: ObservableObject {
         )
         NSStatusBar.system.removeStatusItem(item)
         expandedTitleIDs.remove(appletID)
+        lastRefreshIdentities.removeValue(forKey: appletID)
         items[appletID] = makeStatusItem(for: appletID, useAutosave: false)
         refresh(appletID: appletID)
     }
@@ -365,6 +404,7 @@ final class StatusItemManager: ObservableObject {
                 NSStatusBar.system.removeStatusItem(item)
                 expandedTitleIDs.remove(id)
                 clippedTitleIDs.remove(id)
+                lastRefreshIdentities.removeValue(forKey: id)
                 recoveredWithoutAutosave.insert(id)
                 items[id] = makeStatusItem(for: id, useAutosave: false)
                 refresh(appletID: id)
@@ -374,9 +414,8 @@ final class StatusItemManager: ObservableObject {
         }
     }
 
-    /// Uses the value delivered by `@Published` directly. Its publisher emits in
-    /// `willSet`, so re-reading `model.runtime.snapshots` in that callback would
-    /// refresh every status item with the previous value until the next poll.
+    /// Uses the coalesced publisher value directly so extras refresh with the
+    /// same map the runtime just committed, not a later read of `snapshots`.
     func refreshAll(snapshots: [UUID: AppletSnapshot]) {
         for id in items.keys {
             refresh(appletID: id, snapshot: snapshots[id])
@@ -397,14 +436,23 @@ final class StatusItemManager: ObservableObject {
             hasPaintableSlot: hasPaintableSlot(item),
             expansionPreviouslyClipped: clippedTitleIDs.contains(appletID)
         )
+        let runState = ToolRunState.resolve(
+            manifest: applet,
+            snapshot: currentSnapshot,
+            executionApproved: model.isExecutionApproved(applet),
+            isValidating: model.isValidatingExecution(applet)
+        )
+        let identity = Self.refreshIdentity(
+            applet: applet,
+            snapshot: snapshot,
+            runState: runState,
+            showsLiveTitle: expandTitle
+        )
         forceVisible(item, compact: !expandTitle)
+        if lastRefreshIdentities[appletID] == identity {
+            return
+        }
         if let button = item.button {
-            let runState = ToolRunState.resolve(
-                manifest: applet,
-                snapshot: currentSnapshot,
-                executionApproved: model.isExecutionApproved(applet),
-                isValidating: model.isValidatingExecution(applet)
-            )
             let title = TitleRenderer.statusItemTitle(snapshot.title, runState: runState)
             let label = title.isEmpty ? applet.name : title
             var image = NSImage(systemSymbolName: applet.iconSystemName, accessibilityDescription: applet.name)
@@ -524,6 +572,12 @@ final class StatusItemManager: ObservableObject {
         menu.addItem(enable)
 
         item.menu = menu
+        lastRefreshIdentities[appletID] = Self.refreshIdentity(
+            applet: applet,
+            snapshot: snapshot,
+            runState: runState,
+            showsLiveTitle: expandTitle
+        )
     }
 
     private func headerItem(_ title: String) -> NSMenuItem {
