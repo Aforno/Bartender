@@ -1,9 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// Bar Tender's window vocabulary, intentionally aligned with AgentNotch:
-/// deep black, compact system typography, translucent raised surfaces, and a
-/// restrained white-opacity hierarchy. State colour is reserved for meaning.
 enum PremiumStyle {
     static let cardRadius: CGFloat = 9
     static let chipRadius: CGFloat = 7
@@ -19,7 +16,6 @@ enum PremiumStyle {
     static let space20: CGFloat = 20
     static let space24: CGFloat = 24
     static let space32: CGFloat = 32
-    static let space40: CGFloat = 40
 
     static let contentMargin: CGFloat = 20
     static let sidebarInset: CGFloat = 10
@@ -43,15 +39,7 @@ enum PremiumStyle {
     static let secondaryText = Color.white.opacity(0.58)
     static let tertiaryText = Color.white.opacity(0.34)
 
-    /// AgentNotch uses colour to communicate active state. Bar Tender follows
-    /// that rule with system blue for active/building controls.
     static let brand = Color.blue
-    static let brandDeep = Color.blue.opacity(0.76)
-    static let brandGradient = LinearGradient(
-        colors: [Color.white.opacity(0.92), Color.white.opacity(0.62)],
-        startPoint: .top,
-        endPoint: .bottom
-    )
 }
 
 enum BarTenderFont {
@@ -104,8 +92,6 @@ private struct DeepBlackWindowConfigurator: NSViewRepresentable {
 }
 
 extension View {
-    /// AgentNotch-style raised surface. Panels are separated by fill and
-    /// spacing; borders are reserved for interactive controls.
     func borderedContainer(cornerRadius: CGFloat = PremiumStyle.cardRadius) -> some View {
         modifier(BorderedContainer(cornerRadius: cornerRadius))
     }

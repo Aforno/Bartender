@@ -30,12 +30,8 @@ struct BarTenderApp: App {
                 .environmentObject(appDelegate.model.runtime)
                 .environmentObject(appDelegate.model.preferences)
                 .task {
-                    // Main window is open: use a regular app activation policy (Dock + menus).
-                    // Status items attach only from AppDelegate — a second attach here
-                    // used to force an immediate rebuild and defeat the delayed first
-                    // registration that avoids the macOS 26 Control Center race.
-                    // Skip focus-stealing activation when this window is only being
-                    // measured during a silent login launch that is about to close.
+                    // Status items attach only from AppDelegate. A second attach
+                    // here used to defeat the delayed first registration.
                     if AppLaunchMode.current.activatesAppAtLaunch {
                         AppDelegate.prepareForMainWindow()
                     } else {
@@ -45,9 +41,6 @@ struct BarTenderApp: App {
                     await appDelegate.model.bootstrap()
                 }
         }
-        // Menu-bar tools are created in applicationDidFinishLaunching and are
-        // independent of the main window. Silent login-item launches suppress
-        // automatic main-window creation; interactive launches show it.
         .defaultLaunchBehavior(AppLaunchMode.current.showsMainWindowAtLaunch ? .automatic : .suppressed)
         .defaultSize(width: 1180, height: 760)
         .windowToolbarStyle(.unified(showsTitle: false))
@@ -117,8 +110,6 @@ struct BarTenderApp: App {
 
 @MainActor
 enum MainWindowRouter {
-    /// Opens or focuses the main window using a stored `OpenWindowAction` when
-    /// recreation is needed (window fully closed).
     static func open(using openWindow: OpenWindowAction) {
         if focusExistingMainWindow() {
             return
@@ -127,8 +118,6 @@ enum MainWindowRouter {
         openWindow(id: "main")
     }
 
-    /// AppKit-safe path: focus an existing main window, otherwise invoke the
-    /// stored `OpenWindowAction` from `AppActions` (set when the window first mounts).
     @discardableResult
     static func openMainWindow() -> Bool {
         if focusExistingMainWindow() {
@@ -175,9 +164,6 @@ private struct MainWindowActionsInstaller: View {
             .accessibilityHidden(true)
             .onAppear {
                 AppActions.shared.model = model
-                // Capture OpenWindowAction so the AppKit manager menu can
-                // recreate the main window after it has been closed, including
-                // after a silent login-item launch that never showed a window.
                 AppActions.shared.openWindowAction = {
                     MainWindowRouter.open(using: openWindow)
                 }

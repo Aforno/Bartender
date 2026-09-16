@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Compact left-click popover content for the manager status item:
-/// prompt, model selector, send/cancel, and generation feedback only.
 struct ManagerComposerView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var providers: AIProviderService
@@ -69,8 +67,6 @@ struct ManagerComposerView: View {
         }
     }
 
-    // MARK: - Actions
-
     private var canCreate: Bool {
         providers.availability.isReady
             && !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -91,13 +87,13 @@ struct ManagerComposerView: View {
     private func generationFeedback(_ session: GenerationSession) -> some View {
         if session.phase.isActive {
             Label(session.phase.displayName(for: session.provider), systemImage: "sparkles")
-                .font(.inter(.caption))
+                .font(BarTenderFont.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         } else if session.phase == .failed {
             Text(session.errorMessage ?? "Generation failed.")
-                .font(.inter(.caption))
+                .font(BarTenderFont.caption)
                 .foregroundStyle(.red)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
@@ -106,11 +102,11 @@ struct ManagerComposerView: View {
                 .help(session.errorMessage ?? "Generation failed.")
         } else if session.phase == .cancelled {
             Label("Generation cancelled", systemImage: "xmark.circle")
-                .font(.inter(.caption))
+                .font(BarTenderFont.caption)
                 .foregroundStyle(.secondary)
         } else if session.phase == .succeeded, let manifest = session.resultManifest {
             Label("Ready: \(manifest.name)", systemImage: "checkmark.circle.fill")
-                .font(.inter(.caption))
+                .font(BarTenderFont.caption)
                 .foregroundStyle(.green)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)

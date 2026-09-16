@@ -7,17 +7,13 @@ import AppKit
 /// Testable decision for whether this process should behave as a normal
 /// interactive launch or a silent login-item / background start.
 enum AppLaunchMode: Equatable, Sendable {
-    /// User (or Dock / Finder) launched the app; showing the main window is fine.
     case interactive
-    /// Login-item / background launch; only menu-bar infrastructure should start.
     case silentLogin
 
-    /// Resolved once at process start; override only in tests via `setCurrentForTesting`.
     private static let _lock = NSLock()
     private static var _override: AppLaunchMode?
     private static var _resolved: AppLaunchMode?
 
-    /// Current launch mode for this process.
     static var current: AppLaunchMode {
         _lock.lock()
         defer { _lock.unlock() }
@@ -32,7 +28,6 @@ enum AppLaunchMode: Equatable, Sendable {
         return value
     }
 
-    /// Whether the main window should appear automatically at launch.
     var showsMainWindowAtLaunch: Bool {
         switch self {
         case .interactive: return true
@@ -40,7 +35,6 @@ enum AppLaunchMode: Equatable, Sendable {
         }
     }
 
-    /// Whether the app should steal focus with `NSApp.activate` at launch.
     var activatesAppAtLaunch: Bool {
         switch self {
         case .interactive: return true
@@ -48,13 +42,11 @@ enum AppLaunchMode: Equatable, Sendable {
         }
     }
 
-    /// Pure resolution used by production and unit tests.
     static func resolve(
         arguments: [String] = CommandLine.arguments,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         launchedAsLoginItem: Bool? = nil
     ) -> AppLaunchMode {
-        // Explicit CLI / smoke overrides win first.
         if arguments.contains("--interactive-launch") {
             return .interactive
         }
@@ -99,8 +91,6 @@ enum AppLaunchMode: Equatable, Sendable {
         #endif
         return false
     }
-
-    // MARK: - Testing
 
     /// Overrides `current` for the remainder of a test. Pass `nil` to clear.
     static func setCurrentForTesting(_ mode: AppLaunchMode?) {

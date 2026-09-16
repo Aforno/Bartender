@@ -2,7 +2,6 @@ import Foundation
 
 /// A concrete model exposed by a local CLI provider (not the provider itself).
 struct AIModelOption: Identifiable, Hashable, Equatable, Sendable, Codable {
-    /// Stable selection key: `provider/modelID`.
     var id: String { "\(provider.rawValue)/\(modelID)" }
 
     var provider: AIProvider
@@ -26,7 +25,6 @@ struct AIModelOption: Identifiable, Hashable, Equatable, Sendable, Codable {
         self.isDefault = isDefault
     }
 
-    /// Short label suitable for the composer chip (e.g. "Grok 4.5", "GPT-5.6-Sol").
     var shortLabel: String {
         displayName
     }

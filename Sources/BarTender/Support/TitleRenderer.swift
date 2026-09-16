@@ -10,7 +10,6 @@ enum TitleRenderer {
         for (key, value) in values {
             result = result.replacingOccurrences(of: "{{\(key)}}", with: value)
         }
-        // Strip any unresolved placeholders.
         if let regex = try? NSRegularExpression(pattern: #"\{\{[^}]+\}\}"#) {
             let range = NSRange(result.startIndex..., in: result)
             result = regex.stringByReplacingMatches(in: result, range: range, withTemplate: "")

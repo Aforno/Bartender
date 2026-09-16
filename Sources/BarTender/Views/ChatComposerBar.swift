@@ -1,7 +1,6 @@
 import SwiftUI
 
 /// Shared message input used by the main window and menu bar panel.
-/// Compact raised input aligned with AgentNotch's window controls.
 struct ChatComposerBar<Accessory: View>: View {
     @Binding var text: String
     var placeholder: String = "Message Bar Tender"
@@ -18,7 +17,6 @@ struct ChatComposerBar<Accessory: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focused: Bool
 
-    /// Target single-line height (controls + vertical padding).
     private var controlSize: CGFloat { 26 }
     private var barRadius: CGFloat { PremiumStyle.cardRadius }
 
@@ -90,9 +88,6 @@ struct ChatComposerBar<Accessory: View>: View {
         .animation(reduceMotion ? nil : .snappy(duration: 0.15), value: focused)
     }
 
-    // MARK: - Controls
-
-
     private var sendButton: some View {
         Button(action: onSend) {
             Image(systemName: "arrow.up")
@@ -129,8 +124,6 @@ struct ChatComposerBar<Accessory: View>: View {
         .accessibilityLabel("Cancel generation")
         .accessibilityIdentifier("cancel-generation")
     }
-
-    // MARK: - Chrome
 
     private var barBackground: Color {
         PremiumStyle.raised
@@ -176,8 +169,6 @@ extension ChatComposerBar where Accessory == EmptyView {
     }
 }
 
-/// Compact model selector for the composer bar.
-/// Lists concrete model IDs from ready CLIs (e.g. grok-4.5, gpt-5.6-sol), not providers.
 struct ModelSelector: View {
     @EnvironmentObject private var providers: AIProviderService
     var isBusy: Bool = false
@@ -253,13 +244,13 @@ struct ModelSelector: View {
                     Text(model.displayName)
                     if model.isDefault {
                         Text("Default")
-                            .font(.inter(.caption2))
+                            .font(BarTenderFont.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
                 if let description = model.description, !description.isEmpty {
                     Text(description)
-                        .font(.inter(.caption))
+                        .font(BarTenderFont.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 } else {
@@ -278,7 +269,6 @@ struct ModelSelector: View {
     }
 
     private func groupedProviders(from models: [AIModelOption]) -> [AIProvider] {
-        // Preserve provider enum order, only include groups that have models.
         AIProvider.allCases.filter { provider in
             models.contains { $0.provider == provider }
         }

@@ -2,7 +2,6 @@ import Darwin
 import Foundation
 import IOKit
 
-/// A single hardware temperature reading in degrees Celsius.
 struct SensorReading: Equatable, Sendable {
     /// SMC key, e.g. "Tp09".
     var key: String
@@ -58,7 +57,6 @@ enum SensorGroup: String, CaseIterable, Codable, Sendable {
     }
 }
 
-/// Pure decoding, aggregation, and report formatting for sensor readings.
 enum HardwareSensors {
     /// Accepted range for a plausible component temperature in °C. Unpopulated SMC
     /// sensors report 0 °C or single-digit values, and running components stay
@@ -219,7 +217,6 @@ enum SMCTemperatureKeyCache {
     }
 }
 
-/// Reads live temperature sensors from the SMC (CPU/GPU/SoC/battery/storage/…).
 enum HardwareSensorReader {
     private static let cacheLock = NSLock()
     private static var memoryCachedRecord: SMCTemperatureKeyCache.Record?
@@ -355,8 +352,6 @@ enum HardwareSensorsCLI {
     static let sensorsFlag = "--sensors"
     static let sensorsJSONFlag = "--sensors-json"
 
-    /// When `arguments` request a sensor report, prints the report and returns the
-    /// exit code the process should terminate with. Returns nil for normal app runs.
     static func handledExitCode(
         arguments: [String] = CommandLine.arguments,
         readings: () -> [SensorReading] = { HardwareSensorReader.temperatureReadings() },

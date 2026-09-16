@@ -1,6 +1,5 @@
 import Foundation
 
-/// Local CLI backends that can generate applet manifests.
 enum AIProvider: String, CaseIterable, Identifiable, Codable, Sendable {
     case codex
     case claude

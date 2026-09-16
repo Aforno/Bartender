@@ -190,7 +190,6 @@ final class AppletStore: ObservableObject {
         return applets.first { $0.id == id }
     }
 
-    /// Removes every applet and persists an empty library.
     func removeAll() throws {
         try commit([])
     }
@@ -228,7 +227,6 @@ final class AppletStore: ObservableObject {
         return imported
     }
 
-    /// Commits a previously validated import set (see `validatedManifests(from:)`).
     func applyImport(_ imported: [AppletManifest], mode: AppletImportMode) throws {
         var next = mode == .replace ? [] : applets
         for manifest in imported.reversed() {
@@ -241,12 +239,10 @@ final class AppletStore: ObservableObject {
         try commit(next)
     }
 
-    /// Replaces the entire library (used to roll back a failed import).
     func replaceAll(_ manifests: [AppletManifest]) throws {
         try commit(manifests)
     }
 
-    /// On-disk location of the library file (for Settings “Reveal in Finder”).
     var storageURL: URL { fileURL }
 
     private func commit(_ next: [AppletManifest]) throws {

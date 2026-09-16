@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The build receipt, Notion-style: one calm status line, with the raw
-/// provider log tucked behind a "Technical details" toggle.
 struct GenerationLogView: View {
     @ObservedObject var session: GenerationSession
     @State private var showTechnicalDetails = false
@@ -12,7 +10,7 @@ struct GenerationLogView: View {
 
             if let error = session.errorMessage, session.phase != .cancelled {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.inter(.callout))
+                    .font(BarTenderFont.body)
                     .foregroundStyle(.red)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -25,9 +23,9 @@ struct GenerationLogView: View {
                 } label: {
                     HStack(spacing: 5) {
                         Text("Technical details")
-                            .font(.inter(.callout, weight: .medium))
+                            .font(BarTenderFont.bodyEmphasis)
                         Text("· \(session.logs.count) events")
-                            .font(.inter(.caption))
+                            .font(BarTenderFont.caption)
                             .foregroundStyle(.tertiary)
                     }
                 }
@@ -46,7 +44,7 @@ struct GenerationLogView: View {
                      ? session.logs.last(where: { $0.stream == .progress })?.text
                         ?? session.phase.displayName(for: session.provider)
                      : session.phase.displayName(for: session.provider))
-                    .font(.inter(.callout))
+                    .font(BarTenderFont.body)
                 Spacer()
             }
         } else if let manifest = session.resultManifest {
@@ -58,19 +56,19 @@ struct GenerationLogView: View {
                         ? "Updated with \(session.provider.displayName)"
                         : "Built with \(session.provider.displayName)"
                 )
-                .font(.inter(.callout, weight: .semibold))
+                .font(BarTenderFont.body.weight(.semibold))
                 .foregroundStyle(.green)
                 Text("· \(successMetadata(for: manifest))")
-                    .font(.inter(.caption))
+                    .font(BarTenderFont.caption)
                     .foregroundStyle(.tertiary)
             }
         } else if session.phase == .cancelled {
             Label("Build cancelled", systemImage: "stop.circle.fill")
-                .font(.inter(.callout, weight: .semibold))
+                .font(BarTenderFont.body.weight(.semibold))
                 .foregroundStyle(.secondary)
         } else if session.errorMessage != nil {
             Label("Build failed", systemImage: "xmark.circle.fill")
-                .font(.inter(.callout, weight: .semibold))
+                .font(BarTenderFont.body.weight(.semibold))
                 .foregroundStyle(.red)
         }
     }

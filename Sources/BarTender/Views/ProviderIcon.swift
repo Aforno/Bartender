@@ -60,8 +60,6 @@ struct ProviderIcon: View {
         return copy
     }
 
-    /// Process-wide cache of decoded/processed base provider artwork.
-    /// Keys by provider only — callers scale via SwiftUI / logical size copies.
     final class ProviderIconCache: @unchecked Sendable {
         static let shared = ProviderIconCache()
 

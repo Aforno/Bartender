@@ -12,7 +12,6 @@ struct MenuBarDiagnosticsSnapshot: Equatable, Sendable, Codable {
     var appletStatusItemManagerAttached: Bool
     var enabledAppletCount: Int
     var managedAppletItemCount: Int
-    /// Per managed item: applet name, title state, and live window geometry.
     var appletItems: [AppletItemDiagnostic]
     var managerHasVisibleTitleOrImage: Bool
     var managerFrame: StatusItemFrameDiagnostic = .missing
@@ -25,7 +24,6 @@ struct MenuBarDiagnosticsSnapshot: Equatable, Sendable, Codable {
         var frame: StatusItemFrameDiagnostic = .missing
     }
 
-    /// Captured geometry of the AppKit window that hosts an NSStatusItem button.
     struct StatusItemFrameDiagnostic: Equatable, Sendable, Codable {
         var windowPresent: Bool
         var width: Double
@@ -117,7 +115,6 @@ struct MenuBarDiagnosticsSnapshot: Equatable, Sendable, Codable {
         }
     }
 
-    /// Machine-readable one-line JSON for CLI / smoke harnesses.
     func jsonLine() throws -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -128,7 +125,6 @@ struct MenuBarDiagnosticsSnapshot: Equatable, Sendable, Codable {
         return line
     }
 
-    /// Human-readable summary for logs.
     var summary: String {
         let appletSummary = appletItems.map { item in
             "\(item.name):title=\(item.titleNonEmpty ? "ok" : "empty"),frame=\(item.frame.appearsPaintable ? "ok" : item.frame.description)"
@@ -194,10 +190,8 @@ enum ManagerPopoverSizing {
     static let maximumHeight: CGFloat = 360
     static let defaultCompactHeight: CGFloat = 56
 
-    /// Coalesce rapid streaming updates before applying a new popover size.
-    static let resizeDebounceNanoseconds: UInt64 = 50_000_000 // 50ms
+    static let resizeDebounceNanoseconds: UInt64 = 50_000_000
 
-    /// Clamps a proposed fitting size into the allowed popover bounds.
     static func contentSize(
         fitting: CGSize,
         screenVisibleHeight: CGFloat? = nil

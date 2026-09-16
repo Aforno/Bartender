@@ -51,7 +51,6 @@ enum AppletTimerLoopDisposition: Equatable {
     case completed
 }
 
-/// Interprets validated applet manifests and produces live menu bar snapshots.
 @MainActor
 final class AppletRuntimeEngine: ObservableObject {
     private(set) var snapshots: [UUID: AppletSnapshot] = [:]
@@ -76,7 +75,6 @@ final class AppletRuntimeEngine: ObservableObject {
     private var failureTransitions = FailureTransitionTracker()
     private var executionEpochs = AppletExecutionEpochs()
 
-    /// Useful for lifecycle diagnostics and deterministic regression tests.
     var activeExecutionIDs: Set<UUID> {
         Set(tasks.keys)
     }

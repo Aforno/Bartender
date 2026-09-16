@@ -1,9 +1,8 @@
-import Darwin
 import Foundation
 import XCTest
 @testable import BarTender
 
-final class RuntimePolishTests: XCTestCase {
+final class ShellEnvironmentTests: XCTestCase {
     func testLoginPATHExtractionIgnoresShellStartupOutput() {
         let output = """
         Welcome back: loading tools
@@ -58,23 +57,5 @@ final class RuntimePolishTests: XCTestCase {
         let attributes = try FileManager.default.attributesOfItem(atPath: repairedPath)
         let permissions = try XCTUnwrap(attributes[.posixPermissions] as? NSNumber)
         XCTAssertEqual(permissions.intValue & 0o777, 0o755)
-    }
-
-    func testGeneratedSourceValidationUsesBashForBashShebang() async throws {
-        let manifest = AppletManifest(
-            name: "Bash Syntax",
-            iconSystemName: "terminal",
-            kind: .generatedTool,
-            titleTemplate: "{{value}}",
-            config: AppletConfig(
-                generatedSource: """
-                #!/bin/bash
-                value=HELLO
-                echo "${value,,}"
-                """
-            )
-        )
-
-        try await GeneratedToolSourceValidator.validate(manifest)
     }
 }

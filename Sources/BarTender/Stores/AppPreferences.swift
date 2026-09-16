@@ -1,10 +1,8 @@
 import Combine
 import Foundation
 
-/// UserDefaults-backed app preferences shared across Settings and the main UI.
 @MainActor
 final class AppPreferences: ObservableObject {
-    /// Hard upper bound for individual menu bar items (matches the manager's cap).
     static let maximumMenuBarItemsBound = StatusItemManager.maximumIndividualItems
 
     private enum Keys {
@@ -14,28 +12,22 @@ final class AppPreferences: ObservableObject {
         static let maximumMenuBarItems = "BarTender.maximumMenuBarItems"
     }
 
-    /// Ask for confirmation before deleting applets from the library.
     @Published var confirmBeforeDelete: Bool {
         didSet { defaults.set(confirmBeforeDelete, forKey: Keys.confirmBeforeDelete) }
     }
 
-    /// Show the model selector inside the ChatGPT-style composer bar.
     @Published var showProviderInComposer: Bool {
         didSet { defaults.set(showProviderInComposer, forKey: Keys.showProviderInComposer) }
     }
 
-    /// Approve provider-written revisions after the tool has been approved once.
     @Published var autoApproveGeneratedToolEdits: Bool {
         didSet {
             defaults.set(autoApproveGeneratedToolEdits, forKey: Keys.autoApproveGeneratedToolEdits)
         }
     }
 
-    /// Fresh-install default: every enabled applet up to the hard cap.
     static let defaultMaximumMenuBarItems = StatusItemManager.maximumIndividualItems
 
-    /// How many enabled applets get their own menu bar item (1...8). Fewer
-    /// items leave room on crowded menu bars; the rest stay in the manager menu.
     @Published var maximumMenuBarItems: Int {
         didSet {
             let clamped = min(max(maximumMenuBarItems, 1), Self.maximumMenuBarItemsBound)
@@ -80,16 +72,5 @@ final class AppPreferences: ObservableObject {
                 Self.maximumMenuBarItemsBound
             )
         }
-    }
-
-    /// Directory where applet manifests are stored.
-    var libraryDirectoryURL: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        return appSupport.appendingPathComponent("BarTender", isDirectory: true)
-    }
-
-    var libraryFileURL: URL {
-        libraryDirectoryURL.appendingPathComponent("applets.json")
     }
 }

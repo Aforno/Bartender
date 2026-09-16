@@ -18,13 +18,10 @@ struct MenuBarPreviewView: View {
         .background(PremiumStyle.raised, in: RoundedRectangle(cornerRadius: PremiumStyle.cardRadius, style: .continuous))
     }
 
-    // MARK: - Simulated menu bar
-
     private var menuBarStrip: some View {
         HStack(spacing: 0) {
             Spacer()
 
-            // Faux system extras to ground the preview in the real menu bar.
             HStack(spacing: 14) {
                 Image(systemName: "wifi")
                 Image(systemName: "battery.75")
@@ -35,7 +32,6 @@ struct MenuBarPreviewView: View {
             .accessibilityHidden(true)
 
             if runState != .disabled {
-                // The applet's own menu bar extra, shown "active".
                 HStack(spacing: 5) {
                     Image(systemName: manifest.iconSystemName)
                         .font(.system(size: 12, weight: .medium))
@@ -64,8 +60,6 @@ struct MenuBarPreviewView: View {
                 .frame(height: 1)
         }
     }
-
-    // MARK: - Simulated dropdown menu
 
     private var dropdownMenu: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -100,10 +94,10 @@ struct MenuBarPreviewView: View {
                 .frame(width: 16)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Hidden while disabled")
-                    .font(.inter(.callout, weight: .semibold))
+                    .font(BarTenderFont.body.weight(.semibold))
                     .accessibilityAddTraits(.isHeader)
                 Text("Enable this tool to add its item back to the menu bar.")
-                    .font(.inter(.caption))
+                    .font(BarTenderFont.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -163,7 +157,7 @@ struct MenuBarPreviewView: View {
     ) -> some View {
         HStack(spacing: 8) {
             Text(title)
-                .font(.inter(size: 13, weight: isHeader ? .semibold : .regular))
+                .font(.system(size: 13, weight: isHeader ? .semibold : .regular))
                 .foregroundStyle(isHeader || isAction ? Color.primary : Color.secondary)
                 .lineLimit(1)
             Spacer(minLength: 16)
