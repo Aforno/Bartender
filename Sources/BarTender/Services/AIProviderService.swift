@@ -175,10 +175,6 @@ final class AIProviderService: ObservableObject {
         objectWillChange.send()
     }
 
-    func models(for provider: AIProvider) -> [AIModelOption] {
-        availableModels.filter { $0.provider == provider }
-    }
-
     func selectModel(_ model: AIModelOption) {
         guard enabledProviders.contains(model.provider) else { return }
         selectedModel = model
@@ -432,7 +428,7 @@ final class AIProviderService: ObservableObject {
         }
 
         do {
-            let version = try await readVersion(provider: provider, path: path, env: environment)
+            let version = try await readVersion(path: path, env: environment)
             let auth = try await readAuth(provider: provider, path: path, env: environment)
             if let auth, auth.ok == false {
                 return .unavailable(.notAuthenticated(auth.summary))
@@ -480,13 +476,8 @@ final class AIProviderService: ObservableObject {
         case unsupported
     }
 
-    private func readVersion(provider: AIProvider, path: String, env: [String: String]) async throws -> String {
-        let args: [String]
-        switch provider {
-        case .codex, .claude, .grok, .gemini, .agy:
-            args = ["--version"]
-        }
-        let result = try await runner.run(executable: path, arguments: args, environment: env, timeout: 15)
+    private func readVersion(path: String, env: [String: String]) async throws -> String {
+        let result = try await runner.run(executable: path, arguments: ["--version"], environment: env, timeout: 15)
         guard !result.timedOut, result.exitCode == 0 else {
             let detail = (result.stderr.isEmpty ? result.stdout : result.stderr)
                 .trimmingCharacters(in: .whitespacesAndNewlines)

@@ -73,8 +73,7 @@ enum GeneratedToolRunner {
                 )
             }
 
-            guard let data = process.stdout.data(using: .utf8),
-                  let decoded = try? JSONDecoder().decode(GeneratedToolOutput.self, from: data) else {
+            guard let decoded = try? decodeOutput(process.stdout) else {
                 let detail = firstUsefulLine(process.stderr) ?? firstUsefulLine(process.stdout)
                 return Result(
                     output: nil,
@@ -83,7 +82,7 @@ enum GeneratedToolRunner {
                     approved: true
                 )
             }
-            return Result(output: sanitized(decoded), message: decoded.status, approved: true)
+            return Result(output: decoded, message: decoded.status, approved: true)
         } catch {
             return Result(output: nil, message: error.localizedDescription, approved: true)
         }
