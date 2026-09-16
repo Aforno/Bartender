@@ -67,3 +67,72 @@ final class SystemMetricsCollector {
         return (used, total, min(percent, 100))
     }
 }
+
+struct SystemMetricsSample: Equatable, Sendable {
+    var cpu: Double
+    var memory: (usedBytes: UInt64, totalBytes: UInt64, percent: Double)
+
+    static func == (lhs: SystemMetricsSample, rhs: SystemMetricsSample) -> Bool {
+        lhs.cpu == rhs.cpu
+            && lhs.memory.usedBytes == rhs.memory.usedBytes
+            && lhs.memory.totalBytes == rhs.memory.totalBytes
+            && lhs.memory.percent == rhs.memory.percent
+    }
+}
+
+/// Process-wide Mach sample cache so N metrics applets share one
+/// `host_statistics` / `host_statistics64` pair per refresh window.
+final class SharedSystemMetricsSampler: @unchecked Sendable {
+    static let defaultReuseWindow: TimeInterval = 0.25
+
+    private let lock = NSLock()
+    private var collector = SystemMetricsCollector()
+    private var cpuCache: (at: Date, value: Double)?
+    private var memoryCache: (at: Date, value: (usedBytes: UInt64, totalBytes: UInt64, percent: Double))?
+
+    private(set) var cpuSampleCount = 0
+    private(set) var memorySampleCount = 0
+    var reuseWindow: TimeInterval = defaultReuseWindow
+
+    func sample(cpu: Bool, memory: Bool, now: Date = Date()) -> SystemMetricsSample {
+        lock.lock()
+        defer { lock.unlock() }
+        let cpuValue = cpu ? cachedCPU(now: now) : 0
+        let memoryValue = memory ? cachedMemory(now: now) : (0, 0, 0)
+        return SystemMetricsSample(cpu: cpuValue, memory: memoryValue)
+    }
+
+    func resetForTesting() {
+        lock.lock()
+        defer { lock.unlock() }
+        collector = SystemMetricsCollector()
+        cpuCache = nil
+        memoryCache = nil
+        cpuSampleCount = 0
+        memorySampleCount = 0
+    }
+
+    private func cachedCPU(now: Date) -> Double {
+        if let cpuCache, now.timeIntervalSince(cpuCache.at) < reuseWindow {
+            return cpuCache.value
+        }
+        cpuSampleCount += 1
+        let value = collector.cpuUsagePercent()
+        cpuCache = (now, value)
+        return value
+    }
+
+    private func cachedMemory(now: Date) -> (usedBytes: UInt64, totalBytes: UInt64, percent: Double) {
+        if let memoryCache, now.timeIntervalSince(memoryCache.at) < reuseWindow {
+            return memoryCache.value
+        }
+        memorySampleCount += 1
+        let value = SystemMetricsCollector.memoryUsage()
+        memoryCache = (now, value)
+        return value
+    }
+}
+
+enum SystemMetricsSampler {
+    static let shared = SharedSystemMetricsSampler()
+}

@@ -139,23 +139,130 @@ enum HardwareSensors {
     }
 }
 
+/// Persistable list of SMC temperature key names so later polls skip enumerating
+/// every `#KEY` index (hundreds of handleYPCEvent round-trips on Apple silicon).
+enum SMCTemperatureKeyCache {
+    static func defaultURL(fileManager: FileManager = .default) -> URL? {
+        fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("io.github.aforno.bartender", isDirectory: true)
+            .appendingPathComponent("smc-temperature-keys.json", isDirectory: false)
+    }
+
+    static func decodedKeys(from data: Data) -> [String]? {
+        guard let keys = try? JSONDecoder().decode([String].self, from: data) else { return nil }
+        let valid = keys.filter(isTemperatureKey)
+        return valid.isEmpty ? nil : valid
+    }
+
+    static func encoded(_ keys: [String]) -> Data? {
+        let valid = keys.filter(isTemperatureKey)
+        guard !valid.isEmpty else { return nil }
+        return try? JSONEncoder().encode(valid)
+    }
+
+    static func isTemperatureKey(_ key: String) -> Bool {
+        key.count == 4 && key.hasPrefix("T")
+    }
+
+    static func load(from url: URL, fileManager: FileManager = .default) -> [String]? {
+        guard let data = fileManager.contents(atPath: url.path) else { return nil }
+        return decodedKeys(from: data)
+    }
+
+    static func save(_ keys: [String], to url: URL, fileManager: FileManager = .default) {
+        guard let data = encoded(keys) else { return }
+        try? fileManager.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? data.write(to: url, options: .atomic)
+    }
+}
+
 /// Reads live temperature sensors from the SMC (CPU/GPU/SoC/battery/storage/…).
 enum HardwareSensorReader {
+    private static let cacheLock = NSLock()
+    private static var memoryCachedKeys: [String]?
+    static var temperatureKeyCacheURL: URL? = SMCTemperatureKeyCache.defaultURL()
+
     static func temperatureReadings() -> [SensorReading] {
         smcTemperatureReadings()
+    }
+
+    static func resetTemperatureKeyCacheForTesting() {
+        cacheLock.lock()
+        memoryCachedKeys = nil
+        cacheLock.unlock()
     }
 
     static func smcTemperatureReadings() -> [SensorReading] {
         let smc = SMCConnection()
         guard smc.open() else { return [] }
         defer { smc.close() }
-        guard let count = smc.keyCount(), count > 0 else { return [] }
 
-        var readings: [SensorReading] = []
-        readings.reserveCapacity(64)
+        let cached = cachedTemperatureKeys()
+        let keys: [String]
+        let usedCache: Bool
+        if let cached, !cached.isEmpty {
+            keys = cached
+            usedCache = true
+        } else {
+            keys = discoverTemperatureKeys(using: smc)
+            usedCache = false
+            rememberTemperatureKeys(keys)
+        }
+
+        let readings = readTemperatures(keys: keys, using: smc)
+        if readings.isEmpty, usedCache {
+            let discovered = discoverTemperatureKeys(using: smc)
+            rememberTemperatureKeys(discovered)
+            return readTemperatures(keys: discovered, using: smc)
+        }
+        return readings
+    }
+
+    private static func cachedTemperatureKeys() -> [String]? {
+        cacheLock.lock()
+        let memory = memoryCachedKeys
+        cacheLock.unlock()
+        if let memory, !memory.isEmpty { return memory }
+        guard let url = temperatureKeyCacheURL,
+              let disk = SMCTemperatureKeyCache.load(from: url) else {
+            return nil
+        }
+        cacheLock.lock()
+        memoryCachedKeys = disk
+        cacheLock.unlock()
+        return disk
+    }
+
+    private static func rememberTemperatureKeys(_ keys: [String]) {
+        let valid = keys.filter(SMCTemperatureKeyCache.isTemperatureKey)
+        cacheLock.lock()
+        memoryCachedKeys = valid.isEmpty ? nil : valid
+        cacheLock.unlock()
+        guard !valid.isEmpty, let url = temperatureKeyCacheURL else { return }
+        SMCTemperatureKeyCache.save(valid, to: url)
+    }
+
+    private static func discoverTemperatureKeys(using smc: SMCConnection) -> [String] {
+        guard let count = smc.keyCount(), count > 0 else { return [] }
+        var keys: [String] = []
+        keys.reserveCapacity(64)
         for index in 0..<count {
-            guard let key = smc.key(at: index), key.hasPrefix("T"),
-                  let (type, bytes) = smc.readRaw(key),
+            guard let key = smc.key(at: index), SMCTemperatureKeyCache.isTemperatureKey(key) else {
+                continue
+            }
+            keys.append(key)
+        }
+        return keys
+    }
+
+    private static func readTemperatures(keys: [String], using smc: SMCConnection) -> [SensorReading] {
+        var readings: [SensorReading] = []
+        readings.reserveCapacity(keys.count)
+        for key in keys {
+            guard let (type, bytes) = smc.readRaw(key),
                   let value = HardwareSensors.decodeValue(type: type, bytes: bytes),
                   HardwareSensors.plausibleRange.contains(value) else { continue }
             readings.append(SensorReading(

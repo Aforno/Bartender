@@ -93,4 +93,32 @@ final class HardwareSensorsTests: XCTestCase {
         XCTAssertFalse(errors.isEmpty)
     }
 
+    func testCLIIgnoresNormalAppArguments() {
+        let code = HardwareSensorsCLI.handledExitCode(
+            arguments: ["/App/BarTender"],
+            readings: { XCTFail("must not read sensors"); return [] },
+            printLine: { _ in },
+            printError: { _ in }
+        )
+        XCTAssertNil(code)
+    }
+
+    func testTemperatureKeyCacheRoundTripsValidKeysAndDropsOthers() throws {
+        let encoded = try XCTUnwrap(
+            SMCTemperatureKeyCache.encoded(["Tp09", "NOPE", "Tg0f", "T"])
+        )
+        XCTAssertEqual(SMCTemperatureKeyCache.decodedKeys(from: encoded), ["Tp09", "Tg0f"])
+        XCTAssertNil(SMCTemperatureKeyCache.encoded(["NOPE", "T"]))
+        XCTAssertNil(SMCTemperatureKeyCache.decodedKeys(from: Data("{".utf8)))
+    }
+
+    func testTemperatureKeyCachePersistsToDisk() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BarTender-SMCKeys-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        SMCTemperatureKeyCache.save(["Tp09", "Te05"], to: url)
+        XCTAssertEqual(SMCTemperatureKeyCache.load(from: url), ["Tp09", "Te05"])
+    }
+
 }

@@ -1,17 +1,20 @@
 import AppKit
 import SwiftUI
 
+/// Process entry so `--sensors` / `--sensors-json` never construct `AppDelegate`
+/// or `AppModel` (those load `applets.json` and Combine subscriptions).
 @main
-struct BarTenderApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-
-    init() {
-        // Command-line sensor reports for generated tools run before any app
-        // startup so the process exits immediately with the report on stdout.
+enum BarTenderMain {
+    static func main() {
         if let exitCode = HardwareSensorsCLI.handledExitCode() {
             Foundation.exit(Int32(exitCode))
         }
+        BarTenderApp.main()
     }
+}
+
+struct BarTenderApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         WindowGroup("Bar Tender", id: "main") {

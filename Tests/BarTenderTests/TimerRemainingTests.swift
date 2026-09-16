@@ -45,6 +45,14 @@ final class TimerRemainingTests: XCTestCase {
             ),
             .completed
         )
+        XCTAssertEqual(
+            Double(AppletRuntimeEngine.nanosecondsUntilNextTimerDisplayChange(
+                timerEnd: now.addingTimeInterval(0.8),
+                now: now
+            )),
+            800_000_000,
+            accuracy: 1_000
+        )
     }
 
     @MainActor
