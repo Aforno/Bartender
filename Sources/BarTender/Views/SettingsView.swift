@@ -18,11 +18,7 @@ struct SettingsView: View {
         .deepBlackWindowSurface()
         .overlay(alignment: .top) {
             if let banner = model.bannerMessage {
-                BannerView(
-                    banner: banner,
-                    onHover: { model.setBannerHovered($0, bannerID: banner.id) },
-                    onDismiss: { model.bannerMessage = nil }
-                )
+                BannerView(banner: banner)
                     .padding(.top, 48)
             }
         }

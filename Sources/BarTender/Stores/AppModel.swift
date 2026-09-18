@@ -32,19 +32,16 @@ final class AppModel: ObservableObject {
         }
     }
     /// Shown in both the main and Settings windows. Info banners share one
-    /// auto-dismiss timer, paused while either window's copy is hovered.
+    /// auto-dismiss countdown that only runs while a copy is visible and unhovered.
     @Published var bannerMessage: BannerMessage? {
         didSet {
             guard oldValue?.id != bannerMessage?.id else { return }
-            bannerHoverCount = 0
-            scheduleBannerDismissal()
+            bannerDismissal.reset(autoDismisses: bannerMessage?.severity == .info)
         }
     }
     @Published var showingProviderSetup = false
 
-    private static let bannerDismissalDelay: Duration = .seconds(8)
-    private var bannerHoverCount = 0
-    private var bannerDismissalTask: Task<Void, Never>?
+    private let bannerDismissal: BannerDismissalTimer
     private var cancellables = Set<AnyCancellable>()
     private var generationCancellable: AnyCancellable?
     private var bootstrapTask: Task<Void, Never>?
@@ -63,7 +60,10 @@ final class AppModel: ObservableObject {
         updates: UpdateService? = nil,
         shellApprovals: ShellApprovalStore? = nil,
         generatedTools: GeneratedToolArtifactStore? = nil,
-        runtime: AppletRuntimeEngine? = nil
+        runtime: AppletRuntimeEngine? = nil,
+        bannerDismissalDelay: Duration = .seconds(8),
+        bannerStaleAfter: Duration = .seconds(300),
+        bannerClock: BannerClock = .live
     ) {
         let resolvedApprovals = shellApprovals ?? ShellApprovalStore()
         let resolvedArtifacts = generatedTools ?? GeneratedToolArtifactStore()
@@ -78,6 +78,14 @@ final class AppModel: ObservableObject {
             shellApprovals: resolvedApprovals,
             generatedTools: resolvedArtifacts
         )
+        self.bannerDismissal = BannerDismissalTimer(
+            delay: bannerDismissalDelay,
+            staleAfter: bannerStaleAfter,
+            clock: bannerClock
+        )
+        self.bannerDismissal.onExpire = { [weak self] in
+            self?.bannerMessage = nil
+        }
 
         self.store.objectWillChange
             .receive(on: RunLoop.main)
@@ -167,27 +175,20 @@ final class AppModel: ObservableObject {
         generation?.phase = .cancelled
         generation?.finishedAt = .now
         cancelAllValidations()
-        bannerDismissalTask?.cancel()
+        bannerDismissal.reset(autoDismisses: false)
         runtime.stopAll()
     }
 
     // MARK: - Banner
 
-    /// Called by each `BannerView` copy as the pointer enters or leaves it.
-    func setBannerHovered(_ hovered: Bool, bannerID: UUID) {
-        guard bannerMessage?.id == bannerID else { return }
-        bannerHoverCount = max(0, bannerHoverCount + (hovered ? 1 : -1))
-        scheduleBannerDismissal()
+    /// Called by each `BannerView` instance, under its own token, whenever its
+    /// on-screen or hover state changes.
+    func updateBannerView(_ token: UUID, visible: Bool, hovered: Bool) {
+        bannerDismissal.setView(token, visible: visible, hovered: hovered)
     }
 
-    private func scheduleBannerDismissal() {
-        bannerDismissalTask?.cancel()
-        guard let banner = bannerMessage, banner.severity == .info, bannerHoverCount == 0 else { return }
-        bannerDismissalTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.bannerDismissalDelay)
-            guard !Task.isCancelled, let self, bannerMessage?.id == banner.id else { return }
-            bannerMessage = nil
-        }
+    func removeBannerView(_ token: UUID) {
+        bannerDismissal.removeView(token)
     }
 
     // MARK: - Generation
