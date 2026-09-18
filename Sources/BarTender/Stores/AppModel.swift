@@ -31,9 +31,20 @@ final class AppModel: ObservableObject {
             observeGenerationSession()
         }
     }
-    @Published var bannerMessage: BannerMessage?
+    /// Shown in both the main and Settings windows. Info banners share one
+    /// auto-dismiss timer, paused while either window's copy is hovered.
+    @Published var bannerMessage: BannerMessage? {
+        didSet {
+            guard oldValue?.id != bannerMessage?.id else { return }
+            bannerHoverCount = 0
+            scheduleBannerDismissal()
+        }
+    }
     @Published var showingProviderSetup = false
 
+    private static let bannerDismissalDelay: Duration = .seconds(8)
+    private var bannerHoverCount = 0
+    private var bannerDismissalTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
     private var generationCancellable: AnyCancellable?
     private var bootstrapTask: Task<Void, Never>?
@@ -156,7 +167,27 @@ final class AppModel: ObservableObject {
         generation?.phase = .cancelled
         generation?.finishedAt = .now
         cancelAllValidations()
+        bannerDismissalTask?.cancel()
         runtime.stopAll()
+    }
+
+    // MARK: - Banner
+
+    /// Called by each `BannerView` copy as the pointer enters or leaves it.
+    func setBannerHovered(_ hovered: Bool, bannerID: UUID) {
+        guard bannerMessage?.id == bannerID else { return }
+        bannerHoverCount = max(0, bannerHoverCount + (hovered ? 1 : -1))
+        scheduleBannerDismissal()
+    }
+
+    private func scheduleBannerDismissal() {
+        bannerDismissalTask?.cancel()
+        guard let banner = bannerMessage, banner.severity == .info, bannerHoverCount == 0 else { return }
+        bannerDismissalTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.bannerDismissalDelay)
+            guard !Task.isCancelled, let self, bannerMessage?.id == banner.id else { return }
+            bannerMessage = nil
+        }
     }
 
     // MARK: - Generation

@@ -130,9 +130,11 @@ struct ContentView: View {
                 }
 
                 if let banner = model.bannerMessage {
-                    BannerView(banner: banner) {
-                        model.bannerMessage = nil
-                    }
+                    BannerView(
+                        banner: banner,
+                        onHover: { model.setBannerHovered($0, bannerID: banner.id) },
+                        onDismiss: { model.bannerMessage = nil }
+                    )
                 }
             }
             .padding(.top, PremiumStyle.space8)

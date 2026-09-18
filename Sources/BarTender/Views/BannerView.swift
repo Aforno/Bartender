@@ -1,20 +1,12 @@
 import AppKit
 import SwiftUI
 
-/// Top-of-window message. Info banners dismiss themselves after a delay that
-/// pauses while hovered; error banners stay until the user dismisses them.
+/// Top-of-window message. Auto-dismissal is owned by `AppModel` so copies in
+/// several windows share one timer; this view only reports hover.
 struct BannerView: View {
-    private static let dismissalDelayNanoseconds: UInt64 = 8_000_000_000
-
-    private struct DismissalKey: Equatable {
-        let bannerID: UUID
-        let hovering: Bool
-    }
-
     let banner: BannerMessage
+    let onHover: (Bool) -> Void
     let onDismiss: () -> Void
-
-    @State private var hovering = false
 
     private var isError: Bool { banner.severity == .error }
 
@@ -51,18 +43,9 @@ struct BannerView: View {
         .padding(.horizontal, PremiumStyle.space20)
         .frame(maxWidth: 560)
         .accessibilityElement(children: .contain)
-        .onHover { hovering = $0 }
+        .onHover(perform: onHover)
         .task(id: banner.id) {
             announceForAccessibility()
-        }
-        .task(id: DismissalKey(bannerID: banner.id, hovering: hovering)) {
-            guard !isError, !hovering else { return }
-            do {
-                try await Task.sleep(nanoseconds: Self.dismissalDelayNanoseconds)
-            } catch {
-                return
-            }
-            onDismiss()
         }
     }
 
