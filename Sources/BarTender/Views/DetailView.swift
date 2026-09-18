@@ -58,7 +58,7 @@ struct DetailView: View {
         }
 
         pageSection("Build")
-        if let generation = generationSession(for: applet) {
+        if let generation = model.generation(shownOn: applet.id) {
             GenerationLogView(session: generation)
         } else {
             savedBuildReceipt(applet)
@@ -122,7 +122,7 @@ struct DetailView: View {
             }
 
             PropertyRow(label: "Refresh", systemImage: "arrow.clockwise") {
-                Text(refreshLabel(applet))
+                Text(applet.refreshDescription)
             }
 
             PropertyRow(label: "Created", systemImage: "calendar") {
@@ -194,17 +194,6 @@ struct DetailView: View {
         )
     }
 
-    private func refreshLabel(_ applet: AppletManifest) -> String {
-        guard let interval = applet.refreshIntervalSeconds ?? applet.kind.defaultRefreshInterval else {
-            return "Event driven"
-        }
-        if interval == 1 { return "Every second" }
-        if interval.rounded() == interval {
-            return "Every \(Int(interval)) seconds"
-        }
-        return "Every \(interval.formatted(.number.precision(.fractionLength(0...2)))) seconds"
-    }
-
     // MARK: - Timer controls
 
     private func timerControls(_ applet: AppletManifest) -> some View {
@@ -231,12 +220,12 @@ struct DetailView: View {
             if !applet.enabled {
                 Text("Enable this tool to use timer controls")
                     .font(BarTenderFont.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(PremiumStyle.tertiaryText)
                     .padding(.leading, PremiumStyle.space4)
             } else if applet.notifyOnComplete {
                 Text("Notification fires on completion")
                     .font(BarTenderFont.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(PremiumStyle.tertiaryText)
                     .padding(.leading, PremiumStyle.space4)
             }
         }
@@ -248,6 +237,7 @@ struct DetailView: View {
 
     private func reviewCallout(_ applet: AppletManifest) -> some View {
         let isValidating = model.isValidatingExecution(applet)
+        let lineCount = applet.generatedSourceLineCount
         return VStack(alignment: .leading, spacing: PremiumStyle.space12) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: isValidating ? "hourglass" : "lock.fill")
@@ -292,13 +282,13 @@ struct DetailView: View {
 
                 Text("zsh")
                     .font(BarTenderFont.footnote)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(PremiumStyle.tertiaryText)
                     .padding(.top, PremiumStyle.space8)
                     .padding(.trailing, PremiumStyle.space12)
             }
 
             HStack(spacing: 6) {
-                Label("\(sourceLineCount(applet)) lines · any edit revokes approval", systemImage: "checkmark.shield")
+                Label("\(lineCount) \(lineCount == 1 ? "line" : "lines") · any edit revokes approval", systemImage: "checkmark.shield")
                     .font(BarTenderFont.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -324,14 +314,6 @@ struct DetailView: View {
         }
         .padding(PremiumStyle.space16)
         .borderedContainer(cornerRadius: PremiumStyle.cardRadius)
-    }
-
-    private func sourceLineCount(_ applet: AppletManifest) -> Int {
-        guard let source = applet.config.generatedSource, !source.isEmpty else { return 0 }
-        // Keep blank lines in the count; drop only the phantom line after a
-        // trailing newline.
-        let pieces = source.split(separator: "\n", omittingEmptySubsequences: false)
-        return max(1, source.hasSuffix("\n") ? pieces.count - 1 : pieces.count)
     }
 
     // MARK: - Shell command approval
@@ -434,17 +416,6 @@ struct DetailView: View {
 
     // MARK: - Saved build receipt
 
-    private func generationSession(for applet: AppletManifest) -> GenerationSession? {
-        guard let generation = model.generation else { return nil }
-        if generation.targetAppletID == applet.id {
-            return generation
-        }
-        if generation.targetAppletID == nil, generation.resultManifest?.id == applet.id {
-            return generation
-        }
-        return nil
-    }
-
     private func savedBuildReceipt(_ applet: AppletManifest) -> some View {
         let approvalBound = applet.kind == .generatedTool || applet.kind == .shellCommand
         let isValidating = model.isValidatingExecution(applet)
@@ -457,7 +428,7 @@ struct DetailView: View {
         }
         let metadata = [
             applet.createdAt.formatted(date: .abbreviated, time: .shortened),
-            refreshLabel(applet).lowercased(),
+            applet.refreshDescription.lowercased(),
             approvalLabel,
         ]
         .compactMap { $0 }
@@ -529,7 +500,7 @@ struct DetailView: View {
             .controlSize(.small)
             .disabled(model.generation?.phase.isActive == true)
 
-            if let generation = newToolGenerationSession {
+            if let generation = model.generation(shownOn: nil) {
                 VStack(alignment: .leading, spacing: PremiumStyle.space8) {
                     Text("Build")
                         .font(BarTenderFont.sectionLabel)
@@ -542,13 +513,6 @@ struct DetailView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 420)
         .padding(.top, PremiumStyle.space20)
-    }
-
-    private var newToolGenerationSession: GenerationSession? {
-        guard let generation = model.generation, generation.targetAppletID == nil else {
-            return nil
-        }
-        return generation
     }
 
     private var hasMissingSamples: Bool {

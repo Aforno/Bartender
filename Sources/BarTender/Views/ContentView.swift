@@ -130,9 +130,7 @@ struct ContentView: View {
                 }
 
                 if let banner = model.bannerMessage {
-                    BannerView(text: banner) {
-                        model.bannerMessage = nil
-                    }
+                    BannerView(banner: banner)
                 }
             }
             .padding(.top, PremiumStyle.space8)

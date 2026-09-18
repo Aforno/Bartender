@@ -46,6 +46,25 @@ struct AppletManifest: Identifiable, Codable, Equatable, Sendable, Hashable {
     }
 }
 
+extension AppletManifest {
+    /// Lines in the generated source, counting blank lines but not the phantom
+    /// line after a trailing newline. Zero when there is no source.
+    var generatedSourceLineCount: Int {
+        guard let source = config.generatedSource, !source.isEmpty else { return 0 }
+        let pieces = source.split(separator: "\n", omittingEmptySubsequences: false)
+        return max(1, source.hasSuffix("\n") ? pieces.count - 1 : pieces.count)
+    }
+
+    /// Human-readable polling cadence, e.g. "Every 30 seconds" or "Event driven".
+    var refreshDescription: String {
+        guard let interval = refreshIntervalSeconds ?? kind.defaultRefreshInterval else {
+            return "Event driven"
+        }
+        if interval == 1 { return "Every second" }
+        return "Every \(interval.formatted(.number.precision(.fractionLength(0...2)))) seconds"
+    }
+}
+
 struct AppletConfig: Codable, Equatable, Sendable, Hashable {
     var durationSeconds: Int?
     var autoRestart: Bool?

@@ -31,9 +31,17 @@ final class AppModel: ObservableObject {
             observeGenerationSession()
         }
     }
-    @Published var bannerMessage: String?
+    /// Shown in both the main and Settings windows. Info banners share one
+    /// auto-dismiss countdown that only runs while a copy is visible and unhovered.
+    @Published var bannerMessage: BannerMessage? {
+        didSet {
+            guard oldValue?.id != bannerMessage?.id else { return }
+            bannerDismissal.reset(autoDismisses: bannerMessage?.severity == .info)
+        }
+    }
     @Published var showingProviderSetup = false
 
+    private let bannerDismissal: BannerDismissalTimer
     private var cancellables = Set<AnyCancellable>()
     private var generationCancellable: AnyCancellable?
     private var bootstrapTask: Task<Void, Never>?
@@ -52,7 +60,10 @@ final class AppModel: ObservableObject {
         updates: UpdateService? = nil,
         shellApprovals: ShellApprovalStore? = nil,
         generatedTools: GeneratedToolArtifactStore? = nil,
-        runtime: AppletRuntimeEngine? = nil
+        runtime: AppletRuntimeEngine? = nil,
+        bannerDismissalDelay: Duration = .seconds(8),
+        bannerStaleAfter: Duration = .seconds(300),
+        bannerClock: BannerClock = .live
     ) {
         let resolvedApprovals = shellApprovals ?? ShellApprovalStore()
         let resolvedArtifacts = generatedTools ?? GeneratedToolArtifactStore()
@@ -67,6 +78,14 @@ final class AppModel: ObservableObject {
             shellApprovals: resolvedApprovals,
             generatedTools: resolvedArtifacts
         )
+        self.bannerDismissal = BannerDismissalTimer(
+            delay: bannerDismissalDelay,
+            staleAfter: bannerStaleAfter,
+            clock: bannerClock
+        )
+        self.bannerDismissal.onExpire = { [weak self] in
+            self?.bannerMessage = nil
+        }
 
         self.store.objectWillChange
             .receive(on: RunLoop.main)
@@ -123,9 +142,9 @@ final class AppModel: ObservableObject {
             selection = store.applets.first?.id
         }
         if let loadIssue = store.loadIssue {
-            bannerMessage = loadIssue
+            bannerMessage = .error(loadIssue)
         } else if let artifactIssue {
-            bannerMessage = artifactIssue
+            bannerMessage = .error(artifactIssue)
         }
         await providers.refreshAvailability()
     }
@@ -156,7 +175,20 @@ final class AppModel: ObservableObject {
         generation?.phase = .cancelled
         generation?.finishedAt = .now
         cancelAllValidations()
+        bannerDismissal.reset(autoDismisses: false)
         runtime.stopAll()
+    }
+
+    // MARK: - Banner
+
+    /// Called by each `BannerView` instance, under its own token, whenever its
+    /// on-screen or hover state changes.
+    func updateBannerView(_ token: UUID, visible: Bool, hovered: Bool) {
+        bannerDismissal.setView(token, visible: visible, hovered: hovered)
+    }
+
+    func removeBannerView(_ token: UUID) {
+        bannerDismissal.removeView(token)
     }
 
     // MARK: - Generation
@@ -193,6 +225,22 @@ final class AppModel: ObservableObject {
         bannerMessage = nil
     }
 
+    /// The generation whose build log belongs on the page for `appletID`
+    /// (`nil` is the New Tool page), or `nil` if that page shows no build.
+    func generation(shownOn appletID: UUID?) -> GenerationSession? {
+        guard let generation else { return nil }
+        guard let appletID else {
+            return generation.targetAppletID == nil ? generation : nil
+        }
+        if generation.targetAppletID == appletID {
+            return generation
+        }
+        if generation.targetAppletID == nil, generation.resultManifest?.id == appletID {
+            return generation
+        }
+        return nil
+    }
+
     func createFromPrompt(_ prompt: String? = nil) async {
         await generateTool(from: prompt, replacing: selectedApplet)
     }
@@ -208,20 +256,22 @@ final class AppModel: ObservableObject {
     ) async {
         let resolved = (prompt ?? composerText).trimmingCharacters(in: .whitespacesAndNewlines)
         guard generation?.phase.isActive != true else {
-            bannerMessage = "A generation is already running. Cancel it before starting another."
+            bannerMessage = .info("A generation is already running. Cancel it before starting another.")
             return
         }
         guard !resolved.isEmpty else {
-            bannerMessage = existingTool == nil
-                ? "Describe a new menu bar tool to build."
-                : "Describe the change you want to make to “\(existingTool?.name ?? "this tool")”."
+            bannerMessage = .info(
+                existingTool == nil
+                    ? "Describe a new menu bar tool to build."
+                    : "Describe the change you want to make to “\(existingTool?.name ?? "this tool")”."
+            )
             return
         }
         guard providers.availability.isReady else {
             if providers.anyProviderReady {
-                bannerMessage = "\(providers.selectedProvider.displayName) is not ready. Pick another provider."
+                bannerMessage = .info("\(providers.selectedProvider.displayName) is not ready. Pick another provider.")
             } else {
-                bannerMessage = "No AI provider CLI is ready."
+                bannerMessage = .info("No AI provider CLI is ready.")
             }
             return
         }
@@ -375,13 +425,17 @@ final class AppModel: ObservableObject {
                 session.append(stream: .system, "Auto-approval selected; starting the revised source’s first-run check…")
                 setExecutionApproval(true, for: saved)
             } else if existingTool != nil {
-                bannerMessage = shellApprovals.isApproved(saved)
-                    ? "Validated “\(saved.name)” and kept it running."
-                    : "Updated “\(saved.name)” in place. Review the revised code to run it."
+                bannerMessage = .info(
+                    shellApprovals.isApproved(saved)
+                        ? "Validated “\(saved.name)” and kept it running."
+                        : "Updated “\(saved.name)” in place. Review the revised code to run it."
+                )
             } else {
-                bannerMessage = saved.kind == .generatedTool
-                    ? "Generated “\(saved.name)”. Review its code once, then allow it to run."
-                    : "Created “\(saved.name)” with \(provider.displayName)."
+                bannerMessage = .info(
+                    saved.kind == .generatedTool
+                        ? "Generated “\(saved.name)”. Review its code once, then allow it to run."
+                        : "Created “\(saved.name)” with \(provider.displayName)."
+                )
             }
             AppLog.app.info("Created applet \(saved.name, privacy: .public) via \(provider.rawValue, privacy: .public)")
         } catch is CancellationError {
@@ -400,14 +454,14 @@ final class AppModel: ObservableObject {
                 session.errorMessage = error.localizedDescription
                 session.finishedAt = .now
                 session.append(stream: .system, error.localizedDescription)
-                bannerMessage = error.localizedDescription
+                bannerMessage = .error(error.localizedDescription)
             }
         } catch {
             session.phase = .failed
             session.errorMessage = error.localizedDescription
             session.finishedAt = .now
             session.append(stream: .system, error.localizedDescription)
-            bannerMessage = error.localizedDescription
+            bannerMessage = .error(error.localizedDescription)
         }
     }
 
@@ -428,7 +482,7 @@ final class AppModel: ObservableObject {
 
     func deleteApplet(id: UUID) {
         guard generation?.phase.isActive != true else {
-            bannerMessage = "Cancel the current generation before deleting a tool."
+            bannerMessage = .info("Cancel the current generation before deleting a tool.")
             return
         }
         guard let applet = store.applet(id: id) else { return }
@@ -454,10 +508,10 @@ final class AppModel: ObservableObject {
                 selection = store.applets.first?.id
             }
             if let artifactCleanupError {
-                bannerMessage = "“\(applet.name)” was removed, but its generated files need manual cleanup: \(artifactCleanupError.localizedDescription)"
+                bannerMessage = .error("“\(applet.name)” was removed, but its generated files need manual cleanup: \(artifactCleanupError.localizedDescription)")
             }
         } catch {
-            bannerMessage = error.localizedDescription
+            bannerMessage = .error(error.localizedDescription)
         }
     }
 
@@ -467,9 +521,9 @@ final class AppModel: ObservableObject {
             let saved = try persistManifestAndArtifact(manifest, replacing: previous).manifest
             runtime.restart(manifest: saved)
             runtime.sync(with: store.applets)
-            bannerMessage = "Saved “\(saved.name)”."
+            bannerMessage = .info("Saved “\(saved.name)”.")
         } catch {
-            bannerMessage = error.localizedDescription
+            bannerMessage = .error(error.localizedDescription)
         }
     }
 
@@ -531,7 +585,7 @@ final class AppModel: ObservableObject {
             runtime.restart(manifest: updated)
             runtime.sync(with: store.applets)
         } catch {
-            bannerMessage = error.localizedDescription
+            bannerMessage = .error(error.localizedDescription)
         }
     }
 
@@ -559,7 +613,7 @@ final class AppModel: ObservableObject {
                     runtime.restart(manifest: updated)
                 }
             } catch {
-                bannerMessage = error.localizedDescription
+                bannerMessage = .error(error.localizedDescription)
             }
         }
     }
@@ -598,11 +652,11 @@ final class AppModel: ObservableObject {
     func setExecutionApproval(_ approved: Bool, for manifest: AppletManifest) {
         if approved, manifest.kind == .generatedTool {
             guard generation?.phase.isActive != true else {
-                bannerMessage = "Wait for the current generation to finish before running this tool."
+                bannerMessage = .info("Wait for the current generation to finish before running this tool.")
                 return
             }
             guard store.applet(id: manifest.id) == manifest else {
-                bannerMessage = "This tool changed before approval. Review the current source and try again."
+                bannerMessage = .error("This tool changed before approval. Review the current source and try again.")
                 return
             }
             cancelValidation(id: manifest.id)
@@ -611,7 +665,7 @@ final class AppModel: ObservableObject {
             // provisional decision into an executable-on-next-launch state.
             shellApprovals.setApproved(false, for: manifest)
             runtime.stop(id: manifest.id)
-            bannerMessage = "Testing “\(manifest.name)” before putting it live…"
+            bannerMessage = .info("Testing “\(manifest.name)” before putting it live…")
             let token = UUID()
             validationTokens[manifest.id] = token
             validationTasks[manifest.id] = Task { [weak self] in
@@ -654,28 +708,30 @@ final class AppModel: ObservableObject {
             runtime.startValidatedGeneratedTool(manifest: persisted, output: output)
             runtime.sync(with: store.applets)
             objectWillChange.send()
-            bannerMessage = persisted.enabled
-                ? "“\(persisted.name)” passed its first-run check and is live."
-                : "“\(persisted.name)” passed its first-run check. Enable it when you are ready."
+            bannerMessage = .info(
+                persisted.enabled
+                    ? "“\(persisted.name)” passed its first-run check and is live."
+                    : "“\(persisted.name)” passed its first-run check. Enable it when you are ready."
+            )
             return
         }
 
         if generation?.phase.isActive == true {
             runtime.restart(manifest: persisted)
             runtime.sync(with: store.applets)
-            bannerMessage = "“\(persisted.name)” still needs attention. Cancel the current generation to send the first-run result back to \(providers.selectedProvider.displayName)."
+            bannerMessage = .error("“\(persisted.name)” still needs attention. Cancel the current generation to send the first-run result back to \(providers.selectedProvider.displayName).")
             return
         }
 
         guard providers.availability.isReady else {
             runtime.restart(manifest: persisted)
             runtime.sync(with: store.applets)
-            bannerMessage = "“\(persisted.name)” needs attention. Recheck the provider to enable automatic repair."
+            bannerMessage = .error("“\(persisted.name)” needs attention. Recheck the provider to enable automatic repair.")
             return
         }
 
         let feedback = ManifestGenerationSupport.runtimeRepairFeedback(for: result)
-        bannerMessage = "The first run needs attention. Sending the result back to \(providers.selectedProvider.displayName)…"
+        bannerMessage = .info("The first run needs attention. Sending the result back to \(providers.selectedProvider.displayName)…")
         let originalRequest = persisted.sourcePrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         await generateTool(
             from: originalRequest.isEmpty ? "Make this menu bar tool work as intended." : originalRequest,
@@ -715,7 +771,7 @@ final class AppModel: ObservableObject {
 
     func clearLibrary() {
         guard generation?.phase.isActive != true else {
-            bannerMessage = "Cancel the current generation before clearing the library."
+            bannerMessage = .info("Cancel the current generation before clearing the library.")
             return
         }
 
@@ -734,16 +790,16 @@ final class AppModel: ObservableObject {
             runtime.sync(with: store.applets)
             selection = nil
             bannerMessage = artifactCleanupError.map {
-                "Library cleared, but some generated files could not be removed: \($0.localizedDescription)"
-            } ?? "Library cleared."
+                .error("Library cleared, but some generated files could not be removed: \($0.localizedDescription)")
+            } ?? .info("Library cleared.")
         } catch {
-            bannerMessage = error.localizedDescription
+            bannerMessage = .error(error.localizedDescription)
         }
     }
 
     func addSampleLibrary() {
         guard generation?.phase.isActive != true else {
-            bannerMessage = "Cancel the current generation before changing the library."
+            bannerMessage = .info("Cancel the current generation before changing the library.")
             return
         }
 
@@ -757,11 +813,13 @@ final class AppModel: ObservableObject {
             }
             runtime.sync(with: store.applets)
             selection = store.applets.first?.id
-            bannerMessage = addedCount == 0
-                ? "The built-in samples are already in your library."
-                : "Added \(addedCount) built-in sample\(addedCount == 1 ? "" : "s")."
+            bannerMessage = .info(
+                addedCount == 0
+                    ? "The built-in samples are already in your library."
+                    : "Added \(addedCount) built-in sample\(addedCount == 1 ? "" : "s")."
+            )
         } catch {
-            bannerMessage = error.localizedDescription
+            bannerMessage = .error(error.localizedDescription)
         }
     }
 
@@ -770,15 +828,15 @@ final class AppModel: ObservableObject {
 
         do {
             try store.exportArchiveData().write(to: url, options: [.atomic])
-            bannerMessage = "Exported \(store.applets.count) tool(s)."
+            bannerMessage = .info("Exported \(store.applets.count) tool(s).")
         } catch {
-            bannerMessage = "Could not export the library: \(error.localizedDescription)"
+            bannerMessage = .error("Could not export the library: \(error.localizedDescription)")
         }
     }
 
     func importLibrary() {
         guard generation?.phase.isActive != true else {
-            bannerMessage = "Cancel the current generation before importing a library."
+            bannerMessage = .info("Cancel the current generation before importing a library.")
             return
         }
 
@@ -820,7 +878,7 @@ final class AppModel: ObservableObject {
                 }
                 runtime.sync(with: store.applets)
                 selection = imported.first?.id ?? store.applets.first?.id
-                bannerMessage = "Imported \(imported.count) tool(s). Review generated source before running it."
+                bannerMessage = .info("Imported \(imported.count) tool(s). Review generated source before running it.")
             } catch {
                 let importError = error
                 var rollbackErrors: [String] = []
@@ -848,7 +906,7 @@ final class AppModel: ObservableObject {
                 )
             }
         } catch {
-            bannerMessage = "Could not import the library: \(error.localizedDescription)"
+            bannerMessage = .error("Could not import the library: \(error.localizedDescription)")
         }
     }
 
@@ -883,9 +941,9 @@ final class AppModel: ObservableObject {
 
         do {
             try diagnosticsReport().write(to: url, atomically: true, encoding: .utf8)
-            bannerMessage = "Exported sanitized diagnostics. Prompts, source, paths, credentials, and tool output were excluded."
+            bannerMessage = .info("Exported sanitized diagnostics. Prompts, source, paths, credentials, and tool output were excluded.")
         } catch {
-            bannerMessage = "Could not export diagnostics: \(error.localizedDescription)"
+            bannerMessage = .error("Could not export diagnostics: \(error.localizedDescription)")
         }
     }
 
@@ -950,12 +1008,12 @@ final class AppModel: ObservableObject {
                 .requestAuthorization(options: [.alert, .sound])
             AppLog.app.info("Notifications granted=\(granted, privacy: .public)")
             if !granted {
-                bannerMessage = "Notifications are off. You can enable Bar Tender in System Settings."
+                bannerMessage = .info("Notifications are off. You can enable Bar Tender in System Settings.")
             }
             return granted
         } catch {
             AppLog.app.error("Notification auth error: \(error.localizedDescription, privacy: .public)")
-            bannerMessage = "Could not enable notifications: \(error.localizedDescription)"
+            bannerMessage = .error("Could not enable notifications: \(error.localizedDescription)")
             return false
         }
     }

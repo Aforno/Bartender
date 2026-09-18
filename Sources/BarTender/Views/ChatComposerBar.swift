@@ -120,7 +120,8 @@ struct ChatComposerBar<Accessory: View>: View {
                 )
         }
         .buttonStyle(.plain)
-        .help("Cancel")
+        .keyboardShortcut(compact ? nil : KeyboardShortcut(.escape, modifiers: []))
+        .help(compact ? "Cancel" : "Cancel (Esc)")
         .accessibilityLabel("Cancel generation")
         .accessibilityIdentifier("cancel-generation")
     }

@@ -37,7 +37,7 @@ enum PremiumStyle {
 
     static let primaryText = Color.white.opacity(0.92)
     static let secondaryText = Color.white.opacity(0.58)
-    static let tertiaryText = Color.white.opacity(0.34)
+    static let tertiaryText = Color.white.opacity(0.48)
 
     static let brand = Color.blue
 }
