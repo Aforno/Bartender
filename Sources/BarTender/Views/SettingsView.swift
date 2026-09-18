@@ -18,7 +18,7 @@ struct SettingsView: View {
         .deepBlackWindowSurface()
         .overlay(alignment: .top) {
             if let banner = model.bannerMessage {
-                BannerView(text: banner) { model.bannerMessage = nil }
+                BannerView(banner: banner) { model.bannerMessage = nil }
                     .padding(.top, 48)
             }
         }
@@ -259,7 +259,7 @@ private struct ProviderSettingsPane: View {
             get: { providers.isProviderEnabled(provider) },
             set: { enabled in
                 if !enabled, providers.enabledProviders.count == 1 {
-                    model.bannerMessage = "At least one model provider must stay enabled."
+                    model.bannerMessage = .info("At least one model provider must stay enabled.")
                     return
                 }
                 providers.setProviderEnabled(provider, enabled: enabled)

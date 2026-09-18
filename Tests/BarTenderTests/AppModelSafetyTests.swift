@@ -71,7 +71,7 @@ final class AppModelSafetyTests: XCTestCase {
 
         XCTAssertEqual(session.phase, .running)
         XCTAssertEqual(
-            model.bannerMessage,
+            model.bannerMessage?.text,
             "A generation is already running. Cancel it before starting another."
         )
     }
@@ -118,7 +118,7 @@ final class AppModelSafetyTests: XCTestCase {
 
         let deadline = Date().addingTimeInterval(8)
         while Date() < deadline {
-            if model.bannerMessage?.contains("Cancel the current generation") == true {
+            if model.bannerMessage?.text.contains("Cancel the current generation") == true {
                 break
             }
             try await Task.sleep(nanoseconds: 50_000_000)
@@ -126,7 +126,7 @@ final class AppModelSafetyTests: XCTestCase {
 
         XCTAssertEqual(session.phase, .running)
         XCTAssertEqual(
-            model.bannerMessage,
+            model.bannerMessage?.text,
             "“Needs Repair” still needs attention. Cancel the current generation to send the first-run result back to \(model.providers.selectedProvider.displayName)."
         )
         XCTAssertFalse(approvals.isApproved(saved))
@@ -181,7 +181,7 @@ final class AppModelSafetyTests: XCTestCase {
         _ = try artifacts.install(saved)
 
         model.setExecutionApproval(true, for: saved)
-        XCTAssertEqual(model.bannerMessage, "Testing “\(saved.name)” before putting it live…")
+        XCTAssertEqual(model.bannerMessage?.text, "Testing “\(saved.name)” before putting it live…")
         model.setEnabled(saved, enabled: false)
 
         XCTAssertFalse(approvals.isApproved(saved))

@@ -8,7 +8,7 @@ struct ComposerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: PremiumStyle.space12) {
 
-            if model.generation?.phase.isActive == true {
+            if showsGenerationStatus {
                 generationStatus
             }
 
@@ -64,12 +64,15 @@ struct ComposerView: View {
                     .foregroundStyle(PremiumStyle.secondaryText)
             }
             Spacer(minLength: 0)
-            Button("Cancel") {
-                model.cancelGeneration()
-            }
-            .keyboardShortcut(.escape, modifiers: [])
         }
         .padding(.horizontal, PremiumStyle.space4)
+    }
+
+    /// Only shown when the page above isn't already showing this build's log,
+    /// e.g. while browsing another tool mid-generation.
+    private var showsGenerationStatus: Bool {
+        model.generation?.phase.isActive == true
+            && model.generation(shownOn: model.selectedApplet?.id) == nil
     }
 
     private var canCreate: Bool {

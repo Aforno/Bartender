@@ -6,12 +6,13 @@ struct ManagerComposerView: View {
     @EnvironmentObject private var preferences: AppPreferences
 
     @State private var promptText = ""
+    @State private var nextSuggestionIndex = 0
 
     private let suggestions = [
-        "Current Music track",
-        "Running Docker count",
-        "Next calendar event",
-        "Downloads folder size"
+        "Show the song currently playing in Music, or say Not Playing.",
+        "Show how many Docker containers are running.",
+        "Show my next calendar event and how long until it starts.",
+        "Show the total size of my Downloads folder."
     ]
 
     var body: some View {
@@ -26,11 +27,7 @@ struct ManagerComposerView: View {
                 onSend: {
                     Task { await createFromMenuBar() }
                 },
-                onPlus: {
-                    if promptText.isEmpty, let first = suggestions.first {
-                        promptText = first
-                    }
-                },
+                onPlus: insertNextSuggestion,
                 onCancel: {
                     model.cancelGeneration()
                 }
@@ -71,6 +68,15 @@ struct ManagerComposerView: View {
         providers.availability.isReady
             && !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && model.generation?.phase.isActive != true
+    }
+
+    /// Cycles through suggestions on repeated taps, but never overwrites a
+    /// prompt the user typed.
+    private func insertNextSuggestion() {
+        let trimmed = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty || suggestions.contains(trimmed) else { return }
+        promptText = suggestions[nextSuggestionIndex % suggestions.count]
+        nextSuggestionIndex += 1
     }
 
     private func createFromMenuBar() async {

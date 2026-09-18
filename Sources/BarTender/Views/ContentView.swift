@@ -130,7 +130,7 @@ struct ContentView: View {
                 }
 
                 if let banner = model.bannerMessage {
-                    BannerView(text: banner) {
+                    BannerView(banner: banner) {
                         model.bannerMessage = nil
                     }
                 }

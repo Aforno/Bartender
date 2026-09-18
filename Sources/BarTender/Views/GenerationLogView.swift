@@ -26,7 +26,7 @@ struct GenerationLogView: View {
                             .font(BarTenderFont.bodyEmphasis)
                         Text("· \(session.logs.count) events")
                             .font(BarTenderFont.caption)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(PremiumStyle.tertiaryText)
                     }
                 }
                 .foregroundStyle(.primary)
@@ -60,7 +60,7 @@ struct GenerationLogView: View {
                 .foregroundStyle(.green)
                 Text("· \(successMetadata(for: manifest))")
                     .font(BarTenderFont.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(PremiumStyle.tertiaryText)
             }
         } else if session.phase == .cancelled {
             Label("Build cancelled", systemImage: "stop.circle.fill")
@@ -98,7 +98,7 @@ struct GenerationLogView: View {
     }
 
     private func successMetadata(for manifest: AppletManifest) -> String {
-        var details = [artifactLabel(for: manifest), refreshLabel(manifest)]
+        var details = [artifactLabel(for: manifest), manifest.refreshDescription.lowercased()]
         if let elapsedLabel {
             details.append(elapsedLabel)
         }
@@ -109,22 +109,8 @@ struct GenerationLogView: View {
         guard manifest.kind == .generatedTool else {
             return "\(manifest.kind.displayName) configuration"
         }
-        let count = sourceLineCount(manifest)
+        let count = manifest.generatedSourceLineCount
         return "\(count) \(count == 1 ? "line" : "lines") of zsh"
-    }
-
-    private func sourceLineCount(_ manifest: AppletManifest) -> Int {
-        guard let source = manifest.config.generatedSource, !source.isEmpty else { return 0 }
-        let pieces = source.split(separator: "\n", omittingEmptySubsequences: false)
-        return source.hasSuffix("\n") ? max(1, pieces.count - 1) : pieces.count
-    }
-
-    private func refreshLabel(_ manifest: AppletManifest) -> String {
-        guard let interval = manifest.refreshIntervalSeconds ?? manifest.kind.defaultRefreshInterval else {
-            return "event driven"
-        }
-        let seconds = Int(interval)
-        return seconds == 1 ? "refreshes every second" : "refreshes every \(seconds) seconds"
     }
 
     private var elapsedLabel: String? {
