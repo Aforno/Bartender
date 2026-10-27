@@ -6,7 +6,7 @@ struct ProviderSetupSheet: View {
 
     var body: some View {
         SetupErrorView {
-            Task { await model.refreshProviders() }
+            await model.refreshProviders()
         }
         .overlay(alignment: .topTrailing) {
             Button("Done") { dismiss() }

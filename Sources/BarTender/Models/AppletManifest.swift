@@ -152,7 +152,7 @@ enum ManifestValidationError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .emptyName:
-            return "Applet name is required."
+            return "Tool name is required."
         case .emptyIcon:
             return "Icon system name is required."
         case .emptyTitleTemplate:
@@ -162,7 +162,7 @@ enum ManifestValidationError: LocalizedError, Equatable {
         case .invalidRefreshInterval(let value):
             return "Refresh interval \(value)s is out of range (1…3600)."
         case .missingDuration:
-            return "Timer/countdown applets require durationSeconds."
+            return "Timer and countdown tools require durationSeconds."
         case .invalidDuration:
             return "durationSeconds must be between 1 and 86400."
         case .missingURL:
@@ -180,13 +180,13 @@ enum ManifestValidationError: LocalizedError, Equatable {
         case .missingHost:
             return "Port monitors require a host."
         case .missingMetrics:
-            return "System metrics applets require at least one metric."
+            return "System metrics tools require at least one metric."
         case .duplicateMetrics:
             return "System metrics may not contain duplicate values."
         case .missingRepositoryPath:
-            return "Git status applets require a repositoryPath."
+            return "Git status tools require a repositoryPath."
         case .missingCommand:
-            return "Shell command applets require a command."
+            return "Shell command tools require a command."
         case .missingGeneratedSource:
             return "Generated tools require source code."
         case .configMismatch(let detail):
@@ -289,7 +289,7 @@ enum ManifestValidator {
         refreshIntervalSeconds: Double?
     ) throws {
         guard !name.isEmpty else { throw ManifestValidationError.emptyName }
-        try requireMaximumLength(name, field: "Applet name", maximum: ManifestLimits.nameLength)
+        try requireMaximumLength(name, field: "Tool name", maximum: ManifestLimits.nameLength)
 
         guard !iconSystemName.isEmpty else { throw ManifestValidationError.emptyIcon }
         try requireMaximumLength(iconSystemName, field: "Icon system name", maximum: ManifestLimits.iconLength)
@@ -446,7 +446,7 @@ enum ManifestValidator {
         }
         guard unexpected.isEmpty else {
             throw ManifestValidationError.configMismatch(
-                "\(kind.displayName) applets contain unsupported config fields: \(unexpected.joined(separator: ", "))."
+                "\(kind.displayName) tools contain unsupported config fields: \(unexpected.joined(separator: ", "))."
             )
         }
     }

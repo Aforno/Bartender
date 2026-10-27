@@ -3,31 +3,34 @@ import SwiftUI
 
 struct SetupErrorView: View {
     @EnvironmentObject private var providers: AIProviderService
-    let onRecheck: () -> Void
+    let onRecheck: () async -> Void
+
+    @State private var isRechecking = false
+    @State private var copiedTips = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(spacing: 12) {
-                Image(systemName: "wineglass")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(PremiumStyle.primaryText)
-                    .frame(width: 32, height: 32)
-                    .background(
-                        PremiumStyle.raisedStrong,
-                        in: RoundedRectangle(cornerRadius: PremiumStyle.controlRadius, style: .continuous)
-                    )
+                    Image(systemName: "wineglass")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(PremiumStyle.primaryText)
+                        .frame(width: 32, height: 32)
+                        .background(
+                            PremiumStyle.raisedStrong,
+                            in: RoundedRectangle(cornerRadius: PremiumStyle.controlRadius, style: .continuous)
+                        )
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Local AI providers")
-                        .font(BarTenderFont.display)
-                        .accessibilityAddTraits(.isHeader)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Local AI providers")
+                            .font(BarTenderFont.display)
+                            .accessibilityAddTraits(.isHeader)
 
-                    Text("Bar Tender uses local AI CLIs to create and revise tools. Review their status below; generation needs at least one installed, signed-in, enabled provider. Bar Tender never asks for API keys.")
-                        .font(BarTenderFont.caption)
-                        .foregroundStyle(PremiumStyle.secondaryText)
-                        .frame(maxWidth: 520)
-                }
+                        Text("Bar Tender uses local AI CLIs to create and revise tools. Review their status below; generation needs at least one installed, signed-in, enabled provider. Bar Tender never asks for API keys.")
+                            .font(BarTenderFont.caption)
+                            .foregroundStyle(PremiumStyle.secondaryText)
+                            .frame(maxWidth: 520)
+                    }
                 }
 
                 VStack(spacing: 0) {
@@ -52,20 +55,31 @@ struct SetupErrorView: View {
                     .frame(maxWidth: 560, alignment: .leading)
 
                 HStack(spacing: 12) {
-                    Button("Recheck providers") {
-                        onRecheck()
+                    Button(isRechecking ? "Checking…" : "Recheck Providers") {
+                        Task {
+                            isRechecking = true
+                            await onRecheck()
+                            isRechecking = false
+                        }
                     }
                     .buttonStyle(BarTenderPillButtonStyle())
                     .keyboardShortcut(.defaultAction)
+                    .disabled(isRechecking)
 
-                    Button("Copy setup tips") {
+                    Button(copiedTips ? "Copied" : "Copy Setup Tips") {
                         let tip = AIProvider.allCases
                             .map { "\($0.displayName): \($0.loginCommand)" }
                             .joined(separator: "\n")
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(tip, forType: .string)
+                        copiedTips = true
                     }
                     .buttonStyle(BarTenderPillButtonStyle())
+                    .task(id: copiedTips) {
+                        guard copiedTips else { return }
+                        try? await Task.sleep(for: .seconds(1.5))
+                        copiedTips = false
+                    }
                 }
             }
             .padding(PremiumStyle.contentMargin)

@@ -52,30 +52,7 @@ struct BarTenderApp: App {
                 .keyboardShortcut("n", modifiers: [.command])
                 .disabled(appDelegate.model.generation?.phase.isActive == true)
             }
-            CommandMenu("Tool") {
-                Button(appDelegate.model.selectedApplet == nil ? "Build New Tool from Prompt" : "Update Selected Tool from Prompt") {
-                    Task { await appDelegate.model.createFromPrompt() }
-                }
-                .disabled(
-                    appDelegate.model.generation?.phase.isActive == true
-                        || appDelegate.model.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        || !appDelegate.model.providers.availability.isReady
-                )
-
-                Button("Cancel Generation") {
-                    appDelegate.model.cancelGeneration()
-                }
-                .keyboardShortcut(.escape, modifiers: [.command])
-                .disabled(appDelegate.model.generation?.phase.isActive != true)
-
-                Divider()
-
-                Button("Delete Selected Tool") {
-                    appDelegate.model.deleteSelected()
-                }
-                .keyboardShortcut(.delete, modifiers: [.command])
-                .disabled(appDelegate.model.selectedApplet == nil || appDelegate.model.generation?.phase.isActive == true)
-            }
+            ToolCommands(model: appDelegate.model)
             // Route standard Quit through requestQuit so it matches the menu-bar
             // "Quit and Stop Tools" path and always marks a user-initiated exit.
             CommandGroup(replacing: .appTermination) {
@@ -172,6 +149,49 @@ private struct MainWindowActionsInstaller: View {
                 MainWindowRouter.open(using: openWindow)
             }
     }
+}
+
+/// The Tool menu. Delete Selected Tool steps aside while a text field has
+/// focus so ⌘⌫ keeps its usual "delete to start of line" meaning there.
+private struct ToolCommands: Commands {
+    let model: AppModel
+    @FocusedValue(\.isEditingText) private var isEditingText
+
+    var body: some Commands {
+        CommandMenu("Tool") {
+            Button(model.selectedApplet == nil ? "Build New Tool from Prompt" : "Update Selected Tool from Prompt") {
+                Task { await model.createFromPrompt() }
+            }
+            .disabled(
+                model.generation?.phase.isActive == true
+                    || model.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || !model.providers.availability.isReady
+            )
+
+            Button("Cancel Generation") {
+                model.cancelGeneration()
+            }
+            .keyboardShortcut(.escape, modifiers: [.command])
+            .disabled(model.generation?.phase.isActive != true)
+
+            Divider()
+
+            Button("Delete Selected Tool") {
+                model.deleteSelected()
+            }
+            .keyboardShortcut(.delete, modifiers: [.command])
+            .disabled(
+                model.selectedApplet == nil
+                    || model.generation?.phase.isActive == true
+                    || isEditingText == true
+            )
+        }
+    }
+}
+
+extension FocusedValues {
+    /// True while a Bar Tender text input (composer, search) has focus.
+    @Entry var isEditingText: Bool?
 }
 
 extension Notification.Name {

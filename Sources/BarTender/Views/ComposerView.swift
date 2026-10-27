@@ -26,7 +26,8 @@ struct ComposerView: View {
                 },
                 onCancel: {
                     model.cancelGeneration()
-                }
+                },
+                focusRequest: model.composerFocusRequest
             ) {
                 if preferences.showProviderInComposer {
                     ModelSelector(

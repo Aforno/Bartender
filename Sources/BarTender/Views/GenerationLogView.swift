@@ -24,7 +24,7 @@ struct GenerationLogView: View {
                     HStack(spacing: 5) {
                         Text("Technical details")
                             .font(BarTenderFont.bodyEmphasis)
-                        Text("· \(session.logs.count) events")
+                        Text("· \(session.logs.count) \(session.logs.count == 1 ? "event" : "events")")
                             .font(BarTenderFont.caption)
                             .foregroundStyle(PremiumStyle.tertiaryText)
                     }
@@ -93,6 +93,8 @@ struct GenerationLogView: View {
             }
             .padding(PremiumStyle.space12)
         }
+        // Follow new output while streaming, like a terminal.
+        .defaultScrollAnchor(.bottom, for: .sizeChanges)
         .frame(minHeight: 100, maxHeight: 220)
         .borderedContainer(cornerRadius: PremiumStyle.chipRadius)
     }
@@ -116,7 +118,9 @@ struct GenerationLogView: View {
     private var elapsedLabel: String? {
         guard let finishedAt = session.finishedAt else { return nil }
         let elapsed = max(0, Int(finishedAt.timeIntervalSince(session.startedAt)))
-        return elapsed < 60 ? "took \(elapsed)s" : "took \(elapsed / 60)m"
+        if elapsed < 60 { return "took \(elapsed)s" }
+        let seconds = elapsed % 60
+        return seconds == 0 ? "took \(elapsed / 60)m" : "took \(elapsed / 60)m \(seconds)s"
     }
 
     private func color(for stream: ProviderLogLine.Stream) -> Color {
