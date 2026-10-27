@@ -77,7 +77,7 @@ final class AppletStoreTests: XCTestCase {
 
         XCTAssertEqual(store.applets.map(\.id), [duplicateID, unique.id])
         XCTAssertEqual(store.applets.map(\.name), ["First", "Unique"])
-        XCTAssertTrue(store.loadIssue?.contains("Ignored 1 invalid applet.") == true)
+        XCTAssertTrue(store.loadIssue?.contains("Ignored 1 invalid tool.") == true)
 
         let recoveryURL = directory.appendingPathComponent("applets-rejected.json")
         let recovery = try decodedPrimaryLibrary(at: recoveryURL)

@@ -32,10 +32,10 @@ enum PremiumStyle {
     static let fieldFill = Color.white.opacity(0.075)
     static let surfaceFill = Color.white.opacity(0.055)
     static let cardStroke = Color.white.opacity(0.08)
-    static let chromeStroke = Color.white.opacity(0.14)
     static let selectionFill = Color.white.opacity(0.10)
 
     static let primaryText = Color.white.opacity(0.92)
+    static let sectionText = Color.white.opacity(0.74)
     static let secondaryText = Color.white.opacity(0.58)
     static let tertiaryText = Color.white.opacity(0.48)
 
@@ -51,7 +51,6 @@ enum BarTenderFont {
     static let footnote = Font.system(size: 10, weight: .regular)
     static let sectionLabel = Font.system(size: 11, weight: .semibold)
     static let control = Font.system(size: 11, weight: .medium)
-    static let mono = Font.system(size: 10, weight: .regular, design: .monospaced)
 }
 
 private struct BorderedContainer: ViewModifier {
@@ -114,43 +113,57 @@ struct BarTenderHairline: View {
     }
 }
 
+/// Bordered capsule-ish button used for most actions. Dims when disabled.
 struct BarTenderPillButtonStyle: ButtonStyle {
     var destructive = false
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(BarTenderFont.control)
-            .foregroundStyle(
-                destructive
-                    ? Color.red.opacity(configuration.isPressed ? 0.70 : 0.88)
-                    : Color.white.opacity(configuration.isPressed ? 0.62 : 0.82)
-            )
-            .padding(.horizontal, 11)
-            .frame(height: 26)
-            .background(
-                configuration.isPressed ? PremiumStyle.raisedPressed : PremiumStyle.raisedStrong,
-                in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
-                    .strokeBorder(PremiumStyle.cardStroke, lineWidth: 1)
-            )
+        ChromeButtonBody(configuration: configuration) { pressed in
+            configuration.label
+                .font(BarTenderFont.control)
+                .foregroundStyle(
+                    destructive
+                        ? Color.red.opacity(pressed ? 0.70 : 0.88)
+                        : Color.white.opacity(pressed ? 0.62 : 0.82)
+                )
+                .padding(.horizontal, 11)
+                .frame(height: 26)
+        }
     }
 }
 
+/// Square icon-only variant of `BarTenderPillButtonStyle`.
 struct BarTenderIconButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(Color.white.opacity(configuration.isPressed ? 0.55 : 0.72))
-            .frame(width: 26, height: 26)
+        ChromeButtonBody(configuration: configuration) { pressed in
+            configuration.label
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.white.opacity(pressed ? 0.55 : 0.72))
+                .frame(width: 26, height: 26)
+        }
+    }
+}
+
+/// Shared fill, stroke, and disabled treatment for the button styles above.
+/// A view (not the style) so it can read `isEnabled` from the environment.
+private struct ChromeButtonBody<Label: View>: View {
+    let configuration: ButtonStyleConfiguration
+    @ViewBuilder let label: (_ pressed: Bool) -> Label
+
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        let pressed = configuration.isPressed && isEnabled
+        label(pressed)
             .background(
-                configuration.isPressed ? PremiumStyle.raisedPressed : PremiumStyle.raisedStrong,
+                pressed ? PremiumStyle.raisedPressed : PremiumStyle.raisedStrong,
                 in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
                     .strokeBorder(PremiumStyle.cardStroke, lineWidth: 1)
             )
+            .contentShape(RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous))
+            .opacity(isEnabled ? 1 : 0.4)
     }
 }

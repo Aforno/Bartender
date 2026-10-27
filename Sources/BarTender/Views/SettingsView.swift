@@ -341,7 +341,7 @@ private struct LibrarySettingsPane: View {
             Button("Cancel", role: .cancel) {}
             Button("Clear All", role: .destructive) { model.clearLibrary() }
         } message: {
-            Text("This permanently removes all \(store.applets.count) tool(s), approvals, and generated artifacts from Bar Tender. This cannot be undone.")
+            Text("This permanently removes \(store.applets.count == 1 ? "your only tool" : "all \(store.applets.count) tools"), approvals, and generated artifacts from Bar Tender. This cannot be undone.")
         }
     }
 
@@ -398,7 +398,6 @@ private struct SupportSettingsPane: View {
             SettingsSection(title: "About") {
                 SettingsValueRow(title: "App", value: "Bar Tender")
                 SettingsValueRow(title: "Version", value: appVersion)
-                SettingsValueRow(title: "Integration", value: "Local CLIs · Process")
                 GeneratedCodeTrustDisclosure(compact: true)
                     .padding(.vertical, 8)
             }
@@ -460,7 +459,7 @@ private struct SettingsSection<Content: View>: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(BarTenderFont.sectionLabel)
-                .foregroundStyle(Color.white.opacity(0.74))
+                .foregroundStyle(PremiumStyle.sectionText)
                 .padding(.bottom, 8)
             content
         }

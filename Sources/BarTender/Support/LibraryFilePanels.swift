@@ -48,7 +48,7 @@ enum LibraryFilePanels {
     static func confirmDelete(name: String) -> Bool {
         let alert = NSAlert()
         alert.messageText = "Delete “\(name)”?"
-        alert.informativeText = "This removes the applet from your library. This cannot be undone."
+        alert.informativeText = "This removes the tool from your library and the menu bar. This cannot be undone."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Cancel")
         let deleteButton = alert.addButton(withTitle: "Delete")

@@ -68,7 +68,7 @@ struct DetailView: View {
     private func pageSection(_ title: String) -> some View {
         Text(title)
             .font(BarTenderFont.sectionLabel)
-            .foregroundStyle(Color.white.opacity(0.74))
+            .foregroundStyle(PremiumStyle.sectionText)
             .accessibilityAddTraits(.isHeader)
             .padding(.top, PremiumStyle.space20)
             .padding(.bottom, PremiumStyle.space8)
@@ -93,9 +93,7 @@ struct DetailView: View {
                     .font(BarTenderFont.display)
                     .foregroundStyle(PremiumStyle.primaryText)
                     .accessibilityAddTraits(.isHeader)
-                Text(applet.kind.displayName)
-                    .font(BarTenderFont.footnote)
-                    .foregroundStyle(PremiumStyle.secondaryText)
+                stateLabel(runState(for: applet))
             }
             Spacer(minLength: 0)
         }
@@ -105,20 +103,9 @@ struct DetailView: View {
     // MARK: - Property rows
 
     private func props(_ applet: AppletManifest) -> some View {
-        let runState = runState(for: applet)
-        return VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: 1) {
             PropertyRow(label: "Kind", systemImage: "tag") {
                 Text(applet.kind.displayName + (applet.kind == .generatedTool ? " · zsh" : ""))
-            }
-
-            PropertyRow(label: "State", systemImage: "clock") {
-                HStack(spacing: 7) {
-                    Circle()
-                        .fill(tint(for: runState))
-                        .frame(width: 7, height: 7)
-                    Text(runState.title)
-                        .foregroundStyle(tint(for: runState))
-                }
             }
 
             PropertyRow(label: "Refresh", systemImage: "arrow.clockwise") {
@@ -174,6 +161,19 @@ struct DetailView: View {
                 }
             }
         }
+    }
+
+    private func stateLabel(_ state: ToolRunState) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(tint(for: state))
+                .frame(width: 6, height: 6)
+            Text(state.title)
+                .font(BarTenderFont.caption)
+                .foregroundStyle(tint(for: state))
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("State: \(state.title)")
     }
 
     private func tint(for state: ToolRunState) -> Color {
@@ -421,18 +421,11 @@ struct DetailView: View {
         let isValidating = model.isValidatingExecution(applet)
         let requiresReview = approvalBound && !model.isExecutionApproved(applet)
         let tint: Color = isValidating ? PremiumStyle.brand : (requiresReview ? .orange : .green)
-        let approvalLabel: String? = if approvalBound {
-            isValidating ? "first-run check in progress" : (requiresReview ? "review required" : "approval current")
+        let approvalLabel: String? = if approvalBound, !isValidating {
+            requiresReview ? "review required" : "approval current"
         } else {
             nil
         }
-        let metadata = [
-            applet.createdAt.formatted(date: .abbreviated, time: .shortened),
-            applet.refreshDescription.lowercased(),
-            approvalLabel,
-        ]
-        .compactMap { $0 }
-        .joined(separator: " · ")
 
         return HStack(spacing: 7) {
             Image(
@@ -444,9 +437,11 @@ struct DetailView: View {
             Text(isValidating ? "Testing source" : savedReceiptTitle(for: applet))
                 .font(BarTenderFont.bodyEmphasis)
                 .foregroundStyle(tint)
-            Text("· \(metadata)")
-                .font(BarTenderFont.caption)
-                .foregroundStyle(PremiumStyle.tertiaryText)
+            if let approvalLabel {
+                Text("· \(approvalLabel)")
+                    .font(BarTenderFont.caption)
+                    .foregroundStyle(PremiumStyle.tertiaryText)
+            }
         }
     }
 
@@ -484,6 +479,7 @@ struct DetailView: View {
             HStack(spacing: 10) {
                 Button {
                     model.composerText = "Show the song currently playing in Music, or say Not Playing."
+                    model.focusComposer()
                 } label: {
                     Label("Try an Idea", systemImage: "wand.and.stars")
                 }
@@ -504,7 +500,7 @@ struct DetailView: View {
                 VStack(alignment: .leading, spacing: PremiumStyle.space8) {
                     Text("Build")
                         .font(BarTenderFont.sectionLabel)
-                        .foregroundStyle(Color.white.opacity(0.74))
+                        .foregroundStyle(PremiumStyle.sectionText)
                         .accessibilityAddTraits(.isHeader)
                     GenerationLogView(session: generation)
                 }

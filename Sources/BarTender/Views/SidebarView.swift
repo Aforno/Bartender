@@ -30,6 +30,7 @@ struct SidebarView: View {
                 title: "New Tool",
                 systemImage: "plus",
                 shortcutHint: "⌘N",
+                selected: model.selection == nil,
                 action: { model.beginNewTool() }
             )
             .disabled(model.generation?.phase.isActive == true)
@@ -39,7 +40,7 @@ struct SidebarView: View {
 
             Text("Tools")
                 .font(BarTenderFont.sectionLabel)
-                .foregroundStyle(Color.white.opacity(0.74))
+                .foregroundStyle(PremiumStyle.sectionText)
                 .accessibilityAddTraits(.isHeader)
                 .padding(.horizontal, PremiumStyle.sidebarInset + PremiumStyle.rowInsetH)
                 .padding(.top, PremiumStyle.space12)
@@ -144,6 +145,7 @@ struct SidebarView: View {
                     toggleSearch()
                 }
                 .accessibilityIdentifier("tool-search")
+                .focusedValue(\.isEditingText, searchFocused)
             if searchText.isEmpty && !searchFocused {
                 Text("⌘K")
                     .font(BarTenderFont.caption)
@@ -224,9 +226,7 @@ private struct ToolRow: View {
             .accessibilityIdentifier("tool-row.\(applet.id.uuidString)")
 
             Menu {
-                Button(applet.enabled ? "Disable" : "Enable", action: onToggleEnabled)
-                Button("Delete", role: .destructive, action: onDelete)
-                    .disabled(deletionDisabled)
+                actions
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 11, weight: .medium))
@@ -249,11 +249,14 @@ private struct ToolRow: View {
         .contentShape(RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous))
         .onHover { hovering = $0 }
         .animation(reduceMotion ? nil : .snappy(duration: 0.12), value: hovering)
-        .contextMenu {
-            Button(applet.enabled ? "Disable" : "Enable", action: onToggleEnabled)
-            Button("Delete", role: .destructive, action: onDelete)
-                .disabled(deletionDisabled)
-        }
+        .contextMenu { actions }
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        Button(applet.enabled ? "Disable" : "Enable", action: onToggleEnabled)
+        Button("Delete", role: .destructive, action: onDelete)
+            .disabled(deletionDisabled)
     }
 }
 
@@ -261,6 +264,7 @@ private struct SidebarActionRow: View {
     let title: String
     let systemImage: String
     var shortcutHint: String? = nil
+    var selected = false
     let action: () -> Void
 
     @State private var hovering = false
@@ -272,10 +276,12 @@ private struct SidebarActionRow: View {
                 title: title,
                 systemImage: systemImage,
                 shortcutHint: shortcutHint,
-                hovering: hovering
+                hovering: hovering,
+                selected: selected
             )
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
         .onHover { hovering = $0 }
         .animation(reduceMotion ? nil : .snappy(duration: 0.12), value: hovering)
     }
@@ -309,6 +315,7 @@ private struct SidebarRowLabel: View {
     let systemImage: String
     let shortcutHint: String?
     let hovering: Bool
+    var selected = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -329,7 +336,7 @@ private struct SidebarRowLabel: View {
         .padding(.vertical, PremiumStyle.rowInsetV)
         .foregroundStyle(PremiumStyle.primaryText)
         .background(
-            Color.white.opacity(hovering ? 0.055 : 0),
+            selected ? PremiumStyle.selectionFill : Color.white.opacity(hovering ? 0.055 : 0),
             in: RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous)
         )
         .contentShape(RoundedRectangle(cornerRadius: PremiumStyle.chipRadius, style: .continuous))

@@ -12,13 +12,15 @@ struct ChatComposerBar<Accessory: View>: View {
     var onSend: () -> Void
     var onPlus: (() -> Void)? = nil
     var onCancel: (() -> Void)? = nil
+    /// Change this value to pull keyboard focus into the field.
+    var focusRequest: Int = 0
     @ViewBuilder var accessory: () -> Accessory
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focused: Bool
 
-    private var controlSize: CGFloat { 26 }
-    private var barRadius: CGFloat { PremiumStyle.cardRadius }
+    private let controlSize: CGFloat = 26
+    private let barRadius = PremiumStyle.cardRadius
 
     var body: some View {
         HStack(alignment: .center, spacing: compact ? 8 : 10) {
@@ -66,6 +68,7 @@ struct ChatComposerBar<Accessory: View>: View {
                     }
                     .accessibilityLabel(placeholder)
                     .accessibilityIdentifier("tool-prompt")
+                    .focusedValue(\.isEditingText, focused)
             }
 
             accessory()
@@ -80,12 +83,18 @@ struct ChatComposerBar<Accessory: View>: View {
         .padding(.horizontal, PremiumStyle.space8)
         .padding(.vertical, 6)
         .frame(minHeight: compact ? 38 : 42)
-        .background(barBackground, in: RoundedRectangle(cornerRadius: barRadius, style: .continuous))
+        .background(PremiumStyle.raised, in: RoundedRectangle(cornerRadius: barRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: barRadius, style: .continuous)
-                .strokeBorder(focused ? Color.white.opacity(0.18) : barStroke, lineWidth: 1)
+                .strokeBorder(focused ? Color.white.opacity(0.18) : PremiumStyle.cardStroke, lineWidth: 1)
         )
         .animation(reduceMotion ? nil : .snappy(duration: 0.15), value: focused)
+        .onChange(of: focusRequest) { focused = true }
+        // The field is disabled while busy, which drops focus; hand it back
+        // so the user can keep typing once the build finishes.
+        .onChange(of: isBusy) { wasBusy, busy in
+            if wasBusy, !busy { focused = true }
+        }
     }
 
     private var sendButton: some View {
@@ -124,14 +133,6 @@ struct ChatComposerBar<Accessory: View>: View {
         .help(compact ? "Cancel" : "Cancel (Esc)")
         .accessibilityLabel("Cancel generation")
         .accessibilityIdentifier("cancel-generation")
-    }
-
-    private var barBackground: Color {
-        PremiumStyle.raised
-    }
-
-    private var barStroke: Color {
-        PremiumStyle.cardStroke
     }
 
     private var sendBackground: Color {

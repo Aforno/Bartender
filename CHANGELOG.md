@@ -4,6 +4,15 @@ User-visible changes go here. Bar Tender follows semantic versioning.
 
 ## Unreleased
 
+- ⌘⌫ no longer triggers Delete Selected Tool while typing in the composer or search field.
+- Disabled buttons now look disabled (Back/Forward, Export, Clear Library, Recheck).
+- The composer regains focus after a build finishes, on ⌘N, and after Try an Idea.
+- Build logs follow new output while streaming; elapsed time shows minutes and seconds.
+- The tool page shows its run state in the header and no longer repeats kind, created date, or refresh interval.
+- New Tool is highlighted in the sidebar while it is the active page.
+- Provider setup shows progress while rechecking and confirms when setup tips are copied.
+- User-facing messages say "tool" instead of "applet" and pluralize counts correctly.
+
 ## 1.0.1 (build 6) - 2026-09-11
 
 - Render Codex and Grok provider icons as white glyphs so they stay visible on the black canvas.

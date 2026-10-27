@@ -40,6 +40,8 @@ final class AppModel: ObservableObject {
         }
     }
     @Published var showingProviderSetup = false
+    /// Bumped to ask the main window's composer to take keyboard focus.
+    @Published private(set) var composerFocusRequest = 0
 
     private let bannerDismissal: BannerDismissalTimer
     private var cancellables = Set<AnyCancellable>()
@@ -223,6 +225,11 @@ final class AppModel: ObservableObject {
         composerText = ""
         generation = nil
         bannerMessage = nil
+        focusComposer()
+    }
+
+    func focusComposer() {
+        composerFocusRequest += 1
     }
 
     /// The generation whose build log belongs on the page for `appletID`
@@ -828,7 +835,7 @@ final class AppModel: ObservableObject {
 
         do {
             try store.exportArchiveData().write(to: url, options: [.atomic])
-            bannerMessage = .info("Exported \(store.applets.count) tool(s).")
+            bannerMessage = .info("Exported \(store.applets.count) tool\(store.applets.count == 1 ? "" : "s").")
         } catch {
             bannerMessage = .error("Could not export the library: \(error.localizedDescription)")
         }
@@ -878,7 +885,7 @@ final class AppModel: ObservableObject {
                 }
                 runtime.sync(with: store.applets)
                 selection = imported.first?.id ?? store.applets.first?.id
-                bannerMessage = .info("Imported \(imported.count) tool(s). Review generated source before running it.")
+                bannerMessage = .info("Imported \(imported.count) tool\(imported.count == 1 ? "" : "s"). Review generated source before running it.")
             } catch {
                 let importError = error
                 var rollbackErrors: [String] = []

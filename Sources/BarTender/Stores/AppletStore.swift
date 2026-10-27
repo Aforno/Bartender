@@ -16,7 +16,7 @@ enum AppletStoreError: LocalizedError {
         case .duplicateAppletID(let id):
             return "The library contains more than one applet with identifier \(id.uuidString)."
         case .persistenceFailed(let detail):
-            return "Could not save the applet library: \(detail)"
+            return "Could not save the tool library: \(detail)"
         }
     }
 }
@@ -125,12 +125,12 @@ final class AppletStore: ObservableObject {
                 } catch {
                     recoveryMessage = " The recovery copy could not be written: \(error.localizedDescription)"
                 }
-                loadIssue = "Ignored \(rejected.count) invalid applet\(rejected.count == 1 ? "" : "s").\(recoveryMessage)"
+                loadIssue = "Ignored \(rejected.count) invalid tool\(rejected.count == 1 ? "" : "s").\(recoveryMessage)"
             }
             AppLog.store.info("Loaded \(self.applets.count, privacy: .public) valid applets")
         } catch {
             let recovery = recoveryURL(named: "applets-corrupt.json")
-            var message = "Could not load the applet library: \(error.localizedDescription)."
+            var message = "Could not load the tool library: \(error.localizedDescription)."
             if let data = try? Data(contentsOf: fileURL) {
                 do {
                     try ensureStorageDirectory()
